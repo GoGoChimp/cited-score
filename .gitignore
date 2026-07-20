@@ -1,0 +1,23 @@
+# --- Private data: never publish (real per-URL citation counts, site crawls, findings) ---
+citations.csv
+build_citations.py
+report.json
+report.csv
+report.html
+report-history.jsonl
+findings-*.md
+BUILD-SPEC.md
+reports/
+
+# --- Generated / runtime ---
+__pycache__/
+*.pyc
+build/
+dist/
+.chrome-profile/
+.chrome-profiles/
+cited-score.url
+
+# --- Fonts: Anton is under the SIL Open Font License. Download Anton-Regular.ttf
+# from Google Fonts into fonts/ to regenerate the icon (make_icon.py). Not required to run the app. ---
+fonts/
