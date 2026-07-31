@@ -2,6 +2,8 @@
 
 The free companion auditor to the book **CITED** (Chris McCarron / GoGoChimp). A "Screaming Frog for AEO / GEO / AI-SEO": it crawls the **entire site**, renders every page with headless Chrome, and scores how **citable and extractable** each page is for AI search. It reports one honest headline number and, more importantly, **ends in an action plan**.
 
+> **The book:** [gogochimp.com/cited](https://www.gogochimp.com/cited) &nbsp;·&nbsp; **This tool:** [gogochimp.com/cited-score](https://www.gogochimp.com/cited-score) &nbsp;·&nbsp; Built by [Chris McCarron](https://www.gogochimp.com) at [GoGoChimp](https://www.gogochimp.com), the AI-SEO / AI-CRO agency.
+
 Scores are given three ways:
 - **Overall** CITED Score (0-100).
 - **By pillar** - the three questions an engine asks (CITED ch3): **Known** (do I know you?), **Findable** (can I find your answer?), **Trusted** (do I trust you enough to name you?).
