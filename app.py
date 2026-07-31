@@ -11,7 +11,7 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.1.0"                 # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.2.0"                 # semver; bump on every release + tag the GitHub release to match
 GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
 VERSION = f"v{APP_VERSION} - July 2026"
 
@@ -49,71 +49,113 @@ PORT = 5000
 def safe(d): return re.sub(r"[^a-z0-9._-]", "-", d.lower())[:80]
 
 INDEX = r"""<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>CITED Score</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Anton&family=Figtree:wght@300..900&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>CITED Score</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300..900&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0E110E;--panel:#171B16;--panel2:#14251A;--line:#26281F;--muted:#9A9284;--txt:#F0EBE0;--grn:#42D949;--grn2:#6BEA71;--amber:#F5A623;--red:#F16A5F;--chip:#D63B2F}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.55 'Figtree',-apple-system,Segoe UI,Arial,sans-serif}
-.wrap{max-width:760px;margin:0 auto;padding:40px 22px}
-.logo{font-family:'Anton',sans-serif;font-size:34px;font-weight:400;letter-spacing:-.4px;text-transform:uppercase}.chip{background:var(--grn);color:#0a0a0a;font-family:'Figtree',sans-serif;font-weight:800;font-size:13px;padding:2px 6px;border-radius:5px;vertical-align:super;margin-left:5px}
-.sub{color:var(--muted);margin:6px 0 28px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:20px}
-label{display:block;font-size:12px;color:var(--muted);margin:0 0 6px}
-input,select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:13px 14px;font-size:16px}
-.row{display:flex;gap:14px;margin-top:14px}.row>div{flex:1}
-button{margin-top:18px;width:100%;background:var(--grn);color:#08110a;border:0;border-radius:10px;padding:14px;font-size:16px;font-weight:800;cursor:pointer}
-button:disabled{opacity:.5;cursor:default}button:hover:not(:disabled){background:var(--grn2)}
-.bar{height:10px;background:#243024;border-radius:6px;overflow:hidden;margin:10px 0}.bar i{display:block;height:100%;background:var(--grn);width:0;transition:width .3s}
-.log{font:12px/1.5 ui-monospace,Consolas,monospace;color:var(--muted);background:#0b0e0b;border:1px solid var(--line);border-radius:10px;padding:12px;height:170px;overflow:auto;white-space:pre-wrap}
-.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}
-.tile{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center}.tile .n{font-size:24px;font-weight:800}.tile .l{font-size:11px;color:var(--muted)}
-.open{display:inline-block;margin-top:6px;background:var(--grn);color:#08110a;font-weight:800;padding:11px 18px;border-radius:9px}
-.recent a{display:flex;justify-content:space-between;color:var(--txt);text-decoration:none;padding:9px 12px;border:1px solid var(--line);border-radius:9px;margin-bottom:8px;background:var(--panel2)}
-.recent a:hover{border-color:var(--grn)}.recent .d{color:var(--muted);font-size:12px}
-a{color:var(--grn)}.hide{display:none}.err{color:var(--red)}
-.upd{background:var(--panel2);border:1px solid var(--grn);border-radius:12px;padding:12px 16px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:12px}
-.upd a{background:var(--grn);color:#08110a;font-weight:800;padding:8px 14px;border-radius:8px;white-space:nowrap;text-decoration:none}
+:root{--bg:#0d0b0a;--panel:#131110;--panel2:#0b0a09;--line:#2a2320;--muted:#8b8480;--txt:#f2ede9;--grn:#ff4d00;--grn2:#ff6524;--ok:#3ecf8e;--red:#ff4d3d;--display:'Figtree',sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 'Figtree',-apple-system,Segoe UI,Arial,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:26px 26px 60px}
+a{color:var(--grn);text-decoration:none}
+.logo{font-family:Impact,'Haettenschweiler','Arial Narrow',sans-serif;font-size:26px;font-weight:400;letter-spacing:-.3px;text-transform:uppercase}
+.chip{background:var(--grn);color:#0a0a0a;font-family:'Figtree',sans-serif;font-weight:800;font-size:11px;padding:1px 5px;border-radius:4px;vertical-align:super;margin-left:4px}
+.upd{display:flex;align-items:center;gap:16px;background:rgba(255,77,0,.07);border:1px solid rgba(255,77,0,.32);border-radius:14px;padding:14px 18px;margin-bottom:26px}
+.upd .uc{background:var(--grn);color:#0a0a0a;font-weight:800;font-size:11px;letter-spacing:.5px;padding:3px 8px;border-radius:5px}
+.upd .ut{font-weight:800}.upd .ud{color:var(--muted);font-size:13px}.upd .sp{flex:1}
+.updbtn{background:var(--grn);color:#0a0a0a;font-weight:800;padding:9px 16px;border-radius:9px;white-space:nowrap}
+.later{color:#fff;font-weight:600;cursor:pointer;padding:9px 10px}
+.cols{display:grid;grid-template-columns:1fr 360px;gap:30px;align-items:start}
+@media(max-width:960px){.cols{grid-template-columns:1fr}.side{margin-top:0}}
+.h1{font-family:var(--display);font-weight:800;text-transform:uppercase;font-size:44px;line-height:1.03;letter-spacing:-.5px;margin:16px 0 0}
+.lede{color:var(--muted);font-size:17px;max-width:520px;margin:16px 0 14px}
+.engrow{color:var(--muted);font-size:14px;display:flex;flex-wrap:wrap;gap:22px;margin-bottom:26px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px}
+.lab{font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.6px;font-size:12px;color:var(--muted);margin-bottom:10px}
+.inp{display:flex;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:0 14px}
+.inp .pfx{color:var(--muted);font-size:16px}.inp input{flex:1;background:none;border:0;color:var(--txt);font-size:16px;padding:14px 6px;outline:none}
+.runbtn{width:100%;background:var(--grn);color:#0a0a0a;border:0;border-radius:11px;padding:16px;font-family:var(--display);font-weight:800;font-size:17px;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;margin-top:14px}
+.runbtn:hover:not(:disabled){background:var(--grn2)}.runbtn:disabled{opacity:.5;cursor:default}
+.hint{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px;color:var(--muted);font-size:13px}
+.optbtn{background:none;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer}
+.opts{display:none;gap:14px;margin-top:14px}.opts.on{display:flex}.opts>div{flex:1}
+.opts label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+.opts input,.opts select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:10px 12px;font-size:14px}
+.side{margin-top:58px}
+.side .card{padding:20px;margin-bottom:22px}
+.ph{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.ph .t{font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.5px;font-size:15px}.ph .m{color:var(--muted);font-size:12px}
+.rep{display:flex;align-items:center;gap:14px;padding:14px 0;border-top:1px solid var(--line);color:var(--txt)}.rep:first-of-type{border-top:0}
+.rep .sc{font-family:var(--display);font-weight:800;font-size:34px;color:var(--grn);width:52px;flex:0 0 52px}
+.rep .nm{font-weight:800}.rep .mt{color:var(--muted);font-size:12px}
+.dl{margin-left:auto;font-size:13px;font-weight:700;white-space:nowrap}.dl.up{color:var(--ok)}.dl.dn{color:var(--red)}.dl.z{color:var(--muted)}
+.note2{color:var(--muted);font-size:12px;margin-top:12px}
+.chk{display:flex;gap:12px;padding:9px 0;font-size:14px}.chk b{font-family:var(--display);font-weight:800;color:var(--grn);width:22px;flex:0 0 22px}
+.bar{height:10px;background:#2a2320;border-radius:6px;overflow:hidden;margin:12px 0}.bar i{display:block;height:100%;background:var(--grn);width:0;transition:width .3s}
+.log{font:12px/1.5 ui-monospace,Consolas,monospace;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;height:170px;overflow:auto;white-space:pre-wrap}
+.tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:14px 0}
+.tile{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center}.tile .n{font-family:var(--display);font-weight:800;font-size:24px}.tile .l{font-size:11px;color:var(--muted)}
+.open{display:inline-block;margin-top:6px;background:var(--grn);color:#0a0a0a;font-weight:800;padding:11px 18px;border-radius:9px}
+.foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-top:44px;color:var(--muted);font-size:13px}
+.foot .lk{display:flex;gap:20px}
+.hide{display:none}.err{color:var(--red)}
 </style></head><body><div class="wrap">
-<div class="upd hide" id="upd"><span id="updmsg"></span><a id="updlink" target="_blank">Update now</a></div>
-<div class="logo">CITED<span class="chip">Score</span></div>
-<div class="sub">Enter a website; it crawls every page and scores how citable it is for ChatGPT, Perplexity, AI Overviews, Gemini, Copilot and Claude.</div>
+<div class="upd hide" id="upd"><span class="uc">Update</span><div><div class="ut" id="updmsg">Update available</div><div class="ud" id="upddesc"></div></div><div class="sp"></div><a class="updbtn" id="updlink" target="_blank">Update now</a><span class="later" onclick="dismissUpd()">Later</span></div>
 
-<div class="card" id="form">
-  <label>Website URL</label>
-  <input id="url" placeholder="www.example.com" autofocus>
-  <div class="row">
-    <div><label>Max pages (blank = entire site)</label><input id="maxp" type="number" placeholder="all" min="1"></div>
-    <div><label>Parallel renderers</label><select id="workers"><option>4</option><option selected>6</option><option>8</option><option>10</option></select></div>
-  </div>
-  <button id="run" onclick="run()">Run audit</button>
-  <div id="chrome" class="sub" style="margin:12px 0 0"></div>
+<div class="cols">
+ <div class="main">
+   <div class="logo">CITED<span class="chip">Score</span></div>
+   <h1 class="h1">Score every page the way an AI crawler would</h1>
+   <div class="lede">Enter a website. CITED Score crawls every page and grades how citable it is for six engines, then tells you which fix moves the number fastest.</div>
+   <div class="engrow"><span>ChatGPT</span><span>Perplexity</span><span>AI Overviews</span><span>Gemini</span><span>Copilot</span><span>Claude</span></div>
+
+   <div class="card" id="form">
+     <div class="lab">Website URL</div>
+     <div class="inp"><span class="pfx">https://</span><input id="url" placeholder="www.example.com" autofocus></div>
+     <button class="runbtn" id="run" onclick="run()">Run audit</button>
+     <div class="hint"><span>Crawls the whole site with 6 parallel renderers by default. A 32-page site takes about 2 minutes.</span><button class="optbtn" onclick="toggleOpts()">Options</button></div>
+     <div class="opts" id="opts">
+       <div><label>Max pages (blank = entire site)</label><input id="maxp" type="number" placeholder="all" min="1"></div>
+       <div><label>Parallel renderers</label><select id="workers"><option>4</option><option selected>6</option><option>8</option><option>10</option></select></div>
+     </div>
+     <div id="chrome" class="note2"></div>
+   </div>
+
+   <div class="card hide" id="progress" style="margin-top:22px">
+     <div class="lab" id="phase" style="color:var(--txt);font-size:14px">Starting...</div>
+     <div class="bar"><i id="fill"></i></div>
+     <div id="count" class="note2" style="margin:0 0 10px"></div>
+     <div class="log" id="log"></div>
+     <div id="done" class="hide">
+       <div class="tiles" id="tiles"></div>
+       <a class="open" id="openbtn" target="_blank">Open full report</a>
+       <button onclick="reset()" class="optbtn" style="margin-left:10px;padding:11px 18px">Run another</button>
+     </div>
+   </div>
+ </div>
+
+ <div class="side">
+   <div class="card"><div class="ph"><div class="t">Recent reports</div><span class="m">stored locally</span></div><div id="recent"></div><div class="note2">Re-run the same site to see a before-and-after on every page.</div></div>
+   <div class="card"><div class="ph"><div class="t">What it checks</div></div>
+     <div class="chk"><b>01</b><span>Answer-first structure and chunk quality</span></div>
+     <div class="chk"><b>02</b><span>Server-rendered schema vs JS-injected</span></div>
+     <div class="chk"><b>03</b><span>GPTBot and PerplexityBot reachability</span></div>
+     <div class="chk"><b>04</b><span>Entity clarity, sameAs and authorship</span></div>
+     <div class="chk"><b>05</b><span>Freshness signals and response times</span></div>
+   </div>
+ </div>
 </div>
 
-<div class="card hide" id="progress">
-  <div id="phase" style="font-weight:700">Starting...</div>
-  <div class="bar"><i id="fill"></i></div>
-  <div id="count" class="sub" style="margin:0 0 10px"></div>
-  <div class="log" id="log"></div>
-  <div id="done" class="hide">
-    <div class="tiles" id="tiles"></div>
-    <a class="open" id="openbtn" target="_blank">Open full report</a>
-    <button onclick="reset()" style="width:auto;margin-left:10px;background:var(--panel2);color:var(--txt);border:1px solid var(--line)">Run another</button>
-  </div>
-</div>
-
-<h3 style="margin-top:34px">Recent reports</h3>
-<div class="recent" id="recent"></div>
-<div id="ver" style="margin-top:30px;color:var(--muted);font-size:12px"></div>
+<div class="foot"><span id="ver">CITED Score · free for life with the book</span><span class="lk"><a href="https://github.com/GoGoChimp/cited-score" target="_blank">Read the docs</a></span></div>
 </div>
 <script>
 const $=id=>document.getElementById(id);
 fetch('/chrome').then(r=>r.json()).then(d=>{
-  $('ver').textContent='CITED Score '+d.version;
-  $('chrome').innerHTML = d.chrome ? 'Renderer: '+d.chrome : '<b class="err">CITED Score needs a browser to read pages.</b><br>It renders each page with Chrome or Edge, and neither was found on this computer. Install Google Chrome or Microsoft Edge, then reopen CITED Score.';});
+  $('ver').textContent='CITED Score '+d.version+' · free for life with the book';
+  $('chrome').innerHTML = d.chrome ? '' : '<b class="err">CITED Score needs Chrome or Edge to read pages.</b> Install one, then reopen.';});
 function loadRecent(){fetch('/reports').then(r=>r.json()).then(list=>{
-  $('recent').innerHTML = list.length ? list.map(r=>`<a href="/report/${r.name}" target="_blank"><span>${r.name}</span><span class="d">${r.when}</span></a>`).join('') : '<div class="sub">None yet.</div>';})}
+  $('recent').innerHTML = list.length ? list.map(r=>{const d=r.delta;const dl=(d==null)?'<span class="dl z">first run</span>':`<span class="dl ${d>0?'up':d<0?'dn':'z'}">${d>0?'▲':d<0?'▼':'▬'} ${Math.abs(d)}</span>`;const sc=r.score==null?'':`<div class="sc">${r.score}</div>`;const mt=(r.pages!=null?r.pages+' pages · ':'')+r.when;return `<a href="/report/${r.name}" target="_blank" class="rep">${sc}<div style="flex:1"><div class="nm">${r.name}</div><div class="mt">${mt}</div></div>${dl}</a>`}).join('') : '<div class="note2">No reports yet. Run your first audit.</div>';})}
 loadRecent();
 fetch('/update-check').then(r=>r.json()).then(d=>{
-  if(d&&d.update){ $('updmsg').innerHTML='A newer CITED Score is available (<b>'+d.latest+'</b>). You have v'+d.current+'.';
+  if(d&&d.update){ $('updmsg').textContent='Version '+d.latest+' is available';
+    $('upddesc').textContent='You are on v'+d.current+'. The update takes about a minute.';
     $('updlink').href=d.url; $('upd').classList.remove('hide'); }
 }).catch(()=>{});
 let poll=null;
@@ -143,6 +185,8 @@ function check(job){fetch('/status/'+job).then(r=>r.json()).then(j=>{
   }});}
 function tile(n,l){return `<div class="tile"><div class="n">${n==null?'-':n}</div><div class="l">${l}</div></div>`}
 function reset(){$('progress').classList.add('hide'); $('form').classList.remove('hide'); $('run').disabled=false; $('url').value='';}
+function dismissUpd(){$('upd').classList.add('hide')}
+function toggleOpts(){$('opts').classList.toggle('on')}
 </script></body></html>"""
 
 class Handler(BaseHTTPRequestHandler):
@@ -162,8 +206,16 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/reports":
             files = [f for f in glob.glob(os.path.join(REPORTS, "*.html"))]
             files.sort(key=os.path.getmtime, reverse=True)
-            items = [{"name": os.path.basename(f)[:-5],
-                      "when": time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(f)))} for f in files]
+            items = []
+            for f in files:
+                it = {"name": os.path.basename(f)[:-5],
+                      "when": time.strftime("%d %b %Y, %H:%M", time.localtime(os.path.getmtime(f)))}
+                try:
+                    jd = json.load(open(f[:-5] + ".json", encoding="utf-8"))
+                    it["score"] = jd.get("overall"); it["pages"] = jd.get("pages_crawled")
+                    it["delta"] = (jd.get("diff") or {}).get("overall_d")
+                except Exception: pass
+                items.append(it)
             return self._json(200, items)
         if u.path.startswith("/status/"):
             return self._json(200, JOBS.get(u.path.rsplit("/", 1)[-1], {}))

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Generate cited.ico + preview PNG, matched to the CITED cover on a Swiss modular grid:
-bright green field (#42D949), the 'C' set in the brand font ANTON (same as the CITED
+bright orange field (#ff4d00), the 'C' set in the brand font ANTON (same as the CITED
 wordmark), a small white notification badge with a red '1'."""
 import os, io, base64
 from PIL import Image, ImageDraw, ImageFont
 
-GREEN = (66, 217, 73, 255)     # #42D949 - CITED cover / brand green
+ORANGE = (255, 77, 0, 255)     # #ff4d00 - CITED cover / brand orange
 BLACK = (10, 10, 10, 255)
 RED   = (226, 59, 46, 255)
 S = 256
@@ -37,7 +37,7 @@ def center(dr, ch, f, fill, cx=S/2, cy=S/2):
 
 def draw(img):
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([4, 4, S-4, S-4], radius=int(1.5*U), fill=GREEN)      # field
+    d.rounded_rectangle([4, 4, S-4, S-4], radius=int(1.5*U), fill=ORANGE)      # field
     # C in ANTON (the brand wordmark face), ink height ~= 5 modules, centred
     center(d, "C", fit(d, "C", 5.0*U, brand=True), BLACK)
     # badge: 1.5 modules, top-right, dropped onto the C's shoulder like the cover

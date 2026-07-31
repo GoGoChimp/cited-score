@@ -572,24 +572,24 @@ try:
     FAVICON = "data:image/png;base64," + FAVICON_PNG_B64
 except Exception:                                     # fallback: plain green square
     FAVICON = "data:image/svg+xml;base64," + base64.b64encode(
-        b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'><rect x='4' y='4' width='248' height='248' rx='48' fill='#42D949'/></svg>").decode()
+        b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'><rect x='4' y='4' width='248' height='248' rx='48' fill='#ff4d00'/></svg>").decode()
 
 def write_html(d, path):
     payload=json.dumps(d,ensure_ascii=False).replace("</","<\\/")
     css=r"""
-:root{--bg:#0E110E;--panel:#171B16;--panel2:#14251A;--line:#26281F;--muted:#9A9284;--txt:#F0EBE0;
- --grn:#42D949;--grn2:#6BEA71;--deep:#15803D;--amber:#F5A623;--red:#F16A5F;--chip:#D63B2F}
+:root{--bg:#100D0B;--panel:#1A1613;--panel2:#241C15;--line:#2E2820;--muted:#9A9284;--txt:#F0EBE0;
+ --grn:#ff4d00;--grn2:#ff7a33;--deep:#c23a00;--amber:#F5A623;--red:#F16A5F;--chip:#D63B2F}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 'Figtree',-apple-system,Segoe UI,Arial,sans-serif}
 a{color:var(--grn);text-decoration:none}a:hover{text-decoration:underline}
 header{padding:18px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.logo{font-family:'Anton',sans-serif;font-size:26px;font-weight:400;letter-spacing:-.3px;text-transform:uppercase}
+.logo{font-family:Impact,'Haettenschweiler','Arial Narrow',sans-serif;font-size:26px;font-weight:400;letter-spacing:-.3px;text-transform:uppercase}
 .chip{background:var(--grn);color:#0a0a0a;font-family:'Figtree',sans-serif;font-weight:800;font-size:11px;padding:1px 5px;border-radius:4px;vertical-align:super;margin-left:4px}
 header .m{color:var(--muted);font-size:13px}
 .btns{margin-left:auto;display:flex;gap:8px}
 button{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px}
 button:hover{border-color:var(--grn);color:var(--grn2)}
-.tabs{display:flex;flex-wrap:wrap;gap:2px;padding:0 18px;border-bottom:1px solid var(--line);background:#10130F;position:sticky;top:0;z-index:5}
+.tabs{display:flex;flex-wrap:wrap;gap:2px;padding:0 18px;border-bottom:1px solid var(--line);background:#120F0C;position:sticky;top:0;z-index:5}
 .tab{padding:11px 13px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;font-size:13px;white-space:nowrap}
 .tab:hover{color:var(--txt)}.tab.on{color:#fff;border-bottom-color:var(--grn)}
 .tab.sep{opacity:.4;pointer-events:none;padding:11px 4px}
@@ -601,15 +601,15 @@ button:hover{border-color:var(--grn);color:var(--grn2)}
 .pill3{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
 .pill3 .q{color:var(--muted);font-size:12px;margin-top:2px}
 .ring{--p:0;width:74px;height:74px;flex:0 0 74px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:18px;
- background:conic-gradient(var(--c) calc(var(--p)*1%),#243024 0)}.ring i{width:58px;height:58px;border-radius:50%;background:var(--panel);display:grid;place-items:center;font-style:normal}
+ background:conic-gradient(var(--c) calc(var(--p)*1%),#2C231C 0)}.ring i{width:58px;height:58px;border-radius:50%;background:var(--panel);display:grid;place-items:center;font-style:normal}
 .engs{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .eng{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;gap:14px;align-items:center;cursor:pointer}
-.eng .b{font-weight:700}.eng .d{color:var(--muted);font-size:12px;margin-top:3px}
+.eng .b{font-weight:800}.eng .d{color:var(--muted);font-size:12px;margin-top:3px}
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--muted);font-weight:600;cursor:pointer;user-select:none;position:sticky;top:42px;background:#10130F}
-tr:hover td{background:#1a2016}.sc{font-weight:800;border-radius:6px;padding:2px 8px;color:#08110a;display:inline-block;min-width:30px;text-align:center}
+th{color:var(--muted);font-weight:600;cursor:pointer;user-select:none;position:sticky;top:42px;background:#120F0C}
+tr:hover td{background:#201A14}.sc{font-weight:800;border-radius:6px;padding:2px 8px;color:#08110a;display:inline-block;min-width:30px;text-align:center}
 .badge{font-size:10px;padding:1px 6px;border-radius:20px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
-.badge.Known{border-color:#3aa0ff55;color:#7bbcff}.badge.Findable{border-color:#42d94955;color:var(--grn2)}.badge.Trusted{border-color:#f5a62355;color:var(--amber)}
+.badge.Known{border-color:#3aa0ff55;color:#7bbcff}.badge.Findable{border-color:#ff4d0055;color:var(--grn2)}.badge.Trusted{border-color:#f5a62355;color:var(--amber)}
 .dot{font-weight:800}.dot.good{color:var(--grn)}.dot.warn{color:var(--amber)}.dot.bad{color:var(--red)}
 .issue{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
 .issue h4{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -617,15 +617,173 @@ tr:hover td{background:#1a2016}.sc{font-weight:800;border-radius:6px;padding:2px
 .issue .urls{margin-top:8px;font-size:12px;color:var(--muted);max-height:160px;overflow:auto;display:none}
 .issue.open .urls{display:block}
 .sev{font-size:11px;padding:2px 8px;border-radius:20px}.sev.bad{background:#3a1a18;color:var(--red)}.sev.warn{background:#3a2f12;color:var(--amber)}
-.gain{font-size:11px;padding:2px 8px;border-radius:20px;background:#12331d;color:var(--grn2);font-weight:700}
-.rank{background:var(--grn);color:#08110a;font-weight:900;width:24px;height:24px;border-radius:50%;display:inline-grid;place-items:center;font-size:12px}
+.gain{font-size:11px;padding:2px 8px;border-radius:20px;background:#3A1C0E;color:var(--grn2);font-weight:800}
+.rank{background:var(--grn);color:#08110a;font-weight:800;width:24px;height:24px;border-radius:50%;display:inline-grid;place-items:center;font-size:12px}
 .phase{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:6px 14px 14px;margin-bottom:16px}
 .phase h3{color:var(--grn2);margin:10px 0}
 .muted{color:var(--muted)}.hide{display:none}h3{margin:18px 0 10px;font-size:15px}
-.bar{height:8px;background:#243024;border-radius:6px;overflow:hidden;min-width:120px}.bar i{display:block;height:100%}
+.bar{height:8px;background:#2C231C;border-radius:6px;overflow:hidden;min-width:120px}.bar i{display:block;height:100%}
 input.search{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-size:13px;width:260px;margin-bottom:12px}
 .foot{color:var(--muted);font-size:12px;padding:20px 26px;border-top:1px solid var(--line);max-width:1000px}
 .diffline{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:13px}
+:root{--display:Impact,'Haettenschweiler','Arial Narrow',sans-serif;--ok:#3ecf8e;--warn2:#f2b53c;--err2:#ff4d3d}
+.ov{display:grid;grid-template-columns:1fr 336px;gap:22px;align-items:start}
+@media(max-width:1080px){.ov{grid-template-columns:1fr}}
+.ov2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media(max-width:640px){.ov2{grid-template-columns:1fr}}
+.sech{font-family:var(--display);text-transform:uppercase;letter-spacing:.6px;font-size:17px;color:var(--txt);font-weight:400;margin:26px 0 12px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.sech .s{font-family:'Figtree',sans-serif;text-transform:none;letter-spacing:0;font-size:12px;color:var(--muted);font-weight:400}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+.hero{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.sring{--p:0;--c:var(--grn);width:150px;height:150px;flex:0 0 150px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--c) calc(var(--p)*1%),#2C231C 0)}
+.sring i{width:120px;height:120px;border-radius:50%;background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;font-style:normal;gap:2px}
+.sring .v{font-family:var(--display);font-size:52px;line-height:.85;color:var(--txt)}
+.sring .o{font-size:10px;letter-spacing:1.5px;color:var(--muted)}
+.htitle{font-family:var(--display);text-transform:uppercase;font-size:22px;letter-spacing:.5px}
+.hsub{color:var(--muted);font-size:13px;margin:4px 0 10px;max-width:290px}
+.hdelta{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 12px;font-size:12px;font-weight:600}
+.hc{flex:1;min-width:250px;border-left:1px solid var(--line);padding-left:24px}
+.hclabel{font-family:var(--display);text-transform:uppercase;font-size:13px;letter-spacing:.6px;color:var(--muted)}
+.chbar{display:flex;height:12px;border-radius:999px;overflow:hidden;gap:2px;margin:10px 0 14px}
+.chstat{display:flex;gap:26px}
+.chstat .n{font-family:var(--display);font-size:26px;line-height:1}
+.chstat .l{font-size:11px;color:var(--muted)}
+.trow{display:grid;grid-template-columns:170px 1fr 62px;gap:16px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}
+.trow:last-child{border-bottom:0}
+.trow.eng{grid-template-columns:170px 1fr 100px 62px}
+.trow .q{font-weight:800}.trow .qd,.qd{color:var(--muted);font-size:12px}
+.tbar{position:relative;height:12px;background:#2C231C;border-radius:999px}
+.tbar i{position:absolute;left:0;top:0;height:100%;border-radius:999px}
+.tbar .thr{position:absolute;top:-4px;height:20px;width:2px;background:var(--muted);opacity:.55}
+.tval{text-align:right;font-family:var(--display);font-size:26px;line-height:1;white-space:nowrap}
+.tnote{color:var(--err2);font-size:12px;font-weight:600;text-align:right}
+.d{font-size:12px;font-weight:700}.d.up{color:var(--ok)}.d.dn{color:var(--err2)}.d.z{color:var(--muted)}
+.df{border:1px solid var(--line);border-radius:14px;padding:18px}
+.dfh{display:flex;justify-content:space-between;align-items:baseline}
+.dfh .t{font-family:var(--display);text-transform:uppercase;font-size:15px;letter-spacing:.5px}
+.dfrow{border-top:1px solid var(--line);padding:16px 0}.dfrow:first-of-type{border-top:0;padding-top:12px}
+.dfnum{width:22px;height:22px;border-radius:50%;border:1px solid var(--grn);color:var(--grn);font-size:12px;font-weight:800;display:inline-grid;place-items:center;margin-right:6px}
+.dfgain{font-family:var(--display);font-size:22px;color:var(--grn);text-align:right;line-height:1}.dfgl{font-size:9px;color:var(--muted);letter-spacing:.5px}
+.chip2{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;margin:0 6px 4px 0}
+.listbtn{border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;background:none;cursor:pointer}
+.dffull{display:block;text-align:center;background:var(--grn);color:#0a0a0a;border-radius:12px;padding:11px;font-weight:800;margin-top:14px;cursor:pointer;text-decoration:none}
+.lg{border:1px dashed var(--line);border-radius:14px;padding:18px;margin-top:16px}
+.lgrow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line)}.lgrow:first-of-type{border-top:0}
+.note{border:1px dashed var(--line);border-radius:12px;padding:12px 16px;margin-top:16px;color:var(--muted);font-size:12px;display:flex;align-items:center;gap:8px}
+.note::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--ok);flex:0 0 8px}
+.bl{display:flex;align-items:center;gap:12px;padding:6px 0}
+.bl .lab{width:64px;color:var(--muted);font-size:13px}
+.bl .bar2{height:8px;background:#2C231C;border-radius:999px;flex:1;position:relative}
+.bl .bar2 i{position:absolute;left:0;top:0;height:100%;border-radius:999px;background:var(--grn)}
+.bl .num{font-family:var(--display);font-size:16px;width:28px;text-align:right}
+.rch{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid var(--line);font-size:13px}.rch:first-of-type{border-top:0}
+.rst{font-size:13px}.rst.ok{color:var(--ok)}.rst.wn{color:var(--warn2)}.rst.er{color:var(--err2)}.rst::before{content:'\25CF '}
+.sech,.htitle,.hclabel,.sring .v,.tval,.chstat .n,.dfgain,.bl .num,.dfh .t{font-family:'Figtree',sans-serif;font-weight:800;letter-spacing:0}
+/* ===== Action Plan + Issues (mockup redesign) ===== */
+.ap2{display:grid;grid-template-columns:1fr 380px;gap:24px;align-items:start}
+.apmain{display:flex;flex-direction:column;gap:20px;min-width:0}
+.apside{display:flex;flex-direction:column;gap:20px;position:sticky;top:12px}
+.apsum,.issum{background:linear-gradient(180deg,#17130f,#141110);border:1px solid var(--line);border-radius:14px;padding:22px 26px}
+.apk{font-size:11px;font-weight:600;letter-spacing:.1em;color:var(--muted)}
+.apbn{font-family:'Figtree',sans-serif;font-size:46px;font-weight:900;line-height:1;letter-spacing:-.02em}
+.apintro{font-size:13px;line-height:1.6;color:#9d9691;max-width:900px}
+.aptier{display:flex;flex-direction:column;gap:12px}
+.aptierh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.aptierh h3{margin:0;font-size:16px;letter-spacing:.06em;font-family:'Figtree',sans-serif;font-weight:800}
+.aptierh .sq{width:9px;height:9px;border-radius:2px;flex:none}
+.aptierh .meta{font-size:12px;color:var(--muted)}
+.apbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:2px 22px 6px}
+.apbox.hot{border-color:#ff4d0047}
+.apissue{border-bottom:1px solid #ffffff10}
+.apissue:last-child{border-bottom:0}
+.aprow{display:grid;gap:18px;align-items:center;padding:15px 0}
+.eb{width:5px;height:11px;border-radius:1px;display:inline-block}
+.ebs{display:inline-flex;gap:2px;margin-right:6px;vertical-align:middle}
+.apchip{display:inline-block;font-size:11px;color:#c9c2bd;background:#ffffff10;padding:2px 7px;border-radius:4px;margin:0 6px 2px 0}
+.apgain{font-family:'Figtree',sans-serif;font-weight:900;letter-spacing:-.02em;line-height:1}
+.pbtn{font:inherit;font-size:12px;font-weight:600;color:var(--grn);background:transparent;border:1px solid #ff4d0066;border-radius:5px;padding:5px 10px;cursor:pointer}
+.pbtn:hover{background:#ff4d001f}
+.pbtn.g{color:#c9c2bd;border-color:#ffffff28}.pbtn.g:hover{color:#fff;border-color:#ffffff5c}
+.apurls{display:none;font-size:12px;padding:2px 0 12px;columns:2;column-gap:24px}
+.apurls a{color:var(--muted)}.apurls a:hover{color:var(--txt)}
+.apurls .b{display:block;padding:2px 0;break-inside:avoid;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dotb{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle;flex:none}
+.rmc{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.rmch{padding:16px 20px 12px;border-bottom:1px solid #ffffff12}
+.rmch h3{margin:0;font-size:15px;letter-spacing:.06em;font-family:'Figtree',sans-serif;font-weight:800}
+.rmph{padding:16px 20px;border-bottom:1px solid #ffffff12}
+.rmph:last-child{border-bottom:0}
+.rmnum{font-size:12px;font-weight:800;padding:3px 8px;border-radius:4px;flex:none}
+.card2{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.card2 h3{margin:0 0 10px;font-size:15px;letter-spacing:.06em;font-family:'Figtree',sans-serif;font-weight:800}
+.rowsb{display:flex;align-items:center;justify-content:space-between;font-size:12px;padding:4px 0}
+.bigbtn{display:block;width:100%;text-align:center;font:inherit;font-size:13px;font-weight:700;color:#140b06;background:var(--grn);border:none;border-radius:8px;padding:12px;cursor:pointer}
+.bigbtn:hover{background:var(--grn2);color:#0a0a0a}
+.dashnote{display:flex;align-items:center;gap:10px;padding:14px 18px;border:1px dashed #ffffff24;border-radius:12px;font-size:11px;color:var(--muted);line-height:1.5}
+.issum{display:flex;align-items:center;gap:30px;flex-wrap:wrap}
+.issum .big{font-size:44px;font-weight:900;line-height:1;font-family:'Figtree',sans-serif;letter-spacing:-.02em}
+.istat{display:flex;flex-direction:column;gap:5px;justify-content:center}
+.inumwrap{display:flex;align-items:center;gap:8px;min-height:34px}
+.inum{font-family:'Figtree',sans-serif;font-size:34px;font-weight:900;line-height:1;letter-spacing:-.02em}
+.isub{font-size:12px;color:var(--muted);line-height:1.35}
+.vr{width:1px;align-self:stretch;min-height:44px;background:#ffffff14}
+.fpill{font:inherit;font-size:12px;font-weight:600;color:#c9c2bd;background:transparent;border:1px solid #ffffff28;border-radius:999px;padding:7px 14px;cursor:pointer}
+.fpill:hover{color:#fff}
+.fpill.on{color:#140b06;background:var(--grn);border-color:var(--grn)}
+.wpage{display:flex;align-items:center;gap:14px;padding:13px 20px;border-bottom:1px solid #ffffff10;cursor:pointer;color:inherit}
+.wpage:hover{background:#ffffff08}
+.wpage:last-child{border-bottom:0}
+.wpage .s{font-size:20px;font-weight:800;width:34px;font-family:'Figtree',sans-serif}
+@media(max-width:1080px){.ap2{grid-template-columns:1fr}.apside{position:static}.apurls{columns:1}}
+/* ===== Pages (mockup redesign) ===== */
+.pgsum{background:linear-gradient(180deg,#17130f,#141110);border:1px solid var(--line);border-radius:14px;padding:20px 26px;display:flex;align-items:center;gap:30px;flex-wrap:wrap}
+.pgdist{display:flex;align-items:flex-end;gap:8px;height:76px}
+.pgdist .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:5px}
+.pgdist .trk{height:44px;display:flex;align-items:flex-end}
+.pgdist .trk i{width:100%;border-radius:4px 4px 0 0;display:block}
+.pgscroll{overflow-x:auto}
+.pgtbl{background:var(--panel2);border:1px solid var(--line);border-radius:14px;overflow:hidden;min-width:1060px}
+.pgcols{display:grid;grid-template-columns:58px 1fr 40px 40px 40px 50px 50px 50px 50px 50px 50px 56px 220px;gap:9px;align-items:center}
+.pghead{padding:12px 20px;background:#171412;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted)}
+.pghead span[data-s]{cursor:pointer}.pghead span[data-s]:hover{color:#fff}
+.pgrow{padding:11px 20px;border-bottom:1px solid #ffffff0d}
+.pgrow:last-child{border-bottom:0}
+.pgrow a{font-size:13px;font-weight:600;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pgrow a:hover{color:var(--grn)}
+.tybadge{font-size:10px;color:#6f6864;border:1px solid #ffffff1f;border-radius:3px;padding:1px 5px;flex:none}
+.schip{font-size:15px;font-weight:800;text-align:center;padding:5px 0;border-radius:6px;font-family:'Figtree',sans-serif}
+.ecell{font-size:12px;font-weight:600;text-align:center;padding:4px 0;border-radius:4px}
+.pgpill{font:inherit;font-size:12px;font-weight:600;color:#c9c2bd;background:transparent;border:1px solid #ffffff28;border-radius:999px;padding:7px 13px;cursor:pointer}
+.pgpill:hover{color:#fff}
+.pgpill.on{color:#140b06;background:var(--grn);border-color:var(--grn)}
+.pgpill.bel.on{color:#ff9c88;background:transparent;border-color:#ff4d3d}
+.pgleg{display:flex;align-items:center;gap:22px;padding:13px 20px;background:#0f0d0c;border-top:1px solid var(--line);font-size:11px;color:#6f6864;flex-wrap:wrap}
+.pgsearch{display:flex;align-items:center;gap:9px;background:var(--panel2);border:1px solid #ffffff24;border-radius:8px;padding:0 14px;width:280px}
+.pgsearch input{flex:1;background:transparent;border:none;outline:none;font:inherit;font-size:13px;color:#fff;padding:10px 0}
+.pgsearch input::placeholder{color:#6f6864}
+/* ===== Engines + Site structure + Response times ===== */
+.engcols{display:grid;grid-template-columns:1fr 92px 230px 84px;gap:18px;align-items:center}
+.enghead{padding:12px 0;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted)}
+.engrow{padding:15px 0;border-bottom:1px solid #ffffff0f}
+.engrow:last-child{border-bottom:0}
+.engbar{height:9px;border-radius:5px;background:#221d1a;overflow:hidden}
+.engbar i{display:block;height:100%;border-radius:5px}
+.wdots{font-size:13px;letter-spacing:.12em;white-space:nowrap}
+.engwcols{display:grid;grid-template-columns:70px 1fr 220px 66px 74px;gap:16px;align-items:center}
+.engwrow{padding:12px 20px;border-bottom:1px solid #ffffff0d}
+.engwrow:last-child{border-bottom:0}
+.engwhead{padding:12px 20px;background:#171412;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted)}
+.card2.hot{border-color:#ff4d004d}
+.numbadge{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:800;flex:none}
+.stbar{height:8px;border-radius:5px;background:#221d1a;overflow:hidden;flex:1}
+.stbar i{display:block;height:100%;border-radius:5px}
+.strow{display:grid;grid-template-columns:170px 70px 1fr 52px;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid #ffffff0f}
+.strow:last-child{border-bottom:0}
+.statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.statcard{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.statcard .n{font-family:'Figtree',sans-serif;font-size:30px;font-weight:900;line-height:1;letter-spacing:-.02em}
+.statcard .l{font-size:11px;color:var(--muted);margin-top:6px}
+@media(max-width:1080px){.engcols{grid-template-columns:1fr 80px 160px 60px}.engwcols{grid-template-columns:60px 1fr 140px 56px 64px}}
 #printroot{display:none}
 @media print{
  body{background:#fff;color:#111}header,.tabs,.btns{background:#fff}.tab,button{display:none}
@@ -637,7 +795,9 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 """
     js=r"""
 const D=window.__DATA__;
-const col=s=>s>=75?'#42D949':s>=50?'#F5A623':'#F16A5F';
+const col=s=>s>=75?'#ff4d00':s>=50?'#F5A623':'#F16A5F';
+const bcol=v=>v>=70?'#ff4d00':v>=50?'#f2b53c':'#ff4d3d';
+const dlt=(now,was)=>{if(was==null)return'';const d=now-was,c=d>0?'up':d<0?'dn':'z',s=(d>0?'+':'')+d;return ` <span class="d ${c}">${s}</span>`};
 const dot=s=>`<span class="dot ${s}">●</span>`;
 const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const rel=u=>esc(u.replace(D.origin,'')||'/');
@@ -650,7 +810,7 @@ let cur='Overview',sortk='score',sortd=1,pageFilter='';
 function tabsbar(){document.getElementById('tabs').innerHTML=TABS.map(t=>t=='|'?`<div class="tab sep">|</div>`:`<div class="tab ${t==cur?'on':''}" onclick="go('${t}')">${t}</div>`).join('')}
 function go(t){cur=t;pageFilter='';tabsbar();render()}
 function render(){const w=document.getElementById('view');
- if(cur=='Overview')return w.innerHTML=ovw();
+ if(cur=='Overview')return w.innerHTML=ovw2();
  if(cur=='Action Plan')return w.innerHTML=plan();
  if(cur=='Issues')return w.innerHTML=issuesView();
  if(cur=='Pages')return w.innerHTML=pagesView(null);
@@ -663,6 +823,47 @@ function diffCard(){if(!D.diff)return '';const x=D.diff;const s=(x.overall_d>0?'
  if(x.declined.length)mv+=' Declined: '+x.declined.slice(0,3).map(m=>rel(m.url)+' '+m.was+'→'+m.now).join(', ')+'.';
  return `<div class="diffline"><b>Since ${esc(x.since)}:</b> overall ${x.overall_was} → ${D.overall} (${s}).${mv}</div>`}
 
+function ovw2(){
+ const df=D.diff||{}, pw=df.pillars_was||{}, ew=df.engines_was||{}, THR=70;
+ const g=(D.totals.good)||0, w=(D.totals.warn)||0, b=(D.totals.bad)||0, tc=g+w+b, pass=tc?Math.round(100*g/tc):0;
+ const od=df.overall_d;
+ const odtxt = (od==null)?'' : `<span class="hdelta">${od>0?'▲':od<0?'▼':'▬'} ${Math.abs(od)} pt${Math.abs(od)==1?'':'s'} vs ${esc(df.since||'last crawl')}</span>`;
+ const Q={Known:'Do the engines know you exist?',Findable:'Can they find your answer?',Trusted:'Do they trust you enough to name you?'};
+ const prow=(label,desc,val,was)=>`<div class="trow"><div><div class="q">${label}</div><div class="qd">${desc}</div></div><div class="tbar"><i style="width:${Math.max(2,val)}%;background:${bcol(val)}"></i><span class="thr" style="left:${THR}%"></span></div><div class="tval">${val}${dlt(val,was)}</div></div>`;
+ const engs=ECOLS.slice().sort((a,c)=>D.engines[a]-D.engines[c]);
+ const erow=e=>{const val=D.engines[e],pts=THR-val;return `<div class="trow"><div><div class="q">${e}</div><div class="qd">${pts>0?pts+' pts to quotable':'clears 70 · quotable'}</div></div><div class="tbar"><i style="width:${Math.max(2,val)}%;background:${bcol(val)}"></i><span class="thr" style="left:${THR}%"></span></div><div class="tval">${val}${dlt(val,ew[e])}</div></div>`};
+ const dcard=(i,x)=>{const eg=Object.entries(i.gain_engines||{}).filter(([e,v])=>v>0).sort((a,c)=>c[1]-a[1]).slice(0,3);
+   return `<div class="dfrow"><div style="display:flex;justify-content:space-between;gap:10px"><div style="font-weight:800;display:flex;align-items:flex-start;flex:1;min-width:0"><span class="dfnum">${x+1}</span><span>${esc(i.label)}</span></div><div class="dfgain">+${i.gain_overall||0}<div class="dfgl">overall</div></div></div><div class="qd" style="margin:6px 0 4px 28px">${esc(i.ev)}</div><div style="margin-left:28px">${eg.map(([e,v])=>`<span class="chip2">${e} +${v}</span>`).join('')}</div><div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 0 28px"><span class="qd">${i.pillar} · ${i.ch} · ${i.effort} effort</span><button class="listbtn" onclick="go('Action Plan')">List ${i.count} page${i.count>1?'s':''}</button></div></div>`};
+ const decl=df.declined||[];
+ const lg=decl.length?`<div class="lg"><div class="dfh"><div class="t">Losing ground</div><span class="qd">since ${esc(df.since||'')}</span></div>${decl.slice(0,4).map(m=>`<div class="lgrow"><span>${rel(m.url)}</span><span><span class="qd">${m.was} → </span><b>${m.now}</b> <span class="d dn">${m.d}</span></span></div>`).join('')}</div>`:'';
+ const types=Object.entries(D.types||{}).sort((a,c)=>c[1]-a[1]),tmax=Math.max.apply(0,types.map(t=>t[1]).concat(1));
+ const typesH=types.map(([k,v])=>`<div class="bl"><div class="lab">${k}</div><div class="bar2"><i style="width:${Math.round(100*v/tmax)}%"></i></div><div class="num">${v}</div></div>`).join('');
+ const P=D.pages.length, parityBad=D.pages.filter(p=>p.cs&&p.cs.parity=='bad').length, reach=((D.site_checks||[]).find(s=>s.id=='reachability')||{}).status||'good';
+ const rr=(name,st,txt)=>`<div class="rch"><span>${name}</span><span class="rst ${st=='good'?'ok':st=='warn'?'wn':'er'}">${txt}</span></div>`;
+ const reachH=rr('GPTBot',reach,reach=='good'?`allowed · ${P}/${P} pages`:reach=='warn'?'partial':'blocked')+rr('PerplexityBot',reach,reach=='good'?`allowed · ${P}/${P} pages`:reach=='warn'?'partial':'blocked')+rr('Google-Extended',reach=='bad'?'bad':'warn',reach=='bad'?'blocked':'partial')+rr('Server-rendered schema',parityBad?'bad':'good',parityBad?`${parityBad} pages JS-injected only`:`all ${P} pages server-rendered`);
+ return `<div class="ov"><div>
+   <div class="panel"><div class="hero">
+     <div class="sring" style="--p:${D.overall};--c:var(--grn)"><i><span class="v">${D.overall}</span><span class="o">OF 100</span></i></div>
+     <div style="flex:1;min-width:190px"><div class="htitle">CITED Score</div><div class="hsub">Weighted across six engines. Pages score as <b>quotable</b> at 70.</div>${odtxt}</div>
+     <div class="hc"><div style="display:flex;justify-content:space-between;align-items:baseline"><div class="hclabel">Check health · ${tc} checks</div><span class="qd">${pass}% passing</span></div>
+       <div class="chbar"><div class="chseg" style="flex:${g||1};background:var(--ok)"></div><div class="chseg" style="flex:${w||0.01};background:var(--warn2)"></div><div class="chseg" style="flex:${b||0.01};background:var(--err2)"></div></div>
+       <div class="chstat"><div><div class="n" style="color:var(--err2)">${b}</div><div class="l">Errors — blocking</div></div><div><div class="n" style="color:var(--warn2)">${w}</div><div class="l">Warnings — weakening</div></div><div><div class="n" style="color:var(--ok)">${g}</div><div class="l">Passed</div></div></div></div>
+   </div></div>
+   <div class="sech">The three questions <span class="s">Ch3 · same scale, so you can see which one is dragging</span></div>
+   <div class="panel">${['Known','Findable','Trusted'].map(p=>prow(p,Q[p],D.pillars[p],pw[p])).join('')}<div class="qd" style="margin-top:10px">| quotable threshold, 70</div></div>
+   <div class="sech">Readiness by engine <span class="s">Ch6-7 · ranked worst first</span></div>
+   <div class="panel">${engs.map(erow).join('')}<div class="qd" style="margin-top:10px">| quotable threshold, 70</div></div>
+   <div class="ov2">
+     <div><div class="sech">Pages by type</div><div class="panel">${typesH}</div></div>
+     <div><div class="sech">Crawler reachability</div><div class="panel">${reachH}</div></div>
+   </div>
+ </div>
+ <div class="ovside">
+   <div class="df"><div class="dfh"><div class="t">Do these first</div><span class="qd">${Math.min(3,D.issues.length)} of ${D.issues.length} fixes</span></div><div class="qd" style="margin-bottom:2px">Ranked by score movement per hour of work.</div>${D.issues.slice(0,3).map((i,x)=>dcard(i,x)).join('')}</div>
+   ${lg}
+   <div class="note">Crawl ran locally. No page data left this machine.</div>
+ </div></div>`;
+}
 function ovw(){const t=D.totals;const err=D.issues.filter(i=>i.severity=='bad').reduce((a,i)=>a+i.count,0);const wr=D.issues.filter(i=>i.severity=='warn').reduce((a,i)=>a+i.count,0);
  const Q={Known:'Do the engines know you exist?',Findable:'Can they find your answer?',Trusted:'Do they trust you enough to name you?'};
  return diffCard()+
@@ -688,58 +889,377 @@ function planRow(i,x){const eg=Object.entries(i.gain_engines).filter(([e,v])=>v>
    <div class="ev">${esc(i.ev)}</div>
    <div class="fix"><b>Fix (${i.count} page${i.count>1?'s':''}):</b> ${esc(i.fix)} <span class="muted">- click to list pages</span></div>
    <div class="urls">${[...i.bad.map(u=>'● '+rel(u)),...i.warn.map(u=>'○ '+rel(u))].join('<br>')}</div></div>`}
-function plan(){let h=`<p class="muted">Ranked by projected CITED Score gain if fixed across every affected page. Projection re-scores the site with each fix applied.</p>`;
- h+=D.issues.map((i,x)=>planRow(i,x)).join('');
- const names={1:'Phase 1 — 0 to 30 days: foundation & quick technical wins',2:'Phase 2 — 30 to 60 days: structure for retrieval',3:'Phase 3 — 60 to 90 days: authority & depth'};
- h+='<h3>90-day roadmap</h3>';
- [1,2,3].forEach(ph=>{const ids=D.plan_phases[ph]||[];if(!ids.length)return;
-  h+=`<div class="phase"><h3>${names[ph]}</h3>`+ids.map(id=>{const i=D.issues.find(y=>y.id==id);return `<div style="padding:4px 0">${bd(i.pillar)} <b>${esc(i.label)}</b> <span class="muted">- ${esc(i.fix)}</span> ${i.gain_overall>0?`<span class="gain">+${i.gain_overall}</span>`:''}</div>`}).join('')+`</div>`});
+// ---- shared helpers for Action Plan + Issues ----
+const PDOT={Known:'#6f9dff',Findable:'#f2b53c',Trusted:'#3ecf8e'};
+const TTYPE={schema:'template',parity:'template',faq:'template',canonical:'template',robots:'template',sitemap:'template',reachability:'template',freshness:'template',internal:'template',http:'template',
+ answerfirst:'copy',qheadings:'copy',sections:'copy',liststables:'copy',wordcount:'copy',statdensity:'copy',h1:'copy',
+ meta:'meta',title:'meta',alt:'meta',citations:'meta'};
+const EBARS=e=>{const n=(e=='High')?3:(e=='Med')?2:1,c=n==1?'#3ecf8e':n==2?'#f2b53c':'#ff4d00',lab=n==1?'low':n==2?'medium':'high';
+ let b='';for(let k=0;k<3;k++)b+=`<span class="eb" style="background:${k<n?c:'#2C231C'}"></span>`;
+ return `<span class="ebs">${b}</span><span style="color:${c}">${lab}</span>`};
+const ACT=()=>D.issues.filter(i=>i.pillar!='Info'&&(i.gain_overall>0||i.severity=='bad'));
+const AFFPAGES=()=>D.pages.filter(p=>p.checks.some(c=>c.status=='bad'||c.status=='warn')).length;
+const gpos=i=>i.gain_overall>0?i.gain_overall:0;
+function tgl(id){const e=document.getElementById(id);if(e)e.style.display=e.style.display=='block'?'none':'block'}
+function bull(u,c){return `<span class="b"><span class="dotb" style="background:${c}"></span><a href="${esc(u)}" target="_blank">${rel(u)}</a></span>`}
+function urlList(id,i){return `<div id="${id}" class="apurls">${[...i.bad.map(u=>bull(u,'#ff4d3d')),...i.warn.map(u=>bull(u,'#f2b53c'))].join('')||'<span class="qd">No affected pages.</span>'}</div>`}
+
+function plan(){
+ const overall=D.overall, act=ACT();
+ if(!act.length)return `<div class="dashnote"><span class="dotb" style="background:var(--ok)"></span>Nothing to fix — every scored check passes across the crawl.</div>`;
+ const tg=act.reduce((a,i)=>a+gpos(i),0), proj=Math.min(100,overall+tg);
+ const affS=new Set();act.forEach(i=>{i.bad.forEach(u=>affS.add(u));i.warn.forEach(u=>affS.add(u))});
+ const edits=act.reduce((a,i)=>a+i.count,0), affp=affS.size;
+ const biggest=act.filter(i=>i.gain_overall>=2);
+ const polish=act.filter(i=>i.gain_overall<2&&i.effort=='Low');
+ const worth=act.filter(i=>biggest.indexOf(i)<0&&polish.indexOf(i)<0);
+ const gsum=a=>a.reduce((s,i)=>s+gpos(i),0);
+ const bG=gsum(biggest),wG=gsum(worth),pG=gsum(polish),TG=(bG+wG+pG)||1;
+ const ordered=[...biggest,...worth,...polish];
+ window._ordered=ordered; window._rk={}; ordered.forEach((i,x)=>window._rk[i.id]=x+1);
+ let h=`<div class="ap2"><div class="apmain">`;
+ h+=`<div class="apsum" style="display:grid;grid-template-columns:auto 1fr;gap:34px;align-items:center">
+   <div style="display:flex;align-items:center;gap:18px">
+     <div><div class="apk">TODAY</div><div class="apbn" style="color:var(--muted)">${overall}</div></div>
+     <div style="font-size:24px;color:#4e4945">&rarr;</div>
+     <div><div class="apk" style="color:var(--grn)">ALL ${act.length} FIXES APPLIED</div>
+       <div style="display:flex;align-items:baseline;gap:8px"><div class="apbn">${proj}<span style="font-size:18px;color:var(--muted);font-weight:800">/100</span></div><div style="font-size:14px;font-weight:700;color:var(--ok)">+${proj-overall} pts</div></div></div>
+   </div>
+   <div style="border-left:1px solid var(--line);padding-left:30px;display:flex;flex-direction:column;gap:11px">
+     <div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)"><span style="font-weight:600;letter-spacing:.08em">WHERE THE ${tg} POINTS COME FROM</span><span>${edits} page edits across ${affp} pages</span></div>
+     <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:#221d1a">
+       <div style="width:${Math.round(100*bG/TG)}%;background:#ff4d00"></div>
+       <div style="width:${Math.round(100*wG/TG)}%;background:#ff8a3d"></div>
+       <div style="width:${Math.round(100*pG/TG)}%;background:#5a4034"></div></div>
+     <div style="display:flex;gap:22px;font-size:12px;color:#9d9691;flex-wrap:wrap">
+       ${[['#ff4d00','Biggest movers',biggest.length,bG],['#ff8a3d','Worth doing',worth.length,wG],['#5a4034','Polish',polish.length,pG]].map(a=>`<span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:2px;background:${a[0]}"></span>${a[1]}, ${a[2]} fixes <b style="color:#fff">+${a[3]}</b></span>`).join('')}</div>
+   </div></div>`;
+ h+=`<div class="apintro">Ranked by projected CITED Score gain if the fix is applied to every affected page. The projection re-scores the site after each fix, so gains do not double-count.</div>`;
+ const tiers=[['#ff4d00','BIGGEST MOVERS',biggest,bG,'do these this month','apbox hot','big'],
+              ['#ff8a3d','WORTH DOING',worth,wG,'structure for retrieval','apbox','mid'],
+              ['#5a4034','POLISH',polish,pG,'low effort','apbox','sm']];
+ tiers.forEach(t=>{const arr=t[2];if(!arr.length)return;
+   h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="background:${t[0]}"></span><h3>${t[1]}</h3><span class="meta">${arr.length} fix${arr.length==1?'':'es'} &middot; +${t[3]} points &middot; ${t[4]}</span></div><div class="${t[5]}">`;
+   arr.forEach(i=>h+=planFix(i,t[6],t[0]));
+   h+=`</div></section>`;});
+ h+=`</div><div class="apside">`+roadmapCard()+effortCard(act,edits)+`<button class="bigbtn" onclick="exportPlan()">Export plan as CSV</button></div></div>`;
  return h}
-function issuesView(){let h='';['Known','Findable','Trusted'].forEach(p=>{const gs=D.issues.filter(i=>i.pillar==p);if(!gs.length)return;
-  h+=`<h3>${bd(p)} ${p==='Known'?'Do they know you?':p==='Findable'?'Can they find your answer?':'Do they trust you?'}</h3>`;
-  h+=gs.map(i=>`<div class="issue" onclick="this.classList.toggle('open')"><h4>${dot(i.severity)} ${esc(i.label)} <span class="badge">${i.ch}</span> <span class="sev ${i.severity}">${i.count} affected</span> ${i.gain_overall>0?`<span class="gain">+${i.gain_overall} if fixed</span>`:''}</h4>
-    <div class="ev"><b>Why:</b> ${esc(i.ev)}</div><div class="fix"><b>Fix:</b> ${esc(i.fix)}</div>
-    <div class="urls">${[...i.bad.map(u=>'● '+rel(u)),...i.warn.map(u=>'○ '+rel(u))].join('<br>')}</div></div>`).join('')});
- return h||'<p class="muted">No issues.</p>'}
+function planFix(i,size,accent){
+ const r=window._rk[i.id];
+ const eg=Object.entries(i.gain_engines||{}).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,3);
+ const gv=i.gain_overall>0?('+'+i.gain_overall):'—';
+ const pdot=`<span class="dotb" style="background:${PDOT[i.pillar]||'#888'}"></span>`;
+ const pages=`<span style="font-size:13px;color:#b7afaa">${i.count} page${i.count>1?'s':''}</span>`;
+ const btn=`<button class="pbtn ${size=='big'?'':'g'}" onclick="tgl('pu_${i.id}')">Pages</button>`;
+ const urls=urlList('pu_'+i.id,i);
+ const cols=`grid-template-columns:30px 1fr 108px 96px 60px 100px`;
+ if(size=='sm'){
+   return `<div class="apissue"><div class="aprow" style="${cols}">
+     <span style="font-size:14px;font-weight:700;color:var(--muted)">${r}</span>
+     <div style="display:flex;align-items:center;gap:12px;min-width:0"><span style="font-size:14px;font-weight:600">${esc(i.label)}</span><span class="qd" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.ev)}</span></div>
+     <span style="font-size:12px;color:#b7afaa">${pdot}${i.pillar}</span>
+     <span style="font-size:12px">${EBARS(i.effort)}</span>${pages}
+     <span style="display:flex;align-items:center;justify-content:flex-end;gap:10px"><span class="apgain" style="font-size:16px;color:${i.gain_overall>0?'#b7afaa':'var(--muted)'}">${gv}</span>${btn}</span>
+   </div>${urls}</div>`}
+ const big=size=='big';
+ return `<div class="apissue"><div class="aprow" style="${cols}">
+   <span style="font-size:${big?'20px':'17px'};font-weight:900;color:${accent}">${r}</span>
+   <div style="display:flex;flex-direction:column;gap:5px;min-width:0">
+     <div style="display:flex;align-items:center;gap:10px"><span style="font-size:${big?'15px':'14px'};font-weight:${big?'700':'600'}">${esc(i.label)}</span><span style="font-size:11px;color:#6f6864">${i.ch}${!big&&eg.length?' &middot; '+eg[0][0]+' +'+eg[0][1]:''}</span></div>
+     <div class="qd" style="line-height:1.5">${esc(i.ev)}</div>
+     ${big&&eg.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:1px">${eg.map(x=>`<span class="apchip">${x[0]} +${x[1]}</span>`).join('')}</div>`:''}
+   </div>
+   <span style="font-size:12px;color:#b7afaa">${pdot}${i.pillar}</span>
+   <span style="font-size:12px">${EBARS(i.effort)}</span>${pages}
+   <span style="display:flex;align-items:center;justify-content:flex-end;gap:10px"><span class="apgain" style="font-size:${big?'26px':'20px'};color:${accent}">${gv}</span>${btn}</span>
+ </div>${urls}</div>`}
+function roadmapCard(){
+ const info={1:['Days 0–30 &middot; foundation','Quick technical wins, mostly template-level'],2:['Days 30–60 &middot; structure','Rewrite for retrieval, page by page'],3:['Days 60–90 &middot; polish','Small edits, then re-crawl and compare']};
+ const acc={1:['#140b06','#ff4d00'],2:['#ff8a3d','#ff4d0029'],3:['#b7afaa','#ffffff14']};
+ let cum=D.overall,out='';
+ [1,2,3].forEach(ph=>{const ids=(D.plan_phases&&D.plan_phases[ph])||[];if(!ids.length)return;
+   const items=ids.map(id=>D.issues.find(y=>y.id==id)).filter(Boolean);
+   const g=items.reduce((a,i)=>a+gpos(i),0);cum=Math.min(100,cum+g);
+   out+=`<div class="rmph"><div style="display:flex;align-items:flex-start;gap:12px">
+     <span class="rmnum" style="color:${acc[ph][0]};background:${acc[ph][1]}">0${ph}</span>
+     <div style="flex:1"><div style="font-size:14px;font-weight:700">${info[ph][0]}</div><div class="qd">${info[ph][1]}</div></div>
+     <div style="text-align:right"><div style="font-size:20px;font-weight:900;font-family:'Figtree',sans-serif;letter-spacing:-.02em">${cum}</div><div style="font-size:11px;color:var(--ok)">+${g}</div></div></div>`;
+   if(ph==3){out+=`<div class="qd" style="line-height:1.5;padding-left:4px;margin-top:8px">${items.slice(0,6).map(i=>esc(i.label.split('(')[0].split(',')[0].trim())).join(', ')} &mdash; ${items.reduce((a,i)=>a+i.count,0)} pages.</div>`}
+   else{out+=`<div style="display:flex;flex-direction:column;gap:7px;font-size:12px;color:#b7afaa;padding-left:4px;margin-top:10px">${items.slice(0,6).map(i=>`<div style="display:flex;align-items:center;gap:9px"><span class="dotb" style="background:${PDOT[i.pillar]}"></span>${esc(i.label.split('(')[0].trim())}</div>`).join('')}</div>`}
+   out+=`</div>`});
+ return `<div class="rmc"><div class="rmch"><h3>90-Day Roadmap</h3><div class="qd" style="margin-top:4px">Sequenced so each phase makes the next one cheaper.</div></div>${out}</div>`}
+function effortCard(act,edits){
+ const bk={template:['Template-level fixes',0,0],copy:['Per-page copy work',0,0],meta:['One-off metadata edits',0,0]};
+ act.forEach(i=>{const t=TTYPE[i.id]||'copy';bk[t][1]++;bk[t][2]+=gpos(i)});
+ const tplN=bk.template[1], tplEdits=act.filter(i=>TTYPE[i.id]=='template').reduce((a,i)=>a+i.count,0);
+ const rows=Object.keys(bk).filter(k=>bk[k][1]).map(k=>`<div class="rowsb"><span style="color:#b7afaa">${bk[k][0]}</span><span style="color:#fff;font-weight:600">${bk[k][1]} fix${bk[k][1]==1?'':'es'} &middot; +${bk[k][2]}</span></div>`).join('');
+ const note=tplN?`Start with the ${tplN} template fixes: they touch ${tplEdits} of ${edits} page edits in one change.`:'';
+ return `<div class="card2"><h3>Effort at a glance</h3>${rows}${note?`<div class="qd" style="line-height:1.5;border-top:1px solid var(--line);padding-top:11px;margin-top:6px">${note}</div>`:''}</div>`}
+function exportPlan(){const rows=[['rank','fix','pillar','chapter','effort','pages','gain_overall',...ECOLS.map(e=>'gain_'+e.split(' ')[0])]];
+ (window._ordered||D.issues).forEach((i,x)=>rows.push([x+1,i.label,i.pillar,i.ch,i.effort,i.count,i.gain_overall,...ECOLS.map(e=>(i.gain_engines||{})[e]||0)]));
+ dl(`cited-score-${D.domain}-action-plan.csv`,rows)}
+
+function ifilt(v){window._ifilter=v;render()}
+function issuesView(){
+ const iss=D.issues.filter(i=>i.pillar!='Info');
+ if(!iss.length)return `<div class="dashnote"><span class="dotb" style="background:var(--ok)"></span>No issues — every scored check passes across the crawl.</div>`;
+ const errs=iss.filter(i=>i.severity=='bad'), warns=iss.filter(i=>i.severity=='warn');
+ const tg=iss.reduce((a,i)=>a+gpos(i),0);
+ const totalChecks=Object.keys(D.check_meta).filter(id=>D.check_meta[id].pillar!='Info').length;
+ const passed=Math.max(0,totalChecks-iss.length);
+ const f=window._ifilter||'all';
+ const show=i=>f=='all'||(f=='error'&&i.severity=='bad')||(f=='warn'&&i.severity=='warn');
+ const P=D.pages_crawled;
+ const weakest=['Known','Findable','Trusted'].reduce((a,b)=>D.pillars[b]<D.pillars[a]?b:a);
+ let h=`<div class="ap2"><div class="apmain">`;
+ const proj=Math.min(100,D.overall+tg);
+ const istat=(label,num,sub)=>`<div class="istat"><div class="apk">${label}</div><div class="inumwrap">${num}</div><div class="isub">${sub}</div></div>`;
+ h+=`<div class="issum">
+   ${istat('CHECKS FAILING',`<span class="inum">${iss.length}</span>`,`of ${totalChecks} checks`)}
+   <div class="vr"></div>
+   ${istat('ERRORS',`<span class="dotb" style="margin:0;background:var(--err2)"></span><span class="inum" style="color:var(--err2)">${errs.length}</span>`,'blocking citation')}
+   ${istat('WARNINGS',`<span class="dotb" style="margin:0;background:var(--warn2)"></span><span class="inum" style="color:var(--warn2)">${warns.length}</span>`,'weakening it')}
+   <div class="vr"></div>
+   ${istat('IF ALL FIXED',`<span class="inum" style="color:var(--ok)">+${proj-D.overall}</span>`,`&rarr; ${proj}/100`)}
+   <div style="flex:1"></div>
+   <div style="display:flex;gap:8px">
+     <button class="fpill ${f=='all'?'on':''}" onclick="ifilt('all')">All ${iss.length}</button>
+     <button class="fpill ${f=='error'?'on':''}" onclick="ifilt('error')">Errors ${errs.length}</button>
+     <button class="fpill ${f=='warn'?'on':''}" onclick="ifilt('warn')">Warnings ${warns.length}</button>
+   </div></div>`;
+ const QL={Known:'KNOWN &mdash; DO THEY KNOW YOU?',Findable:'FINDABLE &mdash; CAN THEY FIND YOUR ANSWER?',Trusted:'TRUSTED &mdash; DO THEY TRUST YOU?'};
+ ['Known','Findable','Trusted'].forEach(p=>{
+   const gs=iss.filter(i=>i.pillar==p&&show(i));if(!gs.length)return;
+   const avail=iss.filter(i=>i.pillar==p).reduce((a,i)=>a+gpos(i),0);
+   const failing=iss.filter(i=>i.pillar==p).length;
+   const bc=p=='Findable'?'#f2b53c33':'#ffffff14';
+   h+=`<section class="aptier"><div class="aptierh"><span class="dotb" style="width:9px;height:9px;margin:0;background:${PDOT[p]}"></span><h3>${QL[p]}</h3><span class="meta">score ${D.pillars[p]} &middot; ${failing} check${failing>1?'s':''} failing &middot; +${avail} available${p==weakest?' &middot; weakest pillar':''}</span></div><div class="apbox" style="border-color:${bc}">`;
+   gs.forEach(i=>h+=issueRow(i,P));
+   h+=`</div></section>`});
+ h+=`</div><div class="apside">`+worstPagesCard()+oneChangeCard(errs,iss)+`<div class="dashnote"><span class="dotb" style="background:var(--ok)"></span>${passed} checks passed on every page &mdash; not listed here.</div></div></div>`;
+ return h}
+function issueRow(i,P){
+ const bad=i.severity=='bad', dc=bad?'#ff4d3d':'#f2b53c';
+ const w=Math.min(100,Math.round(100*i.count/(P||1)));
+ const gv=i.gain_overall>0?('+'+i.gain_overall):'—', gc=i.gain_overall>0?'var(--ok)':'var(--muted)';
+ const btn=`<button class="pbtn g" style="color:#fff" onclick="tgl('iu_${i.id}')">List pages</button>`;
+ let body;
+ if(bad){body=`<div style="display:flex;flex-direction:column;gap:5px;min-width:0">
+   <div style="display:flex;align-items:center;gap:10px"><span class="dotb" style="background:${dc}"></span><span style="font-size:15px;font-weight:700">${esc(i.label)}</span><span style="font-size:11px;color:#6f6864">${i.ch}</span></div>
+   <div class="qd" style="line-height:1.5;padding-left:17px">${esc(i.ev)}</div>
+   <div style="font-size:12px;color:#c9c2bd;line-height:1.5;padding-left:17px"><span style="color:#fff;font-weight:600">Fix</span> ${esc(i.fix)}</div></div>`}
+ else{body=`<div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+   <div style="display:flex;align-items:center;gap:10px"><span class="dotb" style="background:${dc}"></span><span style="font-size:14px;font-weight:600">${esc(i.label)}</span><span style="font-size:11px;color:#6f6864">${i.ch}</span></div>
+   <div class="qd" style="line-height:1.5;padding-left:17px"><span style="font-weight:600">Fix</span> ${esc(i.fix||i.ev)}</div></div>`}
+ return `<div class="apissue"><div class="aprow" style="grid-template-columns:1fr 210px 66px 96px;gap:20px">
+   ${body}
+   <div style="display:flex;flex-direction:column;gap:6px"><div style="height:8px;border-radius:4px;background:#221d1a;overflow:hidden"><div style="width:${w}%;height:100%;background:${dc}"></div></div><div style="font-size:11px;color:#9d9691">${i.count} of ${P} pages affected</div></div>
+   <span style="font-size:13px;font-weight:700;color:${gc};text-align:right">${gv}</span>${btn}
+ </div>${urlList('iu_'+i.id,i)}</div>`}
+function worstPagesCard(){
+ const rows=D.pages.map(p=>({p,f:p.checks.filter(c=>c.status=='bad'||c.status=='warn').length,e:p.checks.filter(c=>c.status=='bad').length})).filter(x=>x.f>0).sort((a,b)=>b.f-a.f||a.p.score-b.p.score).slice(0,5);
+ if(!rows.length)return '';
+ const out=rows.map(x=>`<div class="wpage" onclick="go('Pages')"><span class="s" style="color:${bcol(x.p.score)}">${x.p.score}</span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rel(x.p.url)}</span><span class="qd">${x.f} checks failing &middot; ${x.e} error${x.e==1?'':'s'}</span></span></div>`).join('');
+ return `<div class="rmc"><div class="rmch" style="display:flex;justify-content:space-between;align-items:baseline"><h3>Worst Pages</h3><span class="qd">by failing checks</span></div>${out}</div>`}
+function oneChangeCard(errs,iss){
+ const tplErr=errs.filter(i=>TTYPE[i.id]=='template');
+ const totInst=iss.reduce((a,i)=>a+i.count,0);
+ const tplInst=iss.filter(i=>TTYPE[i.id]=='template').reduce((a,i)=>a+i.count,0);
+ const top=iss.filter(i=>TTYPE[i.id]=='template').sort((a,b)=>b.count-a.count).slice(0,3);
+ const lead=tplErr.length?`${tplErr.length} of the ${errs.length} error${errs.length==1?'':'s'} ${tplErr.length==1?'is':'are'} template-level. Fixing the page template clears ${tplInst} of the ${totInst} affected page instances without touching copy.`:`Most fixes here are per-page copy work &mdash; work through the action plan in priority order.`;
+ const rows=top.map(i=>`<div class="rowsb"><span style="color:#b7afaa">${esc(i.label.split('(')[0].trim())}</span><span style="color:#fff;font-weight:600">${i.count} page${i.count>1?'s':''}</span></div>`).join('');
+ return `<div class="card2"><h3>One Change, Most Pages</h3><div class="qd" style="line-height:1.6">${lead}</div>${rows}<button class="bigbtn" style="border-radius:6px;margin-top:2px" onclick="go('Action Plan')">Open the action plan</button></div>`}
 function sc(k){if(sortk==k)sortd*=-1;else{sortk=k;sortd=1}render()}
-function pageFilterFn(v){pageFilter=v.toLowerCase();document.getElementById('ptbody').innerHTML=ptRows(window._peng)}
-function ptRows(eng){let ps=[...D.pages];if(pageFilter)ps=ps.filter(p=>p.url.toLowerCase().includes(pageFilter));
- ps.sort((a,b)=>{let x=eng?a.engines[eng]:a[sortk],y=eng?b.engines[eng]:b[sortk];if(typeof x=='string')return(x>y?1:-1)*sortd;return(x-y)*sortd});
- return ps.map(p=>`<tr><td>${scb(p.score)}</td><td><a href="${esc(p.url)}" target="_blank">${rel(p.url)}</a></td><td><span class="badge">${p.type}</span></td>
-   <td>${p.pillars.Known}</td><td>${p.pillars.Findable}</td><td>${p.pillars.Trusted}</td>
-   ${ECOLS.map(e=>`<td style="color:${col(p.engines[e])}">${p.engines[e]}</td>`).join('')}
-   <td class="muted">${p.fetch_ms+p.render_ms}</td>
-   <td class="muted">${p.checks.filter(c=>c.status=='bad').map(c=>c.label).join(', ')||'-'}</td></tr>`).join('')}
-function pagesView(eng){window._peng=eng;
- return `<div style="display:flex;gap:10px;align-items:center"><input class="search" placeholder="Filter by URL..." oninput="pageFilterFn(this.value)"><button onclick="exportPages()">Export CSV</button></div>
- <table><thead><tr><th onclick="sc('score')">Score</th><th onclick="sc('url')">URL</th><th onclick="sc('type')">Type</th>
-  <th title="Do they know you?">Kn</th><th title="Can they find your answer?">Fi</th><th title="Do they trust you?">Tr</th>
-  ${ECOLS.map(e=>`<th title="${esc(D.engine_note[e])}">${e.split(' ')[0]}</th>`).join('')}
-  <th onclick="sc('fetch_ms')">ms</th><th>Errors</th></tr></thead><tbody id="ptbody">${ptRows(eng)}</tbody></table>`}
-function engine(e){const ws=D.engine_weights[e];const ok=D.pages.filter(p=>p.status==200);const siteIds=new Set(D.site_checks.map(c=>c.id));
- const meta=Object.keys(ws).map(id=>{const rel2=ok.filter(p=>{const s=p.cs[id];return s&&s!='na'&&s!='info'});const good=rel2.filter(p=>p.cs[id]=='good');const pr=rel2.length?Math.round(100*good.length/rel2.length):0;const lab=(D.check_meta[id]||{}).label||id;return {id,lab,w:ws[id],pr}}).sort((a,b)=>b.w-a.w);
- const worst=[...ok].sort((a,b)=>a.engines[e]-b.engines[e]).slice(0,15);
- return `<div class="grid"><div class="card">${ring(D.engines[e])}<div class="l" style="margin-top:8px">${e} readiness</div></div>
-   <div class="card" style="grid-column:span 3"><div class="l">${esc(D.engine_note[e])}</div></div></div>
-  <h3>What ${e} weights most</h3><table><thead><tr><th>Signal</th><th>Weight</th><th>Site pass rate</th></tr></thead><tbody>
-  ${meta.map(m=>{let det;if(siteIds.has(m.id)){const s=D.site_checks.find(c=>c.id==m.id)||{};det=`Site-wide check: <b>${s.status||''}</b> - ${esc(s.detail||'')}`;}else{const f=ok.filter(p=>p.cs[m.id]=='bad'||p.cs[m.id]=='warn');det=f.length?f.map(p=>(p.cs[m.id]=='bad'?'● ':'○ ')+`<a href="${esc(p.url)}" target="_blank">${rel(p.url)}</a>`).join('<br>'):'<span class="muted">No pages fail this check.</span>';}
-   return `<tr onclick="var r=this.nextElementSibling;r.style.display=r.style.display=='table-row'?'none':'table-row'" style="cursor:pointer"><td>&#9656; ${esc(m.lab)}</td><td>${'★'.repeat(m.w)}</td><td><div class="bar"><i style="width:${m.pr}%;background:${col(m.pr)}"></i></div><span class="muted">${m.pr}%</span></td></tr><tr style="display:none"><td colspan="3"><div style="max-height:220px;overflow:auto;font-size:12px;padding:6px 0">${det}</div></td></tr>`}).join('')}
-  </tbody></table>
-  <h3>Worst pages for ${e}</h3><table><thead><tr><th>${e}</th><th>URL</th><th>Overall</th></tr></thead><tbody>
-  ${worst.map(p=>`<tr><td>${scb(p.engines[e])}</td><td><a href="${esc(p.url)}" target="_blank">${rel(p.url)}</a></td><td class="muted">${p.score}</td></tr>`).join('')}</tbody></table>`}
-function structure(){const byDir={},byDepth={};D.pages.forEach(p=>{const seg=p.path.split('/').filter(Boolean)[0]||'(root)';(byDir[seg]=byDir[seg]||[]).push(p);(byDepth[p.depth]=byDepth[p.depth]||[]).push(p)});
- const row=(k,ps)=>`<tr><td>${esc(k)}</td><td>${ps.length}</td><td>${scb(Math.round(ps.reduce((a,p)=>a+p.score,0)/ps.length))}</td></tr>`;
- return `<h3>By top-level section</h3><table><thead><tr><th>Section</th><th>Pages</th><th>Avg score</th></tr></thead><tbody>${Object.entries(byDir).sort((a,b)=>b[1].length-a[1].length).map(([k,v])=>row('/'+k,v)).join('')}</tbody></table>
-  <h3>By crawl depth</h3><table><thead><tr><th>Depth</th><th>Pages</th><th>Avg score</th></tr></thead><tbody>${Object.keys(byDepth).sort().map(k=>row('depth '+k,byDepth[k])).join('')}</tbody></table>`}
-function speed(){const sc2=ms=>ms<=800?'#42D949':ms<=1800?'#F5A623':'#F16A5F';const sl=ms=>ms<=800?'Fast':ms<=1800?'OK':'Slow';const ps=[...D.pages].sort((a,b)=>b.fetch_ms-a.fetch_ms);const avgf=Math.round(ps.reduce((a,p)=>a+p.fetch_ms,0)/ps.length);const avgr=Math.round(ps.reduce((a,p)=>a+p.render_ms,0)/ps.length);const fast=ps.filter(p=>p.fetch_ms<=800).length,okc=ps.filter(p=>p.fetch_ms>800&&p.fetch_ms<=1800).length,slow=ps.filter(p=>p.fetch_ms>1800).length;
- return `<div class="grid"><div class="card"><div class="n" style="color:${sc2(avgf)}">${avgf}<span class="l">ms</span></div><div class="l">Avg server response - <b style="color:${sc2(avgf)}">${sl(avgf)}</b></div></div>
-  <div class="card"><div class="n" style="color:var(--grn)">${fast}</div><div class="l">Fast &le;0.8s</div></div>
-  <div class="card"><div class="n" style="color:var(--amber)">${okc}</div><div class="l">OK &le;1.8s</div></div>
-  <div class="card"><div class="n" style="color:var(--red)">${slow}</div><div class="l">Slow &gt;1.8s</div></div>
-  <div class="card"><div class="n">${avgr}<span class="l">ms</span></div><div class="l">Avg render (tool overhead)</div></div></div>
-  <p class="muted">Server response graded on Google's TTFB thresholds: Fast &le; 0.8s, OK &le; 1.8s, Slow &gt; 1.8s. Render time is the tool's headless-Chrome overhead, not your site's speed.</p>
-  <h3>Slowest pages (by server response)</h3><table><thead><tr><th>Server response</th><th>URL</th><th>Render ms</th></tr></thead><tbody>
-  ${ps.slice(0,40).map(p=>`<tr><td><span class="sc" style="background:${sc2(p.fetch_ms)}">${p.fetch_ms} ms</span> <span class="muted">${sl(p.fetch_ms)}</span></td><td><a href="${esc(p.url)}" target="_blank">${rel(p.url)}</a></td><td class="muted">${p.render_ms}</td></tr>`).join('')}</tbody></table>`}
+const PBAND=v=>v<50?['rgba(255,77,61,.22)','#ff9c88']:v<70?['rgba(242,181,60,.18)','#f2c574']:v<85?['rgba(62,207,142,.14)','#8fe0b8']:['rgba(62,207,142,.28)','#b6f0d4'];
+const EABBR={'ChatGPT':'GPT','Perplexity':'PPLX','AI Overviews':'AIO','Gemini':'GEM','Copilot':'CPLT','Claude':'CLDE'};
+function pgVal(p,k){if(k=='url')return p.path||p.url;if(k=='Known'||k=='Findable'||k=='Trusted')return p.pillars[k];if(ECOLS.indexOf(k)>=0)return p.engines[k];if(k=='fetch_ms')return p.fetch_ms;return p.score}
+function pgFiltered(){const q=(window._pq||'').toLowerCase(),ty=window._ptype||'all',bel=window._pbelow;
+ let ps=D.pages.filter(p=>(ty=='all'||p.type==ty)&&(!bel||p.score<70)&&(!q||p.url.toLowerCase().includes(q)));
+ const k=sortk||'score';ps.sort((a,b)=>{let x=pgVal(a,k),y=pgVal(b,k);if(typeof x=='string')return(x>y?1:x<y?-1:0)*sortd;return(x-y)*sortd});
+ return ps}
+function pageRow(p){
+ const[sbg,sfg]=PBAND(p.score);
+ const fails=p.checks.filter(c=>c.status=='bad'||c.status=='warn');
+ const nb=p.checks.filter(c=>c.status=='bad').length;
+ const cc=nb?['#ff4d3d','rgba(255,77,61,.14)']:fails.length?['#f2b53c','rgba(242,181,60,.14)']:['#3ecf8e','rgba(62,207,142,.14)'];
+ const labels=[...fails.filter(c=>c.status=='bad'),...fails.filter(c=>c.status=='warn')].map(c=>esc(c.label)).join(', ');
+ const pill=v=>`<span style="font-size:12px;text-align:center;color:${v?'#b7afaa':'#ff8f6b'}">${v}</span>`;
+ const ecell=v=>{const[b,f]=PBAND(v);return `<span class="ecell" style="background:${b};color:${f}">${v}</span>`};
+ return `<div class="pgcols pgrow">
+  <span class="schip" style="background:${sbg};color:${p.score<70?'#ffb3a1':sfg}">${p.score}</span>
+  <span style="display:flex;align-items:center;gap:9px;min-width:0"><a href="${esc(p.url)}" target="_blank">${rel(p.url)}</a><span class="tybadge">${esc(p.type)}</span></span>
+  ${pill(p.pillars.Known)}${pill(p.pillars.Findable)}${pill(p.pillars.Trusted)}
+  ${ECOLS.map(e=>ecell(p.engines[e])).join('')}
+  <span style="font-size:11px;text-align:right;color:#8b8480">${(p.fetch_ms/1000).toFixed(1)}s</span>
+  <span style="display:flex;align-items:center;gap:8px;min-width:0"><span style="font-size:11px;font-weight:700;color:${cc[0]};background:${cc[1]};padding:2px 7px;border-radius:4px;flex:none">${fails.length}</span><span style="font-size:11px;color:${fails.length?'#8b8480':'#6f6864'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${labels||'all checks pass'}</span></span>
+ </div>`}
+function pgPillsHTML(){const ty=window._ptype||'all',bel=window._pbelow;
+ const order=['page','article','listing','product','home'];const types=Object.keys(D.types).sort((a,b)=>{let i=order.indexOf(a),j=order.indexOf(b);return(i<0?9:i)-(j<0?9:j)});
+ let h=`<button class="pgpill ${ty=='all'?'on':''}" onclick="window._ptype='all';pgRefresh()">All ${D.pages.length}</button>`;
+ h+=types.map(t=>`<button class="pgpill ${ty==t?'on':''}" onclick="window._ptype='${t}';pgRefresh()">${esc(t)} ${D.types[t]}</button>`).join('');
+ h+=`<button class="pgpill bel ${bel?'on':''}" onclick="window._pbelow=!window._pbelow;pgRefresh()">Below 70 only</button>`;
+ return h}
+function pgRefresh(){const ps=pgFiltered();
+ const rb=document.getElementById('pgrows');if(rb)rb.innerHTML=ps.map(pageRow).join('')||'<div class="pgrow" style="color:var(--muted);grid-template-columns:1fr">No pages match.</div>';
+ const c=document.getElementById('pgcount');if(c)c.textContent=ps.length+(ps.length==1?' page':' pages');
+ const pl=document.getElementById('pgpills');if(pl)pl.innerHTML=pgPillsHTML()}
+function pgsort(k){if(sortk==k)sortd*=-1;else{sortk=k;sortd=(k=='url')?1:1}pgRefresh();
+ const hd=document.getElementById('pghead');if(hd)hd.querySelectorAll('span[data-s]').forEach(s=>{s.innerHTML=s.dataset.lab+(s.dataset.s==k?(sortd>0?' ↑':' ↓'):'')})}
+function pagesView(){
+ const scores=D.pages.map(p=>p.score).sort((a,b)=>a-b),n=scores.length;
+ const median=n?(n%2?scores[(n-1)/2]:Math.round((scores[n/2-1]+scores[n/2])/2)):0;
+ const dist=[0,0,0,0];D.pages.forEach(p=>{const s=p.score;dist[s<70?0:s<80?1:s<90?2:3]++});
+ const clear=D.pages.filter(p=>p.score>=70).length,maxd=Math.max(...dist,1);
+ const dcol=['#ff4d3d','#f2b53c','#3ecf8e','#2f9c6c'],dnum=['#ff8f6b','#f2c574','#7fdcae','#7fdcae'],dlab=['under 70','70–79','80–89','90+'];
+ const wt={};ECOLS.forEach(e=>wt[e]=0);D.pages.forEach(p=>{let mn=1e9,me=null;ECOLS.forEach(e=>{if(p.engines[e]<mn){mn=p.engines[e];me=e}});if(me)wt[me]++});
+ const ws=Object.entries(wt).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,4),wmax=Math.max(...ws.map(x=>x[1]),1),wc=['#ff5b2e','#ff8a3d','#f2b53c','#c98f2e'];
+ if(!sortk)sortk='score';
+ let h=`<div style="display:flex;flex-direction:column;gap:18px">`;
+ // summary
+ h+=`<div class="pgsum">
+   <div><div class="apk">MEDIAN PAGE</div><div style="display:flex;align-items:baseline;gap:9px"><span style="font-size:40px;font-weight:900;line-height:1;font-family:'Figtree',sans-serif;letter-spacing:-.02em">${median}</span><span class="qd">quotable at 70</span></div></div>
+   <div class="vr"></div>
+   <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:9px">
+     <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="apk">SCORE DISTRIBUTION</span><span class="qd">${clear} of ${D.pages.length} pages clear 70</span></div>
+     <div class="pgdist">${dist.map((d,i)=>`<div class="col"><span style="font-size:11px;color:${dnum[i]};text-align:center">${d}</span><div class="trk"><i style="height:${Math.round(100*d/maxd)}%;background:${dcol[i]}"></i></div><span style="font-size:10px;color:#6f6864;text-align:center">${dlab[i]}</span></div>`).join('')}</div>
+   </div>
+   <div class="vr"></div>
+   <div style="width:260px;display:flex;flex-direction:column;gap:9px">
+     <div class="apk">WEAKEST ENGINE PER PAGE</div>
+     <div style="display:flex;flex-direction:column;gap:7px;font-size:12px;color:#b7afaa">${ws.map((x,i)=>`<div style="display:flex;align-items:center;gap:9px"><span style="width:92px">${x[0]}</span><span style="flex:1;height:7px;border-radius:4px;background:#221d1a;overflow:hidden"><span style="display:block;width:${Math.round(100*x[1]/wmax)}%;height:100%;background:${wc[i]}"></span></span><span style="color:#fff;font-weight:600">${x[1]}</span></div>`).join('')}</div>
+   </div></div>`;
+ // filter bar
+ h+=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+   <span class="pgsearch"><span style="color:#6f6864">&#9906;</span><input placeholder="Filter by URL" oninput="window._pq=this.value;pgRefresh()" value="${esc(window._pq||'')}"></span>
+   <div id="pgpills" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${pgPillsHTML()}</div>
+   <div style="flex:1"></div><span id="pgcount" class="qd">${D.pages.length} pages</span></div>`;
+ // table
+ const HCELL=(k,lab,al)=>`<span data-s="${k}" data-lab="${lab}" onclick="pgsort('${k}')" style="text-align:${al||'left'}">${lab}${sortk==k?(sortd>0?' ↑':' ↓'):''}</span>`;
+ h+=`<div class="pgscroll"><div class="pgtbl">
+   <div id="pghead" class="pgcols pghead">${HCELL('score','SCORE')}${HCELL('url','URL')}
+     <span title="Known" style="text-align:center;color:#6f9dff">KN</span><span title="Findable" style="text-align:center;color:#f2b53c">FI</span><span title="Trusted" style="text-align:center;color:#3ecf8e">TR</span>
+     ${ECOLS.map(e=>HCELL(e,EABBR[e],'center')).join('')}
+     ${HCELL('fetch_ms','LOAD','right')}<span>FAILING CHECKS</span></div>
+   <div id="pgrows">${pgFiltered().map(pageRow).join('')}</div>
+   <div class="pgleg">
+     <span style="display:flex;align-items:center;gap:7px"><span style="width:11px;height:11px;border-radius:3px;background:rgba(255,77,61,.22)"></span>under 50</span>
+     <span style="display:flex;align-items:center;gap:7px"><span style="width:11px;height:11px;border-radius:3px;background:rgba(242,181,60,.18)"></span>50–69</span>
+     <span style="display:flex;align-items:center;gap:7px"><span style="width:11px;height:11px;border-radius:3px;background:rgba(62,207,142,.14)"></span>70–84</span>
+     <span style="display:flex;align-items:center;gap:7px"><span style="width:11px;height:11px;border-radius:3px;background:rgba(62,207,142,.28)"></span>85+</span>
+     <span style="flex:1"></span><span>Kn / Fi / Tr are the three pillars. Click a column header to sort.</span></div>
+ </div></div>`;
+ h+=`</div>`;
+ return h}
+const SITEIDS=new Set(['robots','llms','sitemap','reachability']);
+const SHORT={parity:'Schema in JS',answerfirst:'no opener',sections:'walls of text',schema:'Article schema',wordcount:'thin content',freshness:'stale',qheadings:'H2s',faq:'no FAQ',liststables:'no tables',meta:'meta desc',title:'title',alt:'alt text',citations:'few sources',internal:'few links',statdensity:'few stats',canonical:'canonical',h1:'H1',robots:'bot blocked',sitemap:'no sitemap',reachability:'blocked'};
+const EBOTS={'ChatGPT':['GPTBot','OAI-SearchBot'],'Perplexity':['PerplexityBot'],'AI Overviews':['Googlebot','Google-Extended'],'Gemini':['Google-Extended'],'Copilot':['Bingbot'],'Claude':['ClaudeBot','anthropic-ai']};
+const EOWNER={'ChatGPT':'OpenAI','Perplexity':'Perplexity','AI Overviews':'Google','Gemini':'Google','Copilot':'Microsoft','Claude':'Anthropic'};
+const ORD=['','strongest','second-strongest','third-strongest','fourth-strongest','fifth-strongest','sixth-strongest'];
+function engine(e){
+ const ws=D.engine_weights[e], ok=D.pages.filter(p=>p.status==200), P=ok.length, TH=70;
+ const IM={};D.issues.forEach(i=>IM[i.id]=i);
+ const sig=Object.keys(ws).map(id=>{let good,total,pr;
+   if(SITEIDS.has(id)){const s=D.site_checks.find(c=>c.id==id)||{},g=s.status=='good';pr=g?100:s.status=='warn'?50:0;good=g?P:0;total=P}
+   else{const r=ok.filter(p=>{const s=p.cs[id];return s&&s!='na'&&s!='info'});good=r.filter(p=>p.cs[id]=='good').length;total=r.length;pr=total?Math.round(100*good/total):100}
+   return {id,lab:(D.check_meta[id]||{}).label||id,ev:(D.check_meta[id]||{}).ev||'',w:ws[id],pr,good,total,lift:IM[id]?(IM[id].gain_engines[e]||0):0}});
+ const strong=sig.filter(s=>s.pr>=90).sort((a,b)=>b.w-a.w);
+ const high=sig.filter(s=>s.pr<90&&s.w>=2).sort((a,b)=>b.lift-a.lift||b.w-a.w);
+ const low=sig.filter(s=>s.pr<90&&s.w<2).sort((a,b)=>b.lift-a.lift);
+ const score=D.engines[e], belowFull=sig.filter(s=>s.pr<100).length;
+ const totLift=high.concat(low).reduce((a,s)=>a+(s.lift>0?s.lift:0),0);
+ const pagesBelow=ok.filter(p=>p.engines[e]<TH).length, gap=TH-score;
+ const rank=1+new Set(Object.values(D.engines).filter(v=>v>score)).size;
+ const best=Object.entries(D.engines).sort((a,b)=>b[1]-a[1])[0];
+ const topFix=high[0]||low[0];
+ const hint=gap>0?(topFix?(TTYPE[topFix.id]=='template'?'One template fix clears most of the gap.':`The top fix adds +${topFix.lift}.`):''):'Already past the quotable threshold.';
+ const WD=(w,c)=>`<span class="wdots" style="color:${c}">${'●'.repeat(w)}<span style="color:#3a3227">${'●'.repeat(Math.max(0,3-w))}</span></span>`;
+ const barC=pr=>pr>=90?'#3ecf8e':pr>=40?'#f2b53c':'#ff4d3d';
+ const esig=(s,hi)=>{const dc=s.w>=3?'#FF4D00':s.w==2?'#ff8a3d':'#8b8480';const lc=hi?(s.lift>=5?'#FF4D00':'#ff8a3d'):'#b7afaa';
+   const bar=`<div style="display:flex;flex-direction:column;gap:5px"><div class="engbar"><i style="width:${Math.max(s.pr,2)}%;background:${barC(s.pr)}"></i></div><span style="font-size:11px;color:${s.pr==0?'#ff9c88':'#9d9691'}">${s.pr}% pass · ${s.good} of ${s.total} pages</span></div>`;
+   const lift=`<span style="font-size:${hi?'20px':'16px'};font-weight:${hi?'800':'700'};color:${lc};text-align:right">${s.lift>0?'+'+s.lift:'—'}</span>`;
+   if(!hi)return `<div class="engcols engrow"><div style="display:flex;align-items:center;gap:12px;min-width:0"><span style="font-size:14px;font-weight:600">${esc(s.lab)}</span><span class="qd" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.ev)}</span></div>${WD(s.w,dc)}${bar}${lift}</div>`;
+   return `<div class="engcols engrow"><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><span style="font-size:15px;font-weight:700">${esc(s.lab)}</span><span class="qd" style="line-height:1.5">${esc(s.ev)}</span></div>${WD(s.w,dc)}${bar}${lift}</div>`};
+ const estrong=s=>`<div class="engcols" style="padding:2px 0"><span style="font-size:13px;color:#c9c2bd">${esc(s.lab)}</span>${WD(s.w,'#3ecf8e')}<div style="display:flex;align-items:center;gap:10px"><div class="engbar" style="height:7px;flex:1"><i style="width:${s.pr}%;background:#3ecf8e"></i></div><span style="font-size:11px;color:${s.pr>=100?'#3ecf8e':'#7fdcae'};width:74px;flex:none">${s.pr}% · ${s.good}/${s.total}</span></div><span style="text-align:right;color:#6f6864">—</span></div>`;
+ const secH=(c,name,sub)=>`<div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:${c}"></span><h3>${name}</h3><span class="meta">${sub}</span></div>`;
+ let h=`<div class="ap2"><div class="apmain">`;
+ h+=`<div class="apsum" style="display:grid;grid-template-columns:auto 1fr;gap:34px;align-items:center;padding:26px 28px">
+   <div style="display:flex;align-items:center;gap:22px">
+     <div class="sring" style="--p:${score}"><i><span class="v">${score}</span><span class="o">OF 100</span></i></div>
+     <div style="display:flex;flex-direction:column;gap:9px">
+       <div class="htitle" style="font-size:20px;margin:0">${e} READINESS</div>
+       <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:600;color:${gap>0?'#f2c574':'#3ecf8e'};background:${gap>0?'rgba(242,181,60,.14)':'rgba(62,207,142,.14)'};border:1px solid ${gap>0?'rgba(242,181,60,.3)':'rgba(62,207,142,.3)'};padding:4px 9px;border-radius:999px">${gap>0?gap+' pts to quotable':'clears 70 · quotable'}</span><span class="qd">threshold ${TH}</span></div>
+       <div class="qd" style="line-height:1.5;max-width:230px">Your ${ORD[rank]||'lower-ranked'} engine. ${hint}</div>
+     </div>
+   </div>
+   <div style="border-left:1px solid var(--line);padding-left:32px;display:flex;flex-direction:column;gap:14px">
+     <div class="apk">HOW THIS ENGINE DECIDES</div>
+     <div style="font-size:14px;line-height:1.6;color:#c9c2bd;max-width:640px;min-height:67px">${esc(D.engine_note[e])}</div>
+     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding-top:2px">
+       <div><div style="font-size:22px;font-weight:800">${belowFull}</div><div class="qd">of ${sig.length} signals below full pass</div></div>
+       <div><div style="font-size:22px;font-weight:800;color:var(--ok)">+${totLift}</div><div class="qd">points available</div></div>
+       <div><div style="font-size:22px;font-weight:800">${pagesBelow}</div><div class="qd">pages below the threshold</div></div>
+     </div>
+   </div></div>`;
+ if(high.length)h+=`<section class="aptier">${secH('#ff4d00','HIGH WEIGHT, LOW PASS RATE','where '+e+' is costing you the most — fix in this order')}<div class="apbox hot" style="padding:0 24px"><div class="engcols enghead"><span>SIGNAL</span><span>WEIGHT</span><span>SITE PASS RATE</span><span style="text-align:right">LIFT</span></div>${high.map(s=>esig(s,1)).join('')}</div></section>`;
+ if(low.length)h+=`<section class="aptier">${secH('#f2b53c','LOWER WEIGHT, WORTH TIDYING',low.length+' signal'+(low.length>1?'s':'')+' · +'+low.reduce((a,s)=>a+(s.lift>0?s.lift:0),0)+' between them')}<div class="apbox" style="padding:2px 24px 6px">${low.map(s=>esig(s,0)).join('')}</div></section>`;
+ if(strong.length)h+=`<section class="aptier">${secH('#3ecf8e','ALREADY STRONG',strong.length+' signal'+(strong.length>1?'s':'')+' · protect these when you edit')}<div class="apbox" style="padding:16px 24px;display:flex;flex-direction:column;gap:12px">${strong.map(estrong).join('')}</div></section>`;
+ const worst=[...ok].sort((a,b)=>a.engines[e]-b.engines[e]),w8=worst.slice(0,8);
+ h+=`<section class="aptier"><div class="aptierh" style="justify-content:space-between"><div style="display:flex;align-items:center;gap:10px"><h3>WORST PAGES FOR ${e}</h3><span class="meta">${pagesBelow} of ${P} below ${TH} · showing the ${w8.length} weakest</span></div><span onclick="go('Pages')" style="font-size:12px;font-weight:600;color:var(--grn);cursor:pointer">See all ${P} pages →</span></div>
+   <div style="background:var(--panel2);border:1px solid var(--line);border-radius:14px;overflow:hidden">
+   <div class="engwcols engwhead"><span style="text-align:center">${EABBR[e]||e}</span><span>URL</span><span>WHAT IT FAILS HERE</span><span style="text-align:center">OVERALL</span><span style="text-align:right">VS ${TH}</span></div>
+   ${w8.map(p=>{const b=PBAND(p.engines[e]),wf=p.checks.filter(c=>(c.status=='bad'||c.status=='warn')&&ws[c.id]).map(c=>SHORT[c.id]||c.label).slice(0,4).join(', ')||'—',d=p.engines[e]-TH,dc=d>=0?'#8b8480':d<=-10?'#ff9c88':'#f2c574';
+     return `<div class="engwcols engwrow"><span class="schip" style="background:${b[0]};color:${b[1]}">${p.engines[e]}</span><a href="${esc(p.url)}" target="_blank" style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rel(p.url)}</a><span style="font-size:11px;color:#8b8480;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(wf)}</span><span style="font-size:13px;color:#b7afaa;text-align:center">${p.score}</span><span style="font-size:12px;font-weight:700;color:${dc};text-align:right">${d>=0?'+'+d:'−'+Math.abs(d)}</span></div>`}).join('')}</div></section>`;
+ h+=`</div>`;
+ // sidebar
+ const eranked=Object.entries(D.engines).sort((a,b)=>b[1]-a[1]);
+ const acr=eranked.map(x=>`<div style="display:flex;align-items:center;gap:10px"><span style="width:82px;color:${x[0]==e?'#fff':'#b7afaa'};font-weight:${x[0]==e?'700':'400'}">${x[0]}</span><span style="flex:1;height:8px;border-radius:4px;background:#221d1a;overflow:hidden"><span style="display:block;width:${x[1]}%;height:100%;background:${x[0]==e?'#FF4D00':'#3a3227'}"></span></span><span style="width:24px;text-align:right;color:${x[0]==e?'#fff':'#b7afaa'};font-weight:${x[0]==e?'700':'400'}">${x[1]}</span></div>`).join('');
+ const bnote=e==best[0]?`Same pages, different weightings. ${e} is your strongest surface — protect it as you edit.`:`Same pages, different weightings. ${e} runs ${best[1]-score} point${best[1]-score==1?'':'s'} behind ${best[0]}, your strongest.`;
+ const fixes=high.concat(low).filter(s=>s.lift>0).slice(0,3);
+ const doHtml=fixes.length?fixes.map((s,i)=>{const iss=IM[s.id]||{},title=(iss.fix||s.lab).split(' - ')[0].split('. ')[0].trim(),cnt=iss.count||(s.total-s.good),nb=i==0?'color:#140b06;background:#FF4D00':'color:#ff8f6b;background:rgba(255,77,0,.2)';
+   return `<div style="display:flex;align-items:flex-start;gap:12px"><span class="numbadge" style="${nb}">${i+1}</span><div style="display:flex;flex-direction:column;gap:3px"><span style="font-size:13px;font-weight:600">${esc(title)}</span><span class="qd" style="line-height:1.5">${cnt} page${cnt==1?'':'s'} · +${s.lift} ${e}</span></div></div>`}).join(''):`<div class="qd">No fixes needed — ${e} passes every weighted signal.</div>`;
+ const reach=(D.site_checks.find(c=>c.id=='reachability')||{}).status||'good';
+ const rT=reach=='good'?['#3ecf8e','● allowed · '+P+'/'+P]:reach=='warn'?['#f2b53c','● partial']:['#ff9c88','● blocked'];
+ const parityBad=ok.filter(p=>p.cs.parity=='bad'||p.cs.parity=='warn').length;
+ const bots=(EBOTS[e]||[]).map(b=>`<div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:#b7afaa">${b}</span><span style="color:${rT[0]}">${rT[1]}</span></div>`).join('');
+ const caNote=reach=='bad'?'Bots are blocked at the WAF — unblock them first.':parityBad?'Access is fine. The problem is what the crawler can read once it arrives.':'Access and rendering both look clean.';
+ h+=`<div class="apside">
+   <div class="card2"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><h3 style="margin:0">Across Your Engines</h3><span class="qd">site level</span></div><div style="display:flex;flex-direction:column;gap:10px;font-size:12px">${acr}</div><div class="qd" style="line-height:1.5;border-top:1px solid var(--line);padding-top:11px;margin-top:12px">${bnote}</div></div>
+   <div class="card2 hot"><h3>Do this for ${e}</h3><div style="display:flex;flex-direction:column;gap:13px">${doHtml}</div>${fixes.length?`<button class="bigbtn" style="border-radius:6px;margin-top:6px" onclick="go('Action Plan')">Open the action plan</button>`:''}</div>
+   <div class="card2"><h3>Crawler Access</h3><div style="display:flex;flex-direction:column;gap:11px">${bots}<div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:#b7afaa">Server-rendered schema</span><span style="color:${parityBad?'#ff9c88':'#3ecf8e'}">● ${parityBad?parityBad+' pages JS-only':'all '+P+' server-rendered'}</span></div></div><div class="qd" style="line-height:1.5;border-top:1px solid var(--line);padding-top:11px;margin-top:2px">${caNote}</div></div>
+ </div></div>`;
+ return h}
+function structure(){
+ const byDir={},byDepth={};D.pages.forEach(p=>{const seg=(p.path||'/').split('/').filter(Boolean)[0]||'(root)';(byDir[seg]=byDir[seg]||[]).push(p);(byDepth[p.depth]=byDepth[p.depth]||[]).push(p)});
+ const secs=Object.entries(byDir).sort((a,b)=>b[1].length-a[1].length),maxc=Math.max(...secs.map(s=>s[1].length),1);
+ const avg=ps=>Math.round(ps.reduce((a,p)=>a+p.score,0)/ps.length);
+ const ss=D.pages.map(p=>p.score).sort((a,b)=>a-b),med=ss[Math.floor(ss.length/2)];
+ const cards=[['Pages',D.pages.length],['Sections',secs.length],['Max depth',Math.max(...D.pages.map(p=>p.depth))],['Median score',med]];
+ let h=`<div style="display:flex;flex-direction:column;gap:18px">`;
+ h+=`<div class="statgrid">${cards.map(c=>`<div class="statcard"><div class="n">${c[1]}</div><div class="l">${c[0]}</div></div>`).join('')}</div>`;
+ const rows=(list,lab)=>list.map(x=>{const a=avg(x[1]),b=PBAND(a);return `<div class="strow"><span style="font-weight:600">${esc(x[0])}</span><span class="qd">${x[1].length} page${x[1].length>1?'s':''}</span><div class="stbar"><i style="width:${Math.round(100*x[1].length/(lab=='sec'?maxc:maxd))}%;background:var(--grn)"></i></div><span class="schip" style="background:${b[0]};color:${b[1]}">${a}</span></div>`}).join('');
+ h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#ff4d00"></span><h3>BY TOP-LEVEL SECTION</h3><span class="meta">${secs.length} section${secs.length>1?'s':''}</span></div><div class="apbox" style="padding:6px 22px">${rows(secs.map(s=>['/'+s[0],s[1]]),'sec')}</div></section>`;
+ const depths=Object.keys(byDepth).map(Number).sort((a,b)=>a-b),maxd=Math.max(...depths.map(d=>byDepth[d].length),1);
+ h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#f2b53c"></span><h3>BY CRAWL DEPTH</h3><span class="meta">clicks from the homepage</span></div><div class="apbox" style="padding:6px 22px">${rows(depths.map(d=>['Depth '+d,byDepth[d]]),'dep')}</div></section>`;
+ h+=`</div>`;return h}
+function speed(){
+ const sc2=ms=>ms<=800?'#3ecf8e':ms<=1800?'#f2b53c':'#ff4d3d',sl=ms=>ms<=800?'Fast':ms<=1800?'OK':'Slow';
+ const ps=[...D.pages].sort((a,b)=>b.fetch_ms-a.fetch_ms);
+ const avgf=Math.round(ps.reduce((a,p)=>a+p.fetch_ms,0)/ps.length),avgr=Math.round(ps.reduce((a,p)=>a+p.render_ms,0)/ps.length);
+ const fast=ps.filter(p=>p.fetch_ms<=800).length,okc=ps.filter(p=>p.fetch_ms>800&&p.fetch_ms<=1800).length,slow=ps.filter(p=>p.fetch_ms>1800).length;
+ let h=`<div style="display:flex;flex-direction:column;gap:18px">`;
+ h+=`<div class="statgrid">
+   <div class="statcard"><div class="n" style="color:${sc2(avgf)}">${avgf}<span style="font-size:14px;color:var(--muted)"> ms</span></div><div class="l">Avg server response · <b style="color:${sc2(avgf)}">${sl(avgf)}</b></div></div>
+   <div class="statcard"><div class="n" style="color:#3ecf8e">${fast}</div><div class="l">Fast ≤ 0.8s</div></div>
+   <div class="statcard"><div class="n" style="color:#f2b53c">${okc}</div><div class="l">OK ≤ 1.8s</div></div>
+   <div class="statcard"><div class="n" style="color:#ff4d3d">${slow}</div><div class="l">Slow &gt; 1.8s</div></div>
+   <div class="statcard"><div class="n">${avgr}<span style="font-size:14px;color:var(--muted)"> ms</span></div><div class="l">Avg render (tool overhead)</div></div></div>`;
+ h+=`<div class="qd" style="line-height:1.6;max-width:900px">Server response graded on Google's TTFB thresholds: Fast ≤ 0.8s, OK ≤ 1.8s, Slow &gt; 1.8s. Render time is the tool's headless-Chrome overhead, not your site's speed.</div>`;
+ h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#ff4d00"></span><h3>SLOWEST PAGES</h3><span class="meta">by server response time</span></div>
+   <div style="background:var(--panel2);border:1px solid var(--line);border-radius:14px;overflow:hidden">
+   <div style="display:grid;grid-template-columns:140px 1fr 90px;gap:16px;padding:12px 20px;background:#171412;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted)"><span>SERVER RESPONSE</span><span>URL</span><span style="text-align:right">RENDER MS</span></div>
+   ${ps.slice(0,40).map(p=>`<div style="display:grid;grid-template-columns:140px 1fr 90px;gap:16px;align-items:center;padding:11px 20px;border-bottom:1px solid #ffffff0d"><span><span style="font-size:11px;font-weight:700;color:${sc2(p.fetch_ms)};background:${sc2(p.fetch_ms)}22;padding:3px 8px;border-radius:4px">${p.fetch_ms} ms</span> <span class="qd">${sl(p.fetch_ms)}</span></span><a href="${esc(p.url)}" target="_blank" style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rel(p.url)}</a><span class="qd" style="text-align:right">${p.render_ms}</span></div>`).join('')}
+   </div></section></div>`;
+ return h}
 function dl(name,rows){const csv=rows.map(r=>r.map(c=>`"${String(c==null?'':c).replace(/"/g,'""')}"`).join(',')).join('\n');
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=name;a.click()}
 function exportPages(){const rows=[['url','type','score','Known','Findable','Trusted',...ECOLS,'ms','errors']];
@@ -756,7 +1276,7 @@ tabsbar();render();
     doc=("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
          f"<title>CITED Score: {H.escape(d['domain'])}</title><link rel='icon' href=\"{FAVICON}\">"
          "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
-         "<link href='https://fonts.googleapis.com/css2?family=Anton&family=Figtree:wght@300..900&display=swap' rel='stylesheet'>"
+         "<link href='https://fonts.googleapis.com/css2?family=Figtree:wght@300..900&display=swap' rel='stylesheet'>"
          f"<style>{css}</style></head><body>"
          f"<header><span class='logo'>CITED<span class='chip'>Score</span></span>"
          f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--grn)'>{H.escape(d['domain'])}</a> &middot; {d['pages_crawled']} pages &middot; {d['generated']}</span>"
