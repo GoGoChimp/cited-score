@@ -855,11 +855,14 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .stthr{position:absolute;left:70%;top:0;height:100%;width:2px;background:var(--muted);opacity:.45;z-index:1}
 .strow:hover{background:#ffffff06}
 .stdet{display:none;padding:2px 0 12px}
-.stp{display:flex;align-items:center;gap:14px;padding:5px 0;font-size:13px;border-top:1px solid #ffffff08}
+.stp{display:flex;align-items:flex-start;gap:14px;padding:8px 0;font-size:13px;border-top:1px solid #ffffff08}
 .stp:first-child{border-top:0}
 .stp .schip{width:40px;flex:none;font-size:12px;padding:3px 0}
-.stp a{color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.stp a:hover{color:var(--txt)}.stp .qd{flex:none;font-size:12px}
+.stp a{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stp a:hover{color:var(--txt)}.stp .qd{font-size:12px}
+.stcks{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.stck{font-size:10px;padding:2px 8px;border-radius:20px;border:1px solid var(--line);white-space:nowrap}
+.stck.bad{color:#ff9c88;border-color:#ff4d3d44}.stck.warn{color:#f2c574;border-color:#f2b53c44}
 .strow{display:grid;grid-template-columns:170px 70px 1fr 52px;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid #ffffff0f}
 .strow:last-child{border-bottom:0}
 .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
@@ -1334,7 +1337,11 @@ function structure(){
  const cards=[['Pages',D.pages.length],['Sections',secs.length],['Max depth',Math.max(...D.pages.map(p=>p.depth))],['Median score',med]];
  let h=`<div style="display:flex;flex-direction:column;gap:18px">`;
  h+=`<div class="statgrid">${cards.map(c=>`<div class="statcard"><div class="n">${c[1]}</div><div class="l">${c[0]}</div></div>`).join('')}</div>`;
- const stpage=p=>{const b=PBAND(p.score),er=p.checks.filter(c=>c.status=='bad').length,wr=p.checks.filter(c=>c.status=='warn').length;const tag=[er?er+' error'+(er>1?'s':''):'',wr?wr+' warning'+(wr>1?'s':''):''].filter(Boolean).join(' · ')||'all checks pass';return `<div class="stp"><span class="schip" style="background:${b[0]};color:${b[1]}">${p.score}</span><a href="${esc(p.url)}" target="_blank">${rel(p.url)}</a><span class="qd" style="color:${er?'#ff9c88':wr?'#f2c574':'#6f6864'}">${tag}</span></div>`};
+ const stpage=p=>{const b=PBAND(p.score);
+   const bad=p.checks.filter(c=>c.status=='bad'),warn=p.checks.filter(c=>c.status=='warn');
+   const sum=[bad.length?bad.length+' error'+(bad.length>1?'s':''):'',warn.length?warn.length+' warning'+(warn.length>1?'s':''):''].filter(Boolean).join(' · ')||'all checks pass';
+   const chips=[...bad.map(c=>`<span class="stck bad">${esc(c.label)}</span>`),...warn.map(c=>`<span class="stck warn">${esc(c.label)}</span>`)].join('');
+   return `<div class="stp"><span class="schip" style="background:${b[0]};color:${b[1]}">${p.score}</span><div style="flex:1;min-width:0"><div style="display:flex;gap:10px;align-items:baseline"><a href="${esc(p.url)}" target="_blank">${rel(p.url)}</a><span class="qd" style="flex:none;color:${bad.length?'#ff9c88':warn.length?'#f2c574':'var(--ok)'}">${sum}</span></div>${chips?`<div class="stcks">${chips}</div>`:''}</div></div>`};
  const rows=(list,lab)=>list.map((x,i)=>{const a=avg(x[1]),b=PBAND(a),id='st_'+lab+i;return `<div class="strow" onclick="tgl('${id}')" style="cursor:pointer"><span style="font-weight:600">${esc(x[0])} <span class="egcar">▾</span></span><span class="qd">${x[1].length} page${x[1].length>1?'s':''}</span><div class="stbar" title="avg score ${a}/100"><span class="stthr"></span><i style="width:${a}%;background:var(--grn)"></i></div><span class="schip" style="background:${b[0]};color:${b[1]}">${a}</span></div><div id="${id}" class="stdet">${[...x[1]].sort((p,q)=>p.score-q.score).map(stpage).join('')}</div>`}).join('');
  h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#ff4d00"></span><h3>BY TOP-LEVEL SECTION</h3><span class="meta">${secs.length} section${secs.length>1?'s':''}</span></div><div class="apbox" style="padding:6px 22px">${rows(secs.map(s=>['/'+s[0],s[1]]),'sec')}</div></section>`;
  const depths=Object.keys(byDepth).map(Number).sort((a,b)=>a-b),maxd=Math.max(...depths.map(d=>byDepth[d].length),1);
