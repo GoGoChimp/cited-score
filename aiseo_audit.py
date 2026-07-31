@@ -853,6 +853,13 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .stbar{position:relative;height:8px;border-radius:5px;background:#221d1a;overflow:hidden;flex:1}
 .stbar i{display:block;height:100%;border-radius:5px}
 .stthr{position:absolute;left:70%;top:0;height:100%;width:2px;background:var(--muted);opacity:.45;z-index:1}
+.strow:hover{background:#ffffff06}
+.stdet{display:none;padding:2px 0 12px}
+.stp{display:flex;align-items:center;gap:14px;padding:5px 0;font-size:13px;border-top:1px solid #ffffff08}
+.stp:first-child{border-top:0}
+.stp .schip{width:40px;flex:none;font-size:12px;padding:3px 0}
+.stp a{color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stp a:hover{color:var(--txt)}.stp .qd{flex:none;font-size:12px}
 .strow{display:grid;grid-template-columns:170px 70px 1fr 52px;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid #ffffff0f}
 .strow:last-child{border-bottom:0}
 .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
@@ -1327,7 +1334,8 @@ function structure(){
  const cards=[['Pages',D.pages.length],['Sections',secs.length],['Max depth',Math.max(...D.pages.map(p=>p.depth))],['Median score',med]];
  let h=`<div style="display:flex;flex-direction:column;gap:18px">`;
  h+=`<div class="statgrid">${cards.map(c=>`<div class="statcard"><div class="n">${c[1]}</div><div class="l">${c[0]}</div></div>`).join('')}</div>`;
- const rows=(list,lab)=>list.map(x=>{const a=avg(x[1]),b=PBAND(a);return `<div class="strow"><span style="font-weight:600">${esc(x[0])}</span><span class="qd">${x[1].length} page${x[1].length>1?'s':''}</span><div class="stbar" title="avg score ${a}/100"><span class="stthr"></span><i style="width:${a}%;background:var(--grn)"></i></div><span class="schip" style="background:${b[0]};color:${b[1]}">${a}</span></div>`}).join('');
+ const stpage=p=>{const b=PBAND(p.score),er=p.checks.filter(c=>c.status=='bad').length,wr=p.checks.filter(c=>c.status=='warn').length;const tag=[er?er+' error'+(er>1?'s':''):'',wr?wr+' warning'+(wr>1?'s':''):''].filter(Boolean).join(' · ')||'all checks pass';return `<div class="stp"><span class="schip" style="background:${b[0]};color:${b[1]}">${p.score}</span><a href="${esc(p.url)}" target="_blank">${rel(p.url)}</a><span class="qd" style="color:${er?'#ff9c88':wr?'#f2c574':'#6f6864'}">${tag}</span></div>`};
+ const rows=(list,lab)=>list.map((x,i)=>{const a=avg(x[1]),b=PBAND(a),id='st_'+lab+i;return `<div class="strow" onclick="tgl('${id}')" style="cursor:pointer"><span style="font-weight:600">${esc(x[0])} <span class="egcar">▾</span></span><span class="qd">${x[1].length} page${x[1].length>1?'s':''}</span><div class="stbar" title="avg score ${a}/100"><span class="stthr"></span><i style="width:${a}%;background:var(--grn)"></i></div><span class="schip" style="background:${b[0]};color:${b[1]}">${a}</span></div><div id="${id}" class="stdet">${[...x[1]].sort((p,q)=>p.score-q.score).map(stpage).join('')}</div>`}).join('');
  h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#ff4d00"></span><h3>BY TOP-LEVEL SECTION</h3><span class="meta">${secs.length} section${secs.length>1?'s':''}</span></div><div class="apbox" style="padding:6px 22px">${rows(secs.map(s=>['/'+s[0],s[1]]),'sec')}</div></section>`;
  const depths=Object.keys(byDepth).map(Number).sort((a,b)=>a-b),maxd=Math.max(...depths.map(d=>byDepth[d].length),1);
  h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#f2b53c"></span><h3>BY CRAWL DEPTH</h3><span class="meta">clicks from the homepage</span></div><div class="apbox" style="padding:6px 22px">${rows(depths.map(d=>['Depth '+d,byDepth[d]]),'dep')}</div></section>`;
