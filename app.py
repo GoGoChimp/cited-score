@@ -11,7 +11,7 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.2.0"                 # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.3.0"                 # semver; bump on every release + tag the GitHub release to match
 GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
 VERSION = f"v{APP_VERSION} - July 2026"
 
@@ -96,6 +96,22 @@ a{color:var(--grn);text-decoration:none}
 .foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-top:44px;color:var(--muted);font-size:13px}
 .foot .lk{display:flex;gap:20px}
 .hide{display:none}.err{color:var(--red)}
+.tools{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:34px}
+@media(max-width:820px){.tools{grid-template-columns:1fr}}
+.tool .note2{margin-top:6px}
+.tool textarea{width:100%;min-height:92px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 12px;font:12px/1.5 ui-monospace,Consolas,monospace;resize:vertical;margin-top:10px;outline:none}
+.tool select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:9px 12px;font-size:13px;margin-top:10px;outline:none}
+.mini{margin-top:12px;background:var(--grn);color:#0a0a0a;border:0;border-radius:9px;padding:10px 16px;font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.4px;font-size:13px;cursor:pointer}
+.mini:hover:not(:disabled){background:var(--grn2)}.mini:disabled{opacity:.5;cursor:default}
+.tout{margin-top:14px;font-size:13px}
+.tout table{width:100%;border-collapse:collapse;font-size:12px}
+.tout th,.tout td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.tout th:first-child,.tout td:first-child{text-align:left}
+.tout th{color:var(--muted);font-weight:600}
+.tout .best{color:var(--grn);font-weight:800}
+.rho.up{color:var(--ok)}.rho.dn{color:var(--red)}.rho.z{color:var(--muted)}
+.tag{font-size:10px;padding:1px 7px;border-radius:20px;border:1px solid var(--line);color:var(--muted)}
+.tag.up{color:var(--ok);border-color:#3ecf8e55}.tag.inv{color:#f2b53c;border-color:#f2b53c55}
 </style></head><body><div class="wrap">
 <div class="upd hide" id="upd"><span class="uc">Update</span><div><div class="ut" id="updmsg">Update available</div><div class="ud" id="upddesc"></div></div><div class="sp"></div><a class="updbtn" id="updlink" target="_blank">Update now</a><span class="later" onclick="dismissUpd()">Later</span></div>
 
@@ -143,6 +159,24 @@ a{color:var(--grn);text-decoration:none}
  </div>
 </div>
 
+<div class="tools">
+ <div class="card tool">
+   <div class="ph"><div class="t">Benchmark vs competitors</div><span class="m">crawls each, capped</span></div>
+   <div class="note2">Your site plus up to four competitors, one URL per line. Each is crawled (capped for speed) and scored side by side per pillar and engine.</div>
+   <textarea id="benurls" placeholder="https://you.com&#10;https://competitor-a.com&#10;https://competitor-b.com"></textarea>
+   <button class="mini" id="benbtn" onclick="runBench()">Benchmark</button>
+   <div class="tout" id="benout"></div>
+ </div>
+ <div class="card tool">
+   <div class="ph"><div class="t">Calibrate against real citations</div><span class="m">optional</span></div>
+   <div class="note2">Paste your Bing Webmaster Tools &rarr; AI Performance export (<code>url,citations</code>) to see which signals actually predict citations on a site you have crawled.</div>
+   <select id="calsite"><option value="">— pick a crawled site —</option></select>
+   <textarea id="calcsv" placeholder="https://you.com/page,42&#10;https://you.com/other-page,17"></textarea>
+   <button class="mini" id="calbtn" onclick="runCal()">Correlate</button>
+   <div class="tout" id="calout"></div>
+ </div>
+</div>
+
 <div class="foot"><span id="ver">CITED Score · free for life with the book</span><span class="lk"><a href="https://github.com/GoGoChimp/cited-score" target="_blank">Read the docs</a></span></div>
 </div>
 <script>
@@ -151,7 +185,9 @@ fetch('/chrome').then(r=>r.json()).then(d=>{
   $('ver').textContent='CITED Score '+d.version+' · free for life with the book';
   $('chrome').innerHTML = d.chrome ? '' : '<b class="err">CITED Score needs Chrome or Edge to read pages.</b> Install one, then reopen.';});
 function loadRecent(){fetch('/reports').then(r=>r.json()).then(list=>{
-  $('recent').innerHTML = list.length ? list.map(r=>{const d=r.delta;const dl=(d==null)?'<span class="dl z">first run</span>':`<span class="dl ${d>0?'up':d<0?'dn':'z'}">${d>0?'▲':d<0?'▼':'▬'} ${Math.abs(d)}</span>`;const sc=r.score==null?'':`<div class="sc">${r.score}</div>`;const mt=(r.pages!=null?r.pages+' pages · ':'')+r.when;return `<a href="/report/${r.name}" target="_blank" class="rep">${sc}<div style="flex:1"><div class="nm">${r.name}</div><div class="mt">${mt}</div></div>${dl}</a>`}).join('') : '<div class="note2">No reports yet. Run your first audit.</div>';})}
+  $('recent').innerHTML = list.length ? list.map(r=>{const d=r.delta;const dl=(d==null)?'<span class="dl z">first run</span>':`<span class="dl ${d>0?'up':d<0?'dn':'z'}">${d>0?'▲':d<0?'▼':'▬'} ${Math.abs(d)}</span>`;const sc=r.score==null?'':`<div class="sc">${r.score}</div>`;const mt=(r.pages!=null?r.pages+' pages · ':'')+r.when;return `<a href="/report/${r.name}" target="_blank" class="rep">${sc}<div style="flex:1"><div class="nm">${r.name}</div><div class="mt">${mt}</div></div>${dl}</a>`}).join('') : '<div class="note2">No reports yet. Run your first audit.</div>';
+  var cs=$('calsite'); if(cs){var cur=cs.value; cs.innerHTML='<option value="">— pick a crawled site —</option>'+list.map(r=>'<option value="'+r.name+'">'+r.name+'</option>').join(''); cs.value=cur;}
+  })}
 loadRecent();
 fetch('/update-check').then(r=>r.json()).then(d=>{
   if(d&&d.update){ $('updmsg').textContent='Version '+d.latest+' is available';
@@ -187,6 +223,51 @@ function tile(n,l){return `<div class="tile"><div class="n">${n==null?'-':n}</di
 function reset(){$('progress').classList.add('hide'); $('form').classList.remove('hide'); $('run').disabled=false; $('url').value='';}
 function dismissUpd(){$('upd').classList.add('hide')}
 function toggleOpts(){$('opts').classList.toggle('on')}
+function rhoSpan(v){const c=v>0.1?'up':v<0?'dn':'z';return '<span class="rho '+c+'">'+(v>0?'+':'')+v.toFixed(2)+'</span>';}
+function runCal(){
+  const domain=$('calsite').value, csv=$('calcsv').value;
+  if(!domain){$('calout').innerHTML='<span class=err>Pick a crawled site first.</span>';return;}
+  $('calbtn').disabled=true; $('calout').textContent='Correlating...';
+  fetch('/calibrate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain,csv})})
+   .then(r=>r.json()).then(d=>{$('calbtn').disabled=false;
+     if(!d||d.error){$('calout').innerHTML='<span class=err>'+((d&&d.error)||'No result.')+'</span>';return;}
+     let h='<div class="note2">Matched '+d.matched+' of '+d.total+' pages. Spearman rho vs real citations - higher predicts citations better:</div><table>';
+     h+='<tr><td>Overall</td><td>'+rhoSpan(d.overall)+'</td></tr>';
+     h+=Object.entries(d.engines).sort((a,b)=>b[1]-a[1]).map(e=>'<tr><td>'+e[0]+'</td><td>'+rhoSpan(e[1])+'</td></tr>').join('');
+     h+='</table>';
+     const up=d.checks.filter(c=>c.verdict=='up-weight').slice(0,8);
+     h+='<div class="note2" style="margin-top:10px">Signals that vary AND predict here (up-weight):</div><table>';
+     h+= up.length? up.map(c=>'<tr><td>'+c.label+'</td><td>'+rhoSpan(c.rho)+'</td><td><span class="tag up">up-weight</span></td></tr>').join('')
+                  : '<tr><td class="note2">Nothing separated cited from uncited on this sample - your passing checks are table stakes.</td></tr>';
+     h+='</table>';
+     $('calout').innerHTML=h;}).catch(e=>{$('calbtn').disabled=false;$('calout').innerHTML='<span class=err>'+e+'</span>';});
+}
+let bpoll=null;
+function runBench(){
+  const urls=$('benurls').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(urls.length<2){$('benout').innerHTML='<span class=err>Enter your site plus at least one competitor.</span>';return;}
+  $('benbtn').disabled=true; $('benout').textContent='Crawling '+urls.length+' sites (capped for speed)...';
+  fetch('/benchmark',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({urls})})
+   .then(r=>r.json()).then(d=>{ if(!d||d.error){$('benbtn').disabled=false;$('benout').innerHTML='<span class=err>'+((d&&d.error)||'error')+'</span>';return;}
+     bpoll=setInterval(()=>checkBench(d.job),1500);}).catch(e=>{$('benbtn').disabled=false;$('benout').innerHTML='<span class=err>'+e+'</span>';});
+}
+function checkBench(job){fetch('/status/'+job).then(r=>r.json()).then(j=>{
+  if(!j)return;
+  if(!j.finished){$('benout').textContent=(j.lines&&j.lines.length?j.lines[j.lines.length-1]:'Crawling...');return;}
+  clearInterval(bpoll); $('benbtn').disabled=false;
+  if(j.error){$('benout').innerHTML='<span class=err>Error: '+j.error+'</span>';return;}
+  const rows=(j.benchmark||[]).filter(x=>x.overall!=null);
+  if(!rows.length){$('benout').innerHTML='<span class=err>No sites could be scored - check the URLs.</span>';return;}
+  const eng=['ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude'];
+  const cols=['overall','Known','Findable','Trusted'].concat(eng);
+  const abbr={overall:'CITED',Known:'Kn',Findable:'Fi',Trusted:'Tr','AI Overviews':'AIO',ChatGPT:'GPT',Perplexity:'PPLX',Gemini:'GEM',Copilot:'CPLT',Claude:'CLDE'};
+  const val=(r,c)=> c=='overall'?r.overall : (c=='Known'||c=='Findable'||c=='Trusted')?r.pillars[c] : r.engines[c];
+  const best={}; cols.forEach(c=>best[c]=Math.max.apply(0,rows.map(r=>val(r,c)||0)));
+  let h='<table><tr><th>Site</th>'+cols.map(c=>'<th>'+(abbr[c]||c)+'</th>').join('')+'</tr>';
+  h+=rows.map(r=>'<tr><td>'+r.domain+'</td>'+cols.map(c=>{const v=val(r,c);return '<td class="'+(v===best[c]?'best':'')+'">'+(v==null?'-':v)+'</td>';}).join('')+'</tr>').join('');
+  h+='</table><div class="note2" style="margin-top:8px">Best in each column highlighted. Crawl is page-capped - run a full audit on a site for its detail.</div>';
+  $('benout').innerHTML=h;});
+}
 </script></body></html>"""
 
 class Handler(BaseHTTPRequestHandler):
@@ -228,10 +309,43 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, "not found")
 
     def do_POST(self):
-        if self.path != "/run": return self._send(404, "not found")
         ln = int(self.headers.get("Content-Length", 0))
         try: body = json.loads(self.rfile.read(ln) or "{}")
         except Exception: body = {}
+        if self.path == "/run": return self._run(body)
+        if self.path == "/calibrate": return self._calibrate(body)
+        if self.path == "/benchmark": return self._benchmark(body)
+        return self._send(404, "not found")
+
+    def _calibrate(self, body):
+        dom = safe((body.get("domain") or "").strip())
+        if not dom: return self._json(400, {"error": "Pick a crawled site to calibrate."})
+        jp = os.path.join(REPORTS, dom + ".json")
+        if not os.path.exists(jp): return self._json(400, {"error": "No crawl found for that site - run an audit first."})
+        try:
+            d = json.load(open(jp, encoding="utf-8"))
+            return self._json(200, A.calibrate_data(d, A.parse_cites(body.get("csv") or "")))
+        except Exception as e:
+            return self._json(500, {"error": str(e)[:200]})
+
+    def _benchmark(self, body):
+        urls = [u.strip() for u in (body.get("urls") or []) if u and u.strip()]
+        if len(urls) < 2: return self._json(400, {"error": "Enter at least two sites (yours + a competitor)."})
+        if len(urls) > 5: urls = urls[:5]
+        try: maxp = int(body.get("max_pages") or 25)
+        except ValueError: maxp = 25
+        job = str(int(time.time() * 1000))
+        JOBS[job] = {"phase": "start", "done": 0, "total": len(urls), "lines": [], "finished": False, "benchmark": None, "error": None}
+        def prog(phase, done, total, msg):
+            j = JOBS[job]; j["phase"] = phase; j["done"] = done; j["total"] = total; j["lines"] = (j["lines"] + [msg])[-14:]
+        def worker():
+            try: JOBS[job]["benchmark"] = A.benchmark(urls, max_pages=maxp, progress=prog)
+            except Exception as e: JOBS[job]["error"] = str(e)
+            JOBS[job]["finished"] = True
+        threading.Thread(target=worker, daemon=True).start()
+        return self._json(200, {"job": job})
+
+    def _run(self, body):
         url = (body.get("url") or "").strip()
         if not url: return self._json(400, {"error": "Enter a website URL."})
         try:

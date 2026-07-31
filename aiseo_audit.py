@@ -50,6 +50,10 @@ CHECK_META = {
                 "ev":"A self-referencing canonical stops duplicate-entity confusion (Ch4)."},
  "internal":   {"label":"Internal links in content (>=3)","pillar":"Known","ch":"Ch4","phase":2,"effort":"Med",
                 "ev":"Internal links build the topical cluster engines read as authority (Ch4)."},
+ "entity":     {"label":"Entity clarity (Organization/Person + sameAs)","pillar":"Known","ch":"Ch4","phase":1,"effort":"Med",
+                "ev":"sameAs to Wikipedia/Wikidata/LinkedIn plus a stable @id let the engine resolve WHO you are - the core of AI visibility (entity recognition, Ch4)."},
+ "schemacomplete":{"label":"Schema is complete, not just present","pillar":"Known","ch":"Ch4","phase":1,"effort":"Med",
+                "ev":"Attribute-rich schema (author, dates, image, ids) is cited more than a bare @type (Fischman 61.7 vs 41.6, Ch4)."},
  # FINDABLE - retrieval + structure + access (ch5 Structure, ch3 Retrieval, ch7 engines)
  "http":       {"label":"HTTP 200 OK","pillar":"Findable","ch":"Ch3","phase":1,"effort":"Low",
                 "ev":"Engines drop non-200 URLs before retrieval (engine documentation, Ch3)."},
@@ -67,6 +71,10 @@ CHECK_META = {
                 "ev":"Retrieval reranks 40-180 word passages; a wall of text hands the engine no clean chunk (Firecrawl 2026, Ch5). Not a word-count target: each section just needs its own liftable answer."},
  "liststables":{"label":"Tables / lists present","pillar":"Findable","ch":"Ch5","phase":2,"effort":"Med",
                 "ev":"80% of AI-cited pages use lists or structured elements (Profound 2026, Ch5)."},
+ "video":      {"label":"Video / YouTube present","pillar":"Findable","ch":"Ch5","phase":2,"effort":"High",
+                "ev":"AI Overviews leans on YouTube; an embedded video or VideoObject adds a citable modality (Ch5)."},
+ "comparison": {"label":"Comparison / best-of content on the site","pillar":"Findable","ch":"Ch5","phase":2,"effort":"High",
+                "ev":"Comparison and best-of pages are ~33% of AI citations; a site with none forfeits the format engines cite most (Ch5)."},
  "faq":        {"label":"FAQPage / HowTo schema","pillar":"Findable","ch":"Ch5","phase":1,"effort":"Med",
                 "ev":"FAQ schema hands the engine pre-chunked question-answer pairs (Ch5)."},
  "alt":        {"label":"Image alt coverage (>=90%)","pillar":"Findable","ch":"Ch5","phase":1,"effort":"Low",
@@ -84,6 +92,10 @@ CHECK_META = {
                 "ev":"Statistics lift citation likelihood +32% (Princeton GEO 2024, Ch4)."},
  "citations":  {"label":"External source links (>=2)","pillar":"Trusted","ch":"Ch4","phase":3,"effort":"Med",
                 "ev":"Inline citations lift citation likelihood +30% (Princeton GEO 2024, Ch4)."},
+ "author":     {"label":"Named author / E-E-A-T attribution","pillar":"Trusted","ch":"Ch4","phase":2,"effort":"Med",
+                "ev":"A named author (Person schema + visible byline) is a trust signal engines weight for citation (E-E-A-T, Ch4)."},
+ "sourced":    {"label":"Statistics carry a source","pillar":"Trusted","ch":"Ch4","phase":2,"effort":"Med",
+                "ev":"Unsourced numbers read as unverifiable; sourced stats lift citation likelihood (Princeton GEO, Ch4)."},
  "freshness":  {"label":"Fresh (updated < 12 months)","pillar":"Trusted","ch":"Ch4","phase":1,"effort":"Low",
                 "ev":"Engines weight recency; undated content loses to dated (Ch4)."},
  # INFORMATIONAL - not scored
@@ -113,6 +125,12 @@ FIX = {
  "robots":"Allow GPTBot, PerplexityBot, ClaudeBot, Google-Extended, Bingbot, OAI-SearchBot in robots.txt.",
  "sitemap":"Publish and submit an XML sitemap.",
  "reachability":"Unblock the AI search bots at the WAF / Cloudflare layer.",
+ "entity":"Add Organization + Person JSON-LD with a stable @id and sameAs to your Wikipedia/Wikidata/LinkedIn/Crunchbase profiles.",
+ "schemacomplete":"Fill the schema out: author, datePublished, dateModified, headline and image, not just @type and name.",
+ "video":"Embed a relevant YouTube video or add VideoObject schema for the key explainer or how-to.",
+ "author":"Add a named author (Person schema with name + sameAs) and a visible byline with credentials.",
+ "sourced":"Cite an authoritative external source next to each statistic, as an inline link.",
+ "comparison":"Publish at least one comparison or best-of page (X vs Y, best X for Y) with a structured table.",
 }
 # per-engine weights (which signals each engine actually weights). site ids allowed.
 # Render-parity CORRECTED 2026-07-19 after deep research (book/research/schema-render-parity-...):
@@ -122,12 +140,12 @@ FIX = {
 # Gemini + AI Overviews DO eventually see JS-injected schema, so parity is removed for them (it is
 # a reliability/speed issue there, not visibility). schema itself still weighted for Gemini.
 ENGINE_WEIGHTS = {
- "ChatGPT":     {"wordcount":3,"statdensity":3,"citations":3,"parity":3,"answerfirst":2,"sections":2,"schema":2,"freshness":1,"qheadings":1},
- "Perplexity":  {"freshness":3,"citations":3,"parity":3,"statdensity":2,"answerfirst":2,"liststables":2,"sections":2,"qheadings":1,"reachability":2},
- "AI Overviews":{"answerfirst":3,"qheadings":3,"sections":2,"schema":2,"faq":2,"liststables":2,"freshness":1,"canonical":1,"sitemap":1,"title":1,"meta":1},
- "Gemini":      {"schema":3,"canonical":1,"sitemap":1,"statdensity":2,"answerfirst":2,"faq":1,"citations":1},
- "Copilot":     {"schema":3,"sitemap":2,"reachability":2,"liststables":2,"statdensity":2,"answerfirst":2,"parity":2,"freshness":1,"faq":2},
- "Claude":      {"sections":3,"parity":3,"answerfirst":2,"statdensity":2,"qheadings":2,"liststables":2,"schema":1,"citations":1},
+ "ChatGPT":     {"wordcount":3,"statdensity":3,"citations":3,"parity":3,"entity":2,"schemacomplete":2,"author":2,"sourced":2,"answerfirst":2,"sections":2,"schema":2,"freshness":1,"qheadings":1},
+ "Perplexity":  {"freshness":3,"citations":3,"parity":3,"sourced":2,"entity":2,"statdensity":2,"answerfirst":2,"liststables":2,"sections":2,"reachability":2,"qheadings":1,"author":1,"comparison":1,"video":1},
+ "AI Overviews":{"answerfirst":3,"qheadings":3,"sections":2,"schema":2,"faq":2,"liststables":2,"entity":2,"schemacomplete":2,"video":2,"freshness":1,"canonical":1,"sitemap":1,"title":1,"meta":1,"comparison":1,"author":1},
+ "Gemini":      {"schema":3,"entity":3,"schemacomplete":2,"statdensity":2,"answerfirst":2,"canonical":1,"sitemap":1,"faq":1,"citations":1,"author":1},
+ "Copilot":     {"schema":3,"sitemap":2,"reachability":2,"liststables":2,"statdensity":2,"answerfirst":2,"parity":2,"entity":2,"schemacomplete":2,"faq":2,"freshness":1,"sourced":1,"comparison":1,"video":1},
+ "Claude":      {"sections":3,"parity":3,"answerfirst":2,"statdensity":2,"qheadings":2,"liststables":2,"entity":2,"schema":1,"citations":1,"author":1,"sourced":1},
 }
 ENGINE_NOTE = {
  "ChatGPT":"Favours comprehensive, authoritative, source-cited content + strong entity grounding. Cites few sources per answer, so be THE definitive page.",
@@ -137,7 +155,7 @@ ENGINE_NOTE = {
  "Copilot":"Bing-grounded and highly citation-friendly. Schema, sitemap/IndexNow, listicles and extractable facts win here.",
  "Claude":"Synthesises rather than quotes. Rewards clean logical chunking, factual density and clear structure.",
 }
-SITE_IDS = {"robots","llms","sitemap","reachability"}
+SITE_IDS = {"robots","llms","sitemap","reachability","comparison"}
 STAT = {"good":1.0,"warn":0.35,"bad":0.0}   # tightened: a warning is worth less than half
 
 # ------------------------------------------------------------------ crawl + render
@@ -259,8 +277,8 @@ def classify(path, types):
 # Deliberately NARROW (the score must not be kind): a homepage still owes citations,
 # statistics and depth, so those stay in.
 NA_BY_TYPE = {
-    "home":     {"answerfirst","qheadings","sections","faq","freshness","schema"},
-    "listing":  {"answerfirst","qheadings","sections","faq","freshness","schema","statdensity","citations","wordcount"},
+    "home":     {"answerfirst","qheadings","sections","faq","freshness","schema","schemacomplete","author","sourced","video"},
+    "listing":  {"answerfirst","qheadings","sections","faq","freshness","schema","statdensity","citations","wordcount","schemacomplete","author","sourced","video","entity"},
 }
 
 def chk(cid, status, detail):
@@ -327,12 +345,55 @@ def analyze(url, status, raw, rendered, domain):
     C.append(chk("internal","good" if il>=3 else "warn",f"{il} internal links"))
     can=soup.find("link",attrs={"rel":"canonical"})
     C.append(chk("canonical","good" if can and can.get("href") else "warn",can.get("href") if can else "none"))
+    # ---- entity / schema-completeness / author (deep JSON-LD read) ----
+    objs=jsonld_objs(soup)
+    nodes=[]; _st=list(objs)
+    while _st:
+        n=_st.pop()
+        if isinstance(n,dict): nodes.append(n); _st.extend(v for v in n.values() if isinstance(v,(dict,list)))
+        elif isinstance(n,list): _st.extend(n)
+    def _t(n,ts):
+        t=n.get("@type"); return bool(set(t)&ts) if isinstance(t,list) else (t in ts)
+    orgp=[n for n in nodes if _t(n,{"Organization","Person","LocalBusiness","Corporation","ProfessionalService"})]
+    sameas=[]
+    for n in orgp:
+        sa=n.get("sameAs")
+        if isinstance(sa,str): sameas.append(sa)
+        elif isinstance(sa,list): sameas.extend(x for x in sa if isinstance(x,str))
+    strong=[u for u in sameas if any(d in u.lower() for d in ("wikipedia.org","wikidata.org","linkedin.com","crunchbase.com"))]
+    has_id=any(n.get("@id") for n in orgp)
+    if orgp and (strong or (len(sameas)>=2 and has_id)): C.append(chk("entity","good",f"{len(orgp)} entity node(s), {len(sameas)} sameAs"))
+    elif orgp: C.append(chk("entity","warn",f"entity present, weak sameAs ({len(sameas)})"))
+    else: C.append(chk("entity","bad","no Organization/Person entity"))
+    art=[n for n in nodes if _t(n,{"Article","BlogPosting","NewsArticle","TechArticle","Product","Recipe","HowTo","Review"})]
+    if not objs: C.append(chk("schemacomplete","na","no structured data"))
+    elif art:
+        an=art[0]; have=[k for k in ("author","datePublished","dateModified","headline","name","image","publisher") if an.get(k)]
+        keyn=sum(1 for k in ("author","datePublished","image") if an.get(k))+(1 if (an.get("headline") or an.get("name")) else 0)
+        C.append(chk("schemacomplete","good" if keyn>=3 else ("warn" if keyn>=1 else "bad"),f"{len(have)} fields, {keyn} key"))
+    else: C.append(chk("schemacomplete","warn","no content-type schema"))
+    anames=[]
+    for n in nodes:
+        a=n.get("author")
+        for x in (a if isinstance(a,list) else [a]):
+            if isinstance(x,dict) and x.get("name"): anames.append(str(x["name"]))
+            elif isinstance(x,str) and x.strip(): anames.append(x)
+    byline=bool(soup.select_one('[rel="author"],[class*="author" i],[class*="byline" i]')) or bool(re.search(r"\bby\s+[A-Z][a-z]+\s+[A-Z][a-z]",body[:400]))
+    if anames: C.append(chk("author","good","by "+anames[0][:40]))
+    elif byline: C.append(chk("author","warn","byline text, no author schema"))
+    else: C.append(chk("author","bad","no author"))
+    if dens<0.6: C.append(chk("sourced","good","few stats to source"))
+    elif ext>=2: C.append(chk("sourced","good",f"{ext} sources for {nums} numbers"))
+    elif ext==1: C.append(chk("sourced","warn","only 1 source for the stats"))
+    else: C.append(chk("sourced","bad",f"{nums} numbers, no external source"))
+    yt=bool(soup.find("iframe",src=re.compile(r"youtube\.com|youtu\.be|vimeo\.com|wistia",re.I))) or bool(soup.find("video")) or ("VideoObject" in types_r)
+    C.append(chk("video","good" if yt else "warn","video present" if yt else "no video / VideoObject"))
     na=NA_BY_TYPE.get(ptype,set())
     for c in C:
         if c["id"] in na: c["status"]="na"
     metrics={"words":wc,"headings":nh,"question_pct":qpct,"walls":walls,"stat_density":dens,
              "ext_links":ext,"internal_links":il,"schema_types":sorted(tset),"images":len(imgs),"alt_pct":apct}
-    return {"path":path,"type":ptype,"checks":C,"metrics":metrics,"rendered":rendered is not None}
+    return {"path":path,"type":ptype,"title":title,"checks":C,"metrics":metrics,"rendered":rendered is not None}
 
 def site_checks(origin, domain):
     out=[]
@@ -409,6 +470,10 @@ def page_scores(statuses):
             {k:(v if v is not None else 0) for k,v in eng.items()})
 
 def build(domain, origin, pages, sitecx):
+    # site-level: does the site publish comparison / best-of content (a top AI-cited format)?
+    CMP_RE=re.compile(r"(vs\.?|versus|comparison|compare|best[- ]|top[- ]?\d+|alternativ|which[- ])",re.I)
+    _cmp=[p for p in pages if CMP_RE.search((p.get("path") or "")+" "+(p.get("title") or ""))]
+    sitecx=list(sitecx)+[chk("comparison","good" if _cmp else "warn",(str(len(_cmp))+" comparison/best-of page(s)") if _cmp else "no comparison / best-of content found")]
     scx={c["id"]:c["status"] for c in sitecx}
     for p in pages:
         st={c["id"]:c["status"] for c in p["checks"]}; st.update(scx)
@@ -513,48 +578,50 @@ def spearman(xs, ys):
     den=(sum((a-mx)**2 for a in rx)*sum((b-my)**2 for b in ry))**0.5
     return num/den if den else 0.0
 
-def calibrate(report_json, citations_csv):
-    d=json.load(open(report_json,encoding="utf-8"))
+def parse_cites(text):
+    """Parse 'url,citations' rows (Bing WMT AI Performance export) -> {url_no_slash: float}."""
     cites={}
-    with open(citations_csv,encoding="utf-8-sig") as f:
-        for row in csv.reader(f):
-            if len(row)<2: continue
-            u=row[0].strip()
-            try: cites[u.rstrip("/")]=float(row[1])
-            except ValueError: continue
+    for row in csv.reader(text.splitlines()):
+        if len(row)<2: continue
+        try: cites[row[0].strip().rstrip("/")]=float(str(row[1]).replace(",","").strip())
+        except ValueError: continue
+    return cites
+
+def calibrate_data(d, cites):
+    """Spearman-correlate the report's scores vs real per-URL citations. Returns a dict for UI/CLI."""
     rows=[p for p in d["pages"] if p["url"].rstrip("/") in cites]
     if len(rows)<8:
-        print(f"Only {len(rows)} pages matched citations.csv (need >=8 for a stable correlation).")
-        print("CSV format: url,citations  (export per-URL citation counts from Bing WMT AI Performance).")
-        return
+        return {"error":f"Only {len(rows)} of {len(d['pages'])} crawled pages matched the citations file (need at least 8 for a stable correlation).","matched":len(rows)}
     y=[cites[p["url"].rstrip("/")] for p in rows]
-    print(f"\n=== CITED Score calibration vs {len(rows)} pages with real citations ===")
-    print(f"Overall score  <-> citations : rho {spearman([p['score'] for p in rows],y):+.2f}")
-    for pl in PILLARS:
-        print(f"{pl:13} <-> citations : rho {spearman([p['pillars'][pl] for p in rows],y):+.2f}")
-    for e in ENGINE_WEIGHTS:
-        print(f"{e:13} <-> citations : rho {spearman([p['engines'][e] for p in rows],y):+.2f}")
-    print("\nPer-check predictive power (which signals separate cited from uncited pages here):")
-    print("  Note: a check every page passes has no variance, so rho ~0 means 'table stakes,")
-    print("  not measurable on this site' - NOT 'unimportant'. Only act on checks that VARY.")
-    res=[]
+    out={"matched":len(rows),"total":len(d["pages"]),
+         "overall":spearman([p["score"] for p in rows],y),
+         "pillars":{pl:spearman([p["pillars"][pl] for p in rows],y) for pl in PILLARS},
+         "engines":{e:spearman([p["engines"][e] for p in rows],y) for e in ENGINE_WEIGHTS},
+         "checks":[]}
     for cid in CHECK_META:
         xs=[STAT.get(p["cs"].get(cid),None) for p in rows]
-        vals=[x for x in xs if x is not None]
         pairs=[(x,yy) for x,yy in zip(xs,y) if x is not None]
         if len(pairs)<8: continue
-        modal=max(Counter(vals).values())/len(vals) if vals else 1.0   # share at most-common status
-        res.append((cid,spearman([a for a,_ in pairs],[b for _,b in pairs]),len(pairs),modal))
-    res.sort(key=lambda x:x[1],reverse=True)
-    for cid,rho,n,modal in res:
-        if modal>=0.95: flag=f" <- table stakes ({round(modal*100)}% pass, no variance here)"
-        elif rho>=0.2: flag=" <- VARIES + predicts: up-weight"
-        elif rho<=0.0: flag=" <- varies but does not predict (or inverts): investigate, do not blindly drop"
-        else: flag=""
-        print(f"  {cid:13} rho {rho:+.2f}  (n={n}, {round(modal*100)}% at modal){flag}")
-    print("\nRead the SIGNAL, not the noise: retune ENGINE_WEIGHTS toward the 'VARIES + predicts' checks.")
-    print("Caveat: heavy-tailed sample (2 pages = ~75% of citations), single site, one engine (Copilot).")
-    print("Treat as directional; recalibrate as more citation data and other sites are added.")
+        vals=[a for a,_ in pairs]; modal=max(Counter(vals).values())/len(vals) if vals else 1.0
+        rho=spearman(vals,[b for _,b in pairs])
+        verdict=("table-stakes" if modal>=0.95 else "up-weight" if rho>=0.2 else "neutral" if rho>0 else "investigate")
+        out["checks"].append({"id":cid,"label":CHECK_META[cid]["label"],"rho":rho,"n":len(pairs),"modal":round(modal*100),"verdict":verdict})
+    out["checks"].sort(key=lambda c:c["rho"],reverse=True)
+    return out
+
+def calibrate(report_json, citations_csv):
+    d=json.load(open(report_json,encoding="utf-8"))
+    r=calibrate_data(d, parse_cites(open(citations_csv,encoding="utf-8-sig").read()))
+    if not r or r.get("error"):
+        print((r or {}).get("error","no data")); print("CSV format: url,citations (Bing WMT > AI Performance)."); return
+    print(f"\n=== CITED Score calibration vs {r['matched']} pages with real citations ===")
+    print(f"Overall  <-> citations : rho {r['overall']:+.2f}")
+    for pl,v in r["pillars"].items(): print(f"{pl:13} <-> citations : rho {v:+.2f}")
+    for e,v in r["engines"].items(): print(f"{e:13} <-> citations : rho {v:+.2f}")
+    print("\nPer-check predictive power (rho ~0 at high modal = table stakes, not measurable here - do NOT drop):")
+    for c in r["checks"]:
+        print(f"  {c['id']:14} rho {c['rho']:+.2f}  (n={c['n']}, {c['modal']}% modal)  {c['verdict']}")
+    print("\nCaveat: directional. Heavy-tailed samples and single sites mislead; recalibrate as data grows.")
 
 # ------------------------------------------------------------------ outputs
 def write_outputs(data, outbase):
@@ -891,8 +958,8 @@ function planRow(i,x){const eg=Object.entries(i.gain_engines).filter(([e,v])=>v>
    <div class="urls">${[...i.bad.map(u=>'● '+rel(u)),...i.warn.map(u=>'○ '+rel(u))].join('<br>')}</div></div>`}
 // ---- shared helpers for Action Plan + Issues ----
 const PDOT={Known:'#6f9dff',Findable:'#f2b53c',Trusted:'#3ecf8e'};
-const TTYPE={schema:'template',parity:'template',faq:'template',canonical:'template',robots:'template',sitemap:'template',reachability:'template',freshness:'template',internal:'template',http:'template',
- answerfirst:'copy',qheadings:'copy',sections:'copy',liststables:'copy',wordcount:'copy',statdensity:'copy',h1:'copy',
+const TTYPE={schema:'template',parity:'template',faq:'template',canonical:'template',robots:'template',sitemap:'template',reachability:'template',freshness:'template',internal:'template',http:'template',entity:'template',schemacomplete:'template',
+ answerfirst:'copy',qheadings:'copy',sections:'copy',liststables:'copy',wordcount:'copy',statdensity:'copy',h1:'copy',author:'copy',sourced:'copy',video:'copy',comparison:'copy',
  meta:'meta',title:'meta',alt:'meta',citations:'meta'};
 const EBARS=e=>{const n=(e=='High')?3:(e=='Med')?2:1,c=n==1?'#3ecf8e':n==2?'#f2b53c':'#ff4d00',lab=n==1?'low':n==2?'medium':'high';
  let b='';for(let k=0;k<3;k++)b+=`<span class="eb" style="background:${k<n?c:'#2C231C'}"></span>`;
@@ -1150,8 +1217,8 @@ function pagesView(){
  </div></div>`;
  h+=`</div>`;
  return h}
-const SITEIDS=new Set(['robots','llms','sitemap','reachability']);
-const SHORT={parity:'Schema in JS',answerfirst:'no opener',sections:'walls of text',schema:'Article schema',wordcount:'thin content',freshness:'stale',qheadings:'H2s',faq:'no FAQ',liststables:'no tables',meta:'meta desc',title:'title',alt:'alt text',citations:'few sources',internal:'few links',statdensity:'few stats',canonical:'canonical',h1:'H1',robots:'bot blocked',sitemap:'no sitemap',reachability:'blocked'};
+const SITEIDS=new Set(['robots','llms','sitemap','reachability','comparison']);
+const SHORT={parity:'Schema in JS',answerfirst:'no opener',sections:'walls of text',schema:'Article schema',wordcount:'thin content',freshness:'stale',qheadings:'H2s',faq:'no FAQ',liststables:'no tables',meta:'meta desc',title:'title',alt:'alt text',citations:'few sources',internal:'few links',statdensity:'few stats',canonical:'canonical',h1:'H1',robots:'bot blocked',sitemap:'no sitemap',reachability:'blocked',entity:'no entity',schemacomplete:'thin schema',author:'no author',sourced:'unsourced stats',video:'no video',comparison:'no comparison'};
 const EBOTS={'ChatGPT':['GPTBot','OAI-SearchBot'],'Perplexity':['PerplexityBot'],'AI Overviews':['Googlebot','Google-Extended'],'Gemini':['Google-Extended'],'Copilot':['Bingbot'],'Claude':['ClaudeBot','anthropic-ai']};
 const EOWNER={'ChatGPT':'OpenAI','Perplexity':'Perplexity','AI Overviews':'Google','Gemini':'Google','Copilot':'Microsoft','Claude':'Anthropic'};
 const ORD=['','strongest','second-strongest','third-strongest','fourth-strongest','fifth-strongest','sixth-strongest'];
@@ -1309,9 +1376,24 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None):
         pages=list(ex.map(work,urls))
     emit("site",total,total,"Site-wide checks...")
     sitecx=site_checks(origin,domain)
-    data=build(domain,origin,pages,sitecx); apply_diff(data,out); write_outputs(data,out)
+    data=build(domain,origin,pages,sitecx)
+    if out: apply_diff(data,out); write_outputs(data,out)     # out=None -> crawl + score only, no files (used by benchmark)
     emit("done",total,total,f"{domain}: {data['overall']}/100, {data['pages_crawled']} pages")
     return data
+
+def benchmark(urls, max_pages=25, workers=WORKERS, progress=None):
+    """Crawl each site (capped for speed) and return side-by-side CITED Score / pillars / engines."""
+    out=[]
+    for i,u in enumerate(urls):
+        if not (u or "").strip(): continue
+        if progress: progress("bench",i,len(urls),f"Crawling {u} ...")
+        try:
+            d=run_audit(u, out=None, max_pages=max_pages, workers=workers)
+            out.append({"domain":d["domain"],"origin":d["origin"],"overall":d["overall"],
+                        "pillars":d["pillars"],"engines":d["engines"],"pages":d["pages_crawled"],"error":None})
+        except Exception as e:
+            out.append({"domain":u,"overall":None,"pillars":{},"engines":{},"pages":0,"error":str(e)[:180]})
+    return out
 
 def main():
     ap=argparse.ArgumentParser()
