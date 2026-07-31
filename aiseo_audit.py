@@ -729,6 +729,7 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .dfh{display:flex;justify-content:space-between;align-items:baseline}
 .dfh .t{font-family:var(--display);text-transform:uppercase;font-size:15px;letter-spacing:.5px}
 .dfrow{border-top:1px solid var(--line);padding:16px 0}.dfrow:first-of-type{border-top:0;padding-top:12px}
+.dfrow:hover{background:#ffffff06}
 .dfnum{width:22px;height:22px;border-radius:50%;border:1px solid var(--grn);color:var(--grn);font-size:12px;font-weight:800;display:inline-grid;place-items:center;margin-right:6px}
 .dfgain{font-family:var(--display);font-size:22px;color:var(--grn);text-align:right;line-height:1}.dfgl{font-size:9px;color:var(--muted);letter-spacing:.5px}
 .chip2{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;margin:0 6px 4px 0}
@@ -764,6 +765,7 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .apissue{border-bottom:1px solid #ffffff10}
 .apissue:last-child{border-bottom:0}
 .aprow{display:grid;gap:18px;align-items:center;padding:15px 0}
+.aprow:hover{background:#ffffff06}
 .eb{width:5px;height:11px;border-radius:1px;display:inline-block}
 .ebs{display:inline-flex;gap:2px;margin-right:6px;vertical-align:middle}
 .apchip{display:inline-block;font-size:11px;color:#c9c2bd;background:#ffffff10;padding:2px 7px;border-radius:4px;margin:0 6px 2px 0}
