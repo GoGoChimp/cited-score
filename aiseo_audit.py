@@ -648,7 +648,7 @@ def write_html(d, path):
  --grn:#ff4d00;--grn2:#ff7a33;--deep:#c23a00;--amber:#F5A623;--red:#F16A5F;--chip:#D63B2F}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 'Figtree',-apple-system,Segoe UI,Arial,sans-serif}
-a{color:var(--grn);text-decoration:none}a:hover{text-decoration:underline}
+a{color:var(--txt);text-decoration:none}a:hover{color:var(--grn)}
 header{padding:18px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .logo{font-family:Impact,'Haettenschweiler','Arial Narrow',sans-serif;font-size:26px;font-weight:400;letter-spacing:-.3px;text-transform:uppercase}
 .chip{background:var(--grn);color:#0a0a0a;font-family:'Figtree',sans-serif;font-weight:800;font-size:11px;padding:1px 5px;border-radius:4px;vertical-align:super;margin-left:4px}
@@ -906,7 +906,7 @@ function ovw2(){
  const engs=ECOLS.slice().sort((a,c)=>D.engines[a]-D.engines[c]);
  const erow=e=>{const val=D.engines[e],pts=THR-val;return `<div class="trow"><div><div class="q">${e}</div><div class="qd">${pts>0?pts+' pts to quotable':'clears 70 · quotable'}</div></div><div class="tbar"><i style="width:${Math.max(2,val)}%;background:${bcol(val)}"></i><span class="thr" style="left:${THR}%"></span></div><div class="tval">${val}${dlt(val,ew[e])}</div></div>`};
  const dcard=(i,x)=>{const eg=Object.entries(i.gain_engines||{}).filter(([e,v])=>v>0).sort((a,c)=>c[1]-a[1]).slice(0,3);
-   return `<div class="dfrow"><div style="display:flex;justify-content:space-between;gap:10px"><div style="font-weight:800;display:flex;align-items:flex-start;flex:1;min-width:0"><span class="dfnum">${x+1}</span><span>${esc(i.label)}</span></div><div class="dfgain">+${i.gain_overall||0}<div class="dfgl">overall</div></div></div><div class="qd" style="margin:6px 0 4px 28px">${esc(i.ev)}</div><div style="margin-left:28px">${eg.map(([e,v])=>`<span class="chip2">${e} +${v}</span>`).join('')}</div><div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 0 28px"><span class="qd">${i.pillar} · ${i.ch} · ${i.effort} effort</span><button class="listbtn" onclick="go('Action Plan')">List ${i.count} page${i.count>1?'s':''}</button></div></div>`};
+   return `<div class="dfrow" onclick="tgl('pd_${i.id}')" style="cursor:pointer"><div style="display:flex;justify-content:space-between;gap:10px"><div style="font-weight:800;display:flex;align-items:flex-start;flex:1;min-width:0"><span class="dfnum">${x+1}</span><span>${esc(i.label)} <span class="egcar">▾</span></span></div><div class="dfgain">+${i.gain_overall||0}<div class="dfgl">overall</div></div></div><div class="qd" style="margin:6px 0 4px 28px">${esc(i.ev)}</div><div style="margin-left:28px">${eg.map(([e,v])=>`<span class="chip2">${e} +${v}</span>`).join('')}</div><div style="margin:10px 0 0 28px"><span class="qd">${i.pillar} · ${i.ch} · ${i.effort} effort · ${i.count} page${i.count>1?'s':''}</span></div><div style="margin-left:28px">${pdet(i.id)}</div></div>`};
  const decl=df.declined||[];
  const lg=decl.length?`<div class="lg"><div class="dfh"><div class="t">Losing ground</div><span class="qd">since ${esc(df.since||'')}</span></div>${decl.slice(0,4).map(m=>`<div class="lgrow"><span>${rel(m.url)}</span><span><span class="qd">${m.was} → </span><b>${m.now}</b> <span class="d dn">${m.d}</span></span></div>`).join('')}</div>`:'';
  const types=Object.entries(D.types||{}).sort((a,c)=>c[1]-a[1]),tmax=Math.max.apply(0,types.map(t=>t[1]).concat(1));
@@ -976,6 +976,14 @@ const gpos=i=>i.gain_overall>0?i.gain_overall:0;
 function tgl(id){const e=document.getElementById(id);if(e)e.style.display=e.style.display=='block'?'none':'block'}
 function bull(u,c){return `<span class="b"><span class="dotb" style="background:${c}"></span><a href="${esc(u)}" target="_blank">${rel(u)}</a></span>`}
 function urlList(id,i){return `<div id="${id}" class="apurls">${[...i.bad.map(u=>bull(u,'#ff4d3d')),...i.warn.map(u=>bull(u,'#f2b53c'))].join('')||'<span class="qd">No affected pages.</span>'}</div>`}
+function pdet(id){
+ if(SITEIDS.has(id)){const sc=(D.site_checks||[]).find(c=>c.id==id)||{};const cl=sc.status=='good'?'ok':sc.status=='warn'?'wn':'er';return `<div id="pd_${id}" class="engdet"><span class="rst ${cl}">Site-wide check: ${sc.status||'n/a'}</span> <span class="qd">${esc(sc.detail||'')}</span></div>`;}
+ const ok=D.pages.filter(p=>p.status==200), dcx=s=>s=='good'?'#3ecf8e':s=='warn'?'#f2b53c':'#ff4d3d';
+ const rr=ok.map(p=>[p,p.cs[id]]).filter(x=>x[1]&&x[1]!='na'&&x[1]!='info');
+ if(!rr.length)return `<div id="pd_${id}" class="engdet"><span class="qd">No applicable pages for this check.</span></div>`;
+ const fl=rr.filter(x=>x[1]!='good'),ps=rr.filter(x=>x[1]=='good');
+ const ln=x=>`<span class="egp"><span class="dotb" style="background:${dcx(x[1])}"></span><a href="${esc(x[0].url)}" target="_blank">${rel(x[0].url)}</a></span>`;
+ return `<div id="pd_${id}" class="engdet">${fl.length?'<div class="egh">Failing here ('+fl.length+')</div>'+fl.map(ln).join(''):''}${ps.length?'<div class="egh"'+(fl.length?' style="margin-top:10px"':'')+'>Passing ('+ps.length+')</div>'+ps.map(ln).join(''):''}</div>`}
 
 function plan(){
  const overall=D.overall, act=ACT();
@@ -1023,28 +1031,27 @@ function planFix(i,size,accent){
  const gv=i.gain_overall>0?('+'+i.gain_overall):'—';
  const pdot=`<span class="dotb" style="background:${PDOT[i.pillar]||'#888'}"></span>`;
  const pages=`<span style="font-size:13px;color:#b7afaa">${i.count} page${i.count>1?'s':''}</span>`;
- const btn=`<button class="pbtn ${size=='big'?'':'g'}" onclick="tgl('pu_${i.id}')">Pages</button>`;
- const urls=urlList('pu_'+i.id,i);
- const cols=`grid-template-columns:30px 1fr 108px 96px 60px 100px`;
+ const urls=pdet(i.id);
+ const cols=`grid-template-columns:30px 1fr 108px 96px 60px 70px;cursor:pointer`;
  if(size=='sm'){
-   return `<div class="apissue"><div class="aprow" style="${cols}">
+   return `<div class="apissue"><div class="aprow" style="${cols}" onclick="tgl('pd_${i.id}')">
      <span style="font-size:14px;font-weight:700;color:var(--muted)">${r}</span>
-     <div style="display:flex;align-items:center;gap:12px;min-width:0"><span style="font-size:14px;font-weight:600">${esc(i.label)}</span><span class="qd" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.ev)}</span></div>
+     <div style="display:flex;align-items:center;gap:12px;min-width:0"><span style="font-size:14px;font-weight:600;white-space:nowrap">${esc(i.label)} <span class="egcar">▾</span></span><span class="qd" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.ev)}</span></div>
      <span style="font-size:12px;color:#b7afaa">${pdot}${i.pillar}</span>
      <span style="font-size:12px">${EBARS(i.effort)}</span>${pages}
-     <span style="display:flex;align-items:center;justify-content:flex-end;gap:10px"><span class="apgain" style="font-size:16px;color:${i.gain_overall>0?'#b7afaa':'var(--muted)'}">${gv}</span>${btn}</span>
+     <span class="apgain" style="font-size:16px;text-align:right;color:${i.gain_overall>0?'#b7afaa':'var(--muted)'}">${gv}</span>
    </div>${urls}</div>`}
  const big=size=='big';
- return `<div class="apissue"><div class="aprow" style="${cols}">
+ return `<div class="apissue"><div class="aprow" style="${cols}" onclick="tgl('pd_${i.id}')">
    <span style="font-size:${big?'20px':'17px'};font-weight:900;color:${accent}">${r}</span>
    <div style="display:flex;flex-direction:column;gap:5px;min-width:0">
-     <div style="display:flex;align-items:center;gap:10px"><span style="font-size:${big?'15px':'14px'};font-weight:${big?'700':'600'}">${esc(i.label)}</span><span style="font-size:11px;color:#6f6864">${i.ch}${!big&&eg.length?' &middot; '+eg[0][0]+' +'+eg[0][1]:''}</span></div>
+     <div style="display:flex;align-items:center;gap:10px"><span style="font-size:${big?'15px':'14px'};font-weight:${big?'700':'600'}">${esc(i.label)} <span class="egcar">▾</span></span><span style="font-size:11px;color:#6f6864">${i.ch}${!big&&eg.length?' &middot; '+eg[0][0]+' +'+eg[0][1]:''}</span></div>
      <div class="qd" style="line-height:1.5">${esc(i.ev)}</div>
      ${big&&eg.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:1px">${eg.map(x=>`<span class="apchip">${x[0]} +${x[1]}</span>`).join('')}</div>`:''}
    </div>
    <span style="font-size:12px;color:#b7afaa">${pdot}${i.pillar}</span>
    <span style="font-size:12px">${EBARS(i.effort)}</span>${pages}
-   <span style="display:flex;align-items:center;justify-content:flex-end;gap:10px"><span class="apgain" style="font-size:${big?'26px':'20px'};color:${accent}">${gv}</span>${btn}</span>
+   <span class="apgain" style="font-size:${big?'26px':'20px'};text-align:right;color:${accent}">${gv}</span>
  </div>${urls}</div>`}
 function roadmapCard(){
  const info={1:['Days 0–30 &middot; foundation','Quick technical wins, mostly template-level'],2:['Days 30–60 &middot; structure','Rewrite for retrieval, page by page'],3:['Days 60–90 &middot; polish','Small edits, then re-crawl and compare']};
@@ -1115,20 +1122,19 @@ function issueRow(i,P){
  const bad=i.severity=='bad', dc=bad?'#ff4d3d':'#f2b53c';
  const w=Math.min(100,Math.round(100*i.count/(P||1)));
  const gv=i.gain_overall>0?('+'+i.gain_overall):'—', gc=i.gain_overall>0?'var(--ok)':'var(--muted)';
- const btn=`<button class="pbtn g" style="color:#fff" onclick="tgl('iu_${i.id}')">List pages</button>`;
  let body;
  if(bad){body=`<div style="display:flex;flex-direction:column;gap:5px;min-width:0">
-   <div style="display:flex;align-items:center;gap:10px"><span class="dotb" style="background:${dc}"></span><span style="font-size:15px;font-weight:700">${esc(i.label)}</span><span style="font-size:11px;color:#6f6864">${i.ch}</span></div>
+   <div style="display:flex;align-items:center;gap:10px"><span class="dotb" style="background:${dc}"></span><span style="font-size:15px;font-weight:700">${esc(i.label)} <span class="egcar">▾</span></span><span style="font-size:11px;color:#6f6864">${i.ch}</span></div>
    <div class="qd" style="line-height:1.5;padding-left:17px">${esc(i.ev)}</div>
    <div style="font-size:12px;color:#c9c2bd;line-height:1.5;padding-left:17px"><span style="color:#fff;font-weight:600">Fix</span> ${esc(i.fix)}</div></div>`}
  else{body=`<div style="display:flex;flex-direction:column;gap:4px;min-width:0">
-   <div style="display:flex;align-items:center;gap:10px"><span class="dotb" style="background:${dc}"></span><span style="font-size:14px;font-weight:600">${esc(i.label)}</span><span style="font-size:11px;color:#6f6864">${i.ch}</span></div>
+   <div style="display:flex;align-items:center;gap:10px"><span class="dotb" style="background:${dc}"></span><span style="font-size:14px;font-weight:600">${esc(i.label)} <span class="egcar">▾</span></span><span style="font-size:11px;color:#6f6864">${i.ch}</span></div>
    <div class="qd" style="line-height:1.5;padding-left:17px"><span style="font-weight:600">Fix</span> ${esc(i.fix||i.ev)}</div></div>`}
- return `<div class="apissue"><div class="aprow" style="grid-template-columns:1fr 210px 66px 96px;gap:20px">
+ return `<div class="apissue"><div class="aprow" style="grid-template-columns:1fr 210px 66px;gap:20px;cursor:pointer" onclick="tgl('pd_${i.id}')">
    ${body}
    <div style="display:flex;flex-direction:column;gap:6px"><div style="height:8px;border-radius:4px;background:#221d1a;overflow:hidden"><div style="width:${w}%;height:100%;background:${dc}"></div></div><div style="font-size:11px;color:#9d9691">${i.count} of ${P} pages affected</div></div>
-   <span style="font-size:13px;font-weight:700;color:${gc};text-align:right">${gv}</span>${btn}
- </div>${urlList('iu_'+i.id,i)}</div>`}
+   <span style="font-size:13px;font-weight:700;color:${gc};text-align:right">${gv}</span>
+ </div>${pdet(i.id)}</div>`}
 function worstPagesCard(){
  const rows=D.pages.map(p=>({p,f:p.checks.filter(c=>c.status=='bad'||c.status=='warn').length,e:p.checks.filter(c=>c.status=='bad').length})).filter(x=>x.f>0).sort((a,b)=>b.f-a.f||a.p.score-b.p.score).slice(0,5);
  if(!rows.length)return '';
@@ -1361,7 +1367,7 @@ tabsbar();render();
          "<link href='https://fonts.googleapis.com/css2?family=Figtree:wght@300..900&display=swap' rel='stylesheet'>"
          f"<style>{css}</style></head><body>"
          f"<header><span class='logo'>CITED<span class='chip'>Score</span></span>"
-         f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--grn)'>{H.escape(d['domain'])}</a> &middot; {d['pages_crawled']} pages &middot; {d['generated']}</span>"
+         f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--txt);font-weight:600'>{H.escape(d['domain'])}</a> &middot; {d['pages_crawled']} pages &middot; {d['generated']}</span>"
          "<span class='btns'><button onclick='printReport()'>Print / PDF</button><button onclick='exportPages()'>Export CSV</button></span></header>"
          "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view'></div>"
          "<div class='foot'>The CITED Score <b>estimates citability</b> from on-page, structural and technical signals. "
