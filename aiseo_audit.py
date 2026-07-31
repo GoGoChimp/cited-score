@@ -831,8 +831,14 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 /* ===== Engines + Site structure + Response times ===== */
 .engcols{display:grid;grid-template-columns:1fr 92px 230px 84px;gap:18px;align-items:center}
 .enghead{padding:12px 0;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted)}
-.engrow{padding:15px 0;border-bottom:1px solid #ffffff0f}
+.engrow{padding:15px 0;border-bottom:1px solid #ffffff0f;cursor:pointer}
 .engrow:last-child{border-bottom:0}
+.engrow:hover{background:#ffffff06}
+.egcar{font-size:9px;color:var(--muted);vertical-align:middle}
+.engdet{display:none;font-size:12px;padding:2px 0 14px;columns:2;column-gap:26px}
+.engdet .egp{display:block;padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;break-inside:avoid}
+.engdet .egp a{color:var(--muted)}.engdet .egp a:hover{color:var(--txt)}
+.egh{font-size:10px;letter-spacing:.05em;color:var(--muted);text-transform:uppercase;margin:2px 0 4px;column-span:all}
 .engbar{height:9px;border-radius:5px;background:#221d1a;overflow:hidden}
 .engbar i{display:block;height:100%;border-radius:5px}
 .wdots{font-size:13px;letter-spacing:.12em;white-space:nowrap}
@@ -1241,12 +1247,21 @@ function engine(e){
  const hint=gap>0?(topFix?(TTYPE[topFix.id]=='template'?'One template fix clears most of the gap.':`The top fix adds +${topFix.lift}.`):''):'Already past the quotable threshold.';
  const WD=(w,c)=>`<span class="wdots" style="color:${c}">${'●'.repeat(w)}<span style="color:#3a3227">${'●'.repeat(Math.max(0,3-w))}</span></span>`;
  const barC=pr=>pr>=90?'#3ecf8e':pr>=40?'#f2b53c':'#ff4d3d';
- const esig=(s,hi)=>{const dc=s.w>=3?'#FF4D00':s.w==2?'#ff8a3d':'#8b8480';const lc=hi?(s.lift>=5?'#FF4D00':'#ff8a3d'):'#b7afaa';
+ const engDetail=id=>{
+   if(SITEIDS.has(id)){const sc=(D.site_checks||[]).find(c=>c.id==id)||{};const cl=sc.status=='good'?'ok':sc.status=='warn'?'wn':'er';return `<div id="eg_${id}" class="engdet"><span class="rst ${cl}">Site-wide check: ${sc.status||'n/a'}</span> <span class="qd">${esc(sc.detail||'')}</span></div>`;}
+   const dcx=s=>s=='good'?'#3ecf8e':s=='warn'?'#f2b53c':'#ff4d3d';
+   const rr=ok.map(p=>[p,p.cs[id]]).filter(x=>x[1]&&x[1]!='na'&&x[1]!='info');
+   if(!rr.length)return `<div id="eg_${id}" class="engdet"><span class="qd">No applicable pages for this signal.</span></div>`;
+   const fl=rr.filter(x=>x[1]!='good'),ps=rr.filter(x=>x[1]=='good');
+   const ln=x=>`<span class="egp"><span class="dotb" style="background:${dcx(x[1])}"></span><a href="${esc(x[0].url)}" target="_blank">${rel(x[0].url)}</a></span>`;
+   return `<div id="eg_${id}" class="engdet">${fl.length?'<div class="egh">Failing here ('+fl.length+')</div>'+fl.map(ln).join(''):''}${ps.length?'<div class="egh"'+(fl.length?' style="margin-top:10px"':'')+'>Passing ('+ps.length+')</div>'+ps.map(ln).join(''):''}</div>`;};
+ const esig=(s,hi)=>{const dcol=s.w>=3?'#FF4D00':s.w==2?'#ff8a3d':'#8b8480';const lc=hi?(s.lift>=5?'#FF4D00':'#ff8a3d'):'#b7afaa';
    const bar=`<div style="display:flex;flex-direction:column;gap:5px"><div class="engbar"><i style="width:${Math.max(s.pr,2)}%;background:${barC(s.pr)}"></i></div><span style="font-size:11px;color:${s.pr==0?'#ff9c88':'#9d9691'}">${s.pr}% pass · ${s.good} of ${s.total} pages</span></div>`;
    const lift=`<span style="font-size:${hi?'20px':'16px'};font-weight:${hi?'800':'700'};color:${lc};text-align:right">${s.lift>0?'+'+s.lift:'—'}</span>`;
-   if(!hi)return `<div class="engcols engrow"><div style="display:flex;align-items:center;gap:12px;min-width:0"><span style="font-size:14px;font-weight:600">${esc(s.lab)}</span><span class="qd" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.ev)}</span></div>${WD(s.w,dc)}${bar}${lift}</div>`;
-   return `<div class="engcols engrow"><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><span style="font-size:15px;font-weight:700">${esc(s.lab)}</span><span class="qd" style="line-height:1.5">${esc(s.ev)}</span></div>${WD(s.w,dc)}${bar}${lift}</div>`};
- const estrong=s=>`<div class="engcols" style="padding:2px 0"><span style="font-size:13px;color:#c9c2bd">${esc(s.lab)}</span>${WD(s.w,'#3ecf8e')}<div style="display:flex;align-items:center;gap:10px"><div class="engbar" style="height:7px;flex:1"><i style="width:${s.pr}%;background:#3ecf8e"></i></div><span style="font-size:11px;color:${s.pr>=100?'#3ecf8e':'#7fdcae'};width:74px;flex:none">${s.pr}% · ${s.good}/${s.total}</span></div><span style="text-align:right;color:#6f6864">—</span></div>`;
+   const lab=hi?`<div style="display:flex;flex-direction:column;gap:4px;min-width:0"><span style="font-size:15px;font-weight:700">${esc(s.lab)} <span class="egcar">▾</span></span><span class="qd" style="line-height:1.5">${esc(s.ev)}</span></div>`
+             :`<div style="display:flex;align-items:center;gap:12px;min-width:0"><span style="font-size:14px;font-weight:600;white-space:nowrap">${esc(s.lab)} <span class="egcar">▾</span></span><span class="qd" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.ev)}</span></div>`;
+   return `<div class="engcols engrow" onclick="tgl('eg_${s.id}')" title="Show pages">${lab}${WD(s.w,dcol)}${bar}${lift}</div>${engDetail(s.id)}`};
+ const estrong=s=>`<div><div class="engcols engrow" onclick="tgl('eg_${s.id}')" title="Show pages" style="padding:2px 0;border:0"><span style="font-size:13px;color:#c9c2bd">${esc(s.lab)} <span class="egcar">▾</span></span>${WD(s.w,'#3ecf8e')}<div style="display:flex;align-items:center;gap:10px"><div class="engbar" style="height:7px;flex:1"><i style="width:${s.pr}%;background:#3ecf8e"></i></div><span style="font-size:11px;color:${s.pr>=100?'#3ecf8e':'#7fdcae'};width:74px;flex:none">${s.pr}% · ${s.good}/${s.total}</span></div><span style="text-align:right;color:#6f6864">—</span></div>${engDetail(s.id)}</div>`;
  const secH=(c,name,sub)=>`<div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:${c}"></span><h3>${name}</h3><span class="meta">${sub}</span></div>`;
  let h=`<div class="ap2"><div class="apmain">`;
  h+=`<div class="apsum" style="display:grid;grid-template-columns:auto 1fr;gap:34px;align-items:center;padding:26px 28px">
