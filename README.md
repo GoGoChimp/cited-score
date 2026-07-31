@@ -12,6 +12,8 @@ No API keys, no LLM. Uses your installed Chrome or Edge to render (essential: cu
 ## Download (Windows)
 Grab the latest `CITED-Score.exe` from the [Releases page](https://github.com/GoGoChimp/cited-score/releases/latest). Double-click it; no Python needed. It still needs Google Chrome or Microsoft Edge installed (used to render pages) and warns if neither is found. The app checks for newer releases on launch and shows an update banner when one is available.
 
+**First run:** the app is not code-signed yet, so Windows Defender SmartScreen may show "Windows protected your PC". Click **More info -> Run anyway**. This is expected for any unsigned app; the full source is in this repo, so you can inspect it or build the exe yourself.
+
 ## Run from source
 Requirements: Python 3.10+, Google Chrome or Microsoft Edge, then `pip install -r requirements.txt`.
 
@@ -61,7 +63,7 @@ pyinstaller CITED-Score.spec
 Ships `dist/CITED-Score.exe`. Attach it to a GitHub Release tagged with the app version (see `APP_VERSION` in `app.py`) so the in-app update check can find it. Mac builds must be done on a Mac.
 
 ## Brand
-Deep-green-on-black to match the CITED cover (`#0E110E` field, `#42D949` green, `#F0EBE0` type, red `[1]` citation chip). The report is built to be screenshotted into LinkedIn posts and client emails. The wordmark uses the Anton typeface (SIL Open Font License); download `Anton-Regular.ttf` from Google Fonts into `fonts/` to regenerate the icon with `make_icon.py`.
+Orange-on-black to match the CITED cover (`#0d0b0a` field, brand orange `#ff4d00`, `#f2ede9` type, red `[1]` citation chip). The report is built to be screenshotted into LinkedIn posts and client emails. The **CITED** wordmark is set in Impact; section and display headers in Figtree ExtraBold.
 
 ## Notes
 - The ruleset encodes CITED's playbook (answer-first, self-contained passages, evidence density, entity/schema clarity, AI-crawler access), sourced.
