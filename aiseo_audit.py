@@ -42,7 +42,7 @@ WORKERS = 6
 # answer?) / Trusted (Citation, do I trust you enough to name you?). ch = CITED chapter.
 CHECK_META = {
  # KNOWN - entity recognition (ch4 Entities & Trust)
- "schema":     {"label":"Article / BlogPosting schema","pillar":"Known","ch":"Ch4","phase":1,"effort":"Med",
+ "schema":     {"label":"Content-type schema (Article/Service/etc.)","pillar":"Known","ch":"Ch4","phase":1,"effort":"Med",
                 "ev":"Schema classifies the page as an entity the engine can attribute (Ch4)."},
  "parity":     {"label":"Schema readable without JavaScript","pillar":"Known","ch":"Ch4","phase":1,"effort":"Low",
                 "ev":"Non-JS AI crawlers never run your JavaScript, so JS-injected schema is invisible to them (Ch4)."},
@@ -98,6 +98,12 @@ CHECK_META = {
                 "ev":"Unsourced numbers read as unverifiable; sourced stats lift citation likelihood (Princeton GEO, Ch4)."},
  "freshness":  {"label":"Fresh (updated < 12 months)","pillar":"Trusted","ch":"Ch4","phase":1,"effort":"Low",
                 "ev":"Engines weight recency; undated content loses to dated (Ch4)."},
+ "entitydensity":{"label":"Entity density (named entities in prose)","pillar":"Known","ch":"Ch4","phase":2,"effort":"Med",
+                "ev":"Cited passages average ~20.6% proper nouns vs 5-8% typical; named entities let the engine attribute the claim (Indig 1.2M-answer study 2026, Ch4)."},
+ "readability":{"label":"Readable prose (grade <= ~16)","pillar":"Findable","ch":"Ch5","phase":2,"effort":"Med",
+                "ev":"Cited text reads at ~grade 16 vs ~19 for uncited; overly complex prose is lifted less (Indig 2026, Ch5)."},
+ "definitional":{"label":"Definitional opener ([X] is ...)","pillar":"Findable","ch":"Ch5","phase":2,"effort":"Low",
+                "ev":"Cited passages use definitional '[Entity] is' constructions ~2x more; a clean definition is the liftable answer (Indig 2026, Ch5)."},
  # INFORMATIONAL - not scored
  "llms":       {"label":"llms.txt (informational, not scored)","pillar":"Info","ch":"Ch5","phase":0,"effort":"Low",
                 "ev":"SE Ranking found NO correlation between llms.txt and citations; their model got more accurate without it (Ch5). Shown for reference; harmless, not required."},
@@ -115,10 +121,13 @@ FIX = {
  "liststables":"Add an HTML comparison table or numbered list for the key facts.",
  "statdensity":"Add sourced numbers, roughly one verifiable fact per 80 words.",
  "citations":"Cite two or more external authorities with inline links.",
- "schema":"Add server-rendered Article/BlogPosting JSON-LD.",
+ "schema":"Add server-rendered content-type JSON-LD: Article/BlogPosting for posts, Service/SoftwareApplication/Book/etc. for other pages.",
  "faq":"Add 6-10 FAQPage Q&A pairs, each a self-contained 40-60 word answer.",
  "parity":"Server-render the JSON-LD so non-JS AI crawlers can read it (Page Settings head, not a JS embed).",
  "freshness":"Add a visible last-updated date and refresh the content.",
+ "entitydensity":"Name the specific entities (brands, tools, people, places, methods) in your prose instead of generic nouns.",
+ "readability":"Simplify sentences and vocabulary so the key answer reads at roughly grade 12-16.",
+ "definitional":"Open with a direct definition: '[Topic] is ...' in the first sentence.",
  "alt":"Add descriptive alt text to every meaningful image.",
  "internal":"Link to 3+ related pages from the body to build the cluster.",
  "canonical":"Add a self-referencing canonical tag.",
@@ -140,12 +149,12 @@ FIX = {
 # Gemini + AI Overviews DO eventually see JS-injected schema, so parity is removed for them (it is
 # a reliability/speed issue there, not visibility). schema itself still weighted for Gemini.
 ENGINE_WEIGHTS = {
- "ChatGPT":     {"wordcount":3,"statdensity":3,"citations":3,"parity":3,"entity":2,"schemacomplete":2,"author":2,"sourced":2,"answerfirst":2,"sections":2,"schema":2,"freshness":1,"qheadings":1},
- "Perplexity":  {"freshness":3,"citations":3,"parity":3,"sourced":2,"entity":2,"statdensity":2,"answerfirst":2,"liststables":2,"sections":2,"reachability":2,"qheadings":1,"author":1,"comparison":1,"video":1},
- "AI Overviews":{"answerfirst":3,"qheadings":3,"sections":2,"schema":2,"faq":2,"liststables":2,"entity":2,"schemacomplete":2,"video":2,"freshness":1,"canonical":1,"sitemap":1,"title":1,"meta":1,"comparison":1,"author":1},
- "Gemini":      {"schema":3,"entity":3,"schemacomplete":2,"statdensity":2,"answerfirst":2,"canonical":1,"sitemap":1,"faq":1,"citations":1,"author":1},
- "Copilot":     {"schema":3,"sitemap":2,"reachability":2,"liststables":2,"statdensity":2,"answerfirst":2,"parity":2,"entity":2,"schemacomplete":2,"faq":2,"freshness":1,"sourced":1,"comparison":1,"video":1},
- "Claude":      {"sections":3,"parity":3,"answerfirst":2,"statdensity":2,"qheadings":2,"liststables":2,"entity":2,"schema":1,"citations":1,"author":1,"sourced":1},
+ "ChatGPT":     {"wordcount":3,"statdensity":3,"citations":3,"parity":3,"entity":2,"entitydensity":2,"schemacomplete":2,"author":2,"sourced":2,"answerfirst":2,"sections":2,"schema":1,"definitional":1,"readability":1,"freshness":1,"qheadings":1},
+ "Perplexity":  {"freshness":3,"citations":3,"parity":3,"sourced":2,"entity":2,"entitydensity":2,"statdensity":2,"answerfirst":2,"liststables":2,"sections":2,"reachability":2,"definitional":1,"qheadings":1,"author":1,"comparison":1,"video":1},
+ "AI Overviews":{"answerfirst":3,"qheadings":3,"definitional":2,"sections":2,"schema":2,"faq":2,"liststables":2,"entity":2,"entitydensity":1,"readability":1,"schemacomplete":2,"video":2,"freshness":1,"canonical":1,"sitemap":1,"title":1,"meta":1,"comparison":1,"author":1},
+ "Gemini":      {"schema":3,"entity":3,"entitydensity":2,"schemacomplete":2,"statdensity":2,"answerfirst":2,"canonical":1,"sitemap":1,"faq":1,"citations":1,"author":1},
+ "Copilot":     {"schema":3,"sitemap":2,"reachability":2,"liststables":2,"statdensity":2,"answerfirst":2,"parity":2,"entity":2,"entitydensity":1,"schemacomplete":2,"faq":2,"freshness":1,"sourced":1,"comparison":1,"video":1},
+ "Claude":      {"sections":3,"parity":3,"answerfirst":2,"definitional":1,"readability":1,"statdensity":2,"qheadings":2,"liststables":2,"entity":2,"entitydensity":1,"citations":1,"author":1,"sourced":1},
 }
 ENGINE_NOTE = {
  "ChatGPT":"Favours comprehensive, authoritative, source-cited content + strong entity grounding. Cites few sources per answer, so be THE definitive page.",
@@ -277,8 +286,8 @@ def classify(path, types):
 # Deliberately NARROW (the score must not be kind): a homepage still owes citations,
 # statistics and depth, so those stay in.
 NA_BY_TYPE = {
-    "home":     {"answerfirst","qheadings","sections","faq","freshness","schema","schemacomplete","author","sourced","video"},
-    "listing":  {"answerfirst","qheadings","sections","faq","freshness","schema","statdensity","citations","wordcount","schemacomplete","author","sourced","video","entity"},
+    "home":     {"answerfirst","qheadings","sections","faq","freshness","schema","schemacomplete","author","sourced","video","readability","entitydensity","definitional"},
+    "listing":  {"answerfirst","qheadings","sections","faq","freshness","schema","statdensity","citations","wordcount","schemacomplete","author","sourced","video","entity","readability","entitydensity","definitional"},
 }
 
 def chk(cid, status, detail):
@@ -303,11 +312,13 @@ def analyze(url, status, raw, rendered, domain):
     C.append(chk("h1","good" if len(h1s)==1 else "bad",f"{len(h1s)} H1s"))
     body = root.get_text(" ",strip=True); wc=len(words(body))
     C.append(chk("wordcount","good" if wc>=300 else "warn",f"{wc} words"))
-    fp=None
+    fp=None; fptext=""
     for p in root.find_all("p"):
-        n=len(words(p.get_text(" ",strip=True)))
-        if n>=12: fp=n; break
+        pt=p.get_text(" ",strip=True); n=len(words(pt))
+        if n>=12: fp=n; fptext=pt; break
     C.append(chk("answerfirst","good" if fp and 40<=fp<=60 else ("warn" if fp and 30<=fp<=90 else "bad"),f"opening para {fp or 0} words"))
+    defn=bool(re.match(r"^\W{0,3}[A-Z][\w&/.\- ]{1,60}?\s+(is|are|means|refers to)\b", fptext))
+    C.append(chk("definitional","good" if defn else "warn","definitional opener" if defn else "opener is not a definition"))
     heads=root.find_all(["h2","h3"]); nh=len(heads)
     qh=sum(1 for h in heads if h.get_text(strip=True).endswith("?") or QSTART.match(h.get_text(strip=True)))
     qpct=round(100*qh/nh) if nh else 0
@@ -323,12 +334,39 @@ def analyze(url, status, raw, rendered, domain):
     C.append(chk("liststables","good" if ntab+nlist>=1 else "warn",f"{ntab} tables, {nlist} lists"))
     nums=len(NUM_RE.findall(body)); dens=round(100*nums/wc,2) if wc else 0
     C.append(chk("statdensity","good" if dens>=1.5 else ("warn" if dens>=0.6 else "bad"),f"{nums} numbers, {dens}/100w"))
+    _sents=max(1,len(re.findall(r"[.!?]+(?:\s|$)",body)))
+    def _syl(w):
+        w=w.lower(); v="aeiouy"; c=0; pv=False
+        for ch in w:
+            iv=ch in v
+            if iv and not pv: c+=1
+            pv=iv
+        if w.endswith("e"): c=max(1,c-1)
+        return max(1,c)
+    _bw=words(body); _syls=sum(_syl(w) for w in _bw) if _bw else 0
+    fk=round(0.39*(wc/_sents)+11.8*(_syls/max(1,wc))-15.59,1) if wc else 0
+    C.append(chk("readability","good" if 0<fk<=16 else ("warn" if fk<=20 else "bad"),f"grade {fk}"))
+    _pn=0; _tot=0
+    for _s in re.split(r"[.!?]+\s+",body):
+        _ws=re.findall(r"[A-Za-z][A-Za-z'&./\-]*",_s)
+        for _i,_w in enumerate(_ws):
+            _tot+=1
+            if _i>0 and _w[0].isupper(): _pn+=1
+    pnd=round(100*_pn/_tot,1) if _tot else 0
+    C.append(chk("entitydensity","good" if pnd>=12 else ("warn" if pnd>=6 else "bad"),f"{pnd}% named entities"))
     ext=0
     for a in root.find_all("a",href=True):
         if a["href"].startswith("http") and domain not in urllib.parse.urlparse(a["href"]).netloc.replace("www.",""): ext+=1
     C.append(chk("citations","good" if ext>=2 else ("warn" if ext==1 else "bad"),f"{ext} external links"))
     tset=set(types_r)
-    has_art = bool(tset & {"Article","BlogPosting","NewsArticle","TechArticle"})
+    _ART={"Article","BlogPosting","NewsArticle","TechArticle"}
+    # Article pages need an Article type. Other page types are correctly classified by an
+    # appropriate content-type schema (Service, SoftwareApplication, Book, Product, etc.);
+    # generic WebPage/WebSite/Breadcrumb/Speakable alone do not classify the page.
+    _CONTENT={"Service","SoftwareApplication","WebApplication","MobileApplication","Book","Product",
+              "Course","Event","Recipe","HowTo","CollectionPage","CreativeWork","ItemList",
+              "DefinedTermSet","AboutPage","ContactPage","QAPage","ProfessionalService","LocalBusiness"}
+    has_art = bool(tset & _ART) if ptype=="article" else bool(tset & (_ART|_CONTENT))
     C.append(chk("schema","good" if has_art else "bad",", ".join(sorted(tset)) or "none"))
     C.append(chk("faq","good" if tset&{"FAQPage","HowTo","QAPage"} else "warn",", ".join(sorted(tset&{"FAQPage","HowTo","QAPage"})) or "none"))
     inj=sorted(set(types_r)-set(types_raw))
@@ -392,6 +430,7 @@ def analyze(url, status, raw, rendered, domain):
     for c in C:
         if c["id"] in na: c["status"]="na"
     metrics={"words":wc,"headings":nh,"question_pct":qpct,"walls":walls,"stat_density":dens,
+             "readability":fk,"entity_density":pnd,"definitional":defn,
              "ext_links":ext,"internal_links":il,"schema_types":sorted(tset),"images":len(imgs),"alt_pct":apct}
     return {"path":path,"type":ptype,"title":title,"checks":C,"metrics":metrics,"rendered":rendered is not None}
 
@@ -978,7 +1017,7 @@ function planRow(i,x){const eg=Object.entries(i.gain_engines).filter(([e,v])=>v>
 // ---- shared helpers for Action Plan + Issues ----
 const PDOT={Known:'#6f9dff',Findable:'#f2b53c',Trusted:'#3ecf8e'};
 const TTYPE={schema:'template',parity:'template',faq:'template',canonical:'template',robots:'template',sitemap:'template',reachability:'template',freshness:'template',internal:'template',http:'template',entity:'template',schemacomplete:'template',
- answerfirst:'copy',qheadings:'copy',sections:'copy',liststables:'copy',wordcount:'copy',statdensity:'copy',h1:'copy',author:'copy',sourced:'copy',video:'copy',comparison:'copy',
+ answerfirst:'copy',definitional:'copy',readability:'copy',entitydensity:'copy',qheadings:'copy',sections:'copy',liststables:'copy',wordcount:'copy',statdensity:'copy',h1:'copy',author:'copy',sourced:'copy',video:'copy',comparison:'copy',
  meta:'meta',title:'meta',alt:'meta',citations:'meta'};
 const EBARS=e=>{const n=(e=='High')?3:(e=='Med')?2:1,c=n==1?'#3ecf8e':n==2?'#f2b53c':'#ff4d00',lab=n==1?'low':n==2?'medium':'high';
  let b='';for(let k=0;k<3;k++)b+=`<span class="eb" style="background:${k<n?c:'#2C231C'}"></span>`;
@@ -1243,7 +1282,7 @@ function pagesView(){
  h+=`</div>`;
  return h}
 const SITEIDS=new Set(['robots','llms','sitemap','reachability','comparison']);
-const SHORT={parity:'Schema in JS',answerfirst:'no opener',sections:'walls of text',schema:'Article schema',wordcount:'thin content',freshness:'stale',qheadings:'H2s',faq:'no FAQ',liststables:'no tables',meta:'meta desc',title:'title',alt:'alt text',citations:'few sources',internal:'few links',statdensity:'few stats',canonical:'canonical',h1:'H1',robots:'bot blocked',sitemap:'no sitemap',reachability:'blocked',entity:'no entity',schemacomplete:'thin schema',author:'no author',sourced:'unsourced stats',video:'no video',comparison:'no comparison'};
+const SHORT={parity:'Schema in JS',answerfirst:'no opener',definitional:'no definition',readability:'hard to read',entitydensity:'few entities',sections:'walls of text',schema:'Article schema',wordcount:'thin content',freshness:'stale',qheadings:'H2s',faq:'no FAQ',liststables:'no tables',meta:'meta desc',title:'title',alt:'alt text',citations:'few sources',internal:'few links',statdensity:'few stats',canonical:'canonical',h1:'H1',robots:'bot blocked',sitemap:'no sitemap',reachability:'blocked',entity:'no entity',schemacomplete:'thin schema',author:'no author',sourced:'unsourced stats',video:'no video',comparison:'no comparison'};
 const EBOTS={'ChatGPT':['GPTBot','OAI-SearchBot'],'Perplexity':['PerplexityBot'],'AI Overviews':['Googlebot','Google-Extended'],'Gemini':['Google-Extended'],'Copilot':['Bingbot'],'Claude':['ClaudeBot','anthropic-ai']};
 const EOWNER={'ChatGPT':'OpenAI','Perplexity':'Perplexity','AI Overviews':'Google','Gemini':'Google','Copilot':'Microsoft','Claude':'Anthropic'};
 const ORD=['','strongest','second-strongest','third-strongest','fourth-strongest','fifth-strongest','sixth-strongest'];
