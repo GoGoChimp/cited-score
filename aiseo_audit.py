@@ -164,6 +164,21 @@ ENGINE_NOTE = {
  "Copilot":"Bing-grounded and highly citation-friendly. Schema, sitemap/IndexNow, listicles and extractable facts win here.",
  "Claude":"Synthesises rather than quotes. Rewards clean logical chunking, factual density and clear structure.",
 }
+# Grok (xAI) is a large surface (~117M users) but a near-zero referral driver, and its
+# one distinctive lever (heavy weighting of live X posts) is off-page and un-scoreable by
+# an on-page crawler. There is no Grok citation export to calibrate against, so scoring it
+# would be an uncalibrated Perplexity clone. Shown as an ADVISORY, not a scored engine -
+# the same informational treatment the tool gives llms.txt. Graduates to a real engine the
+# day xAI ships a citation/referral export that --calibrate can read.
+GROK_ADVISORY = {
+ "name":"Grok (xAI)",
+ "how":"Grok grounds every answer in two pools at once: the open web and the live X (Twitter) post graph, scored for relevance and recency, then attributed to a page or a post.",
+ "why":"Grok's open-web retrieval reads the same signals as Perplexity and ChatGPT (live web, freshness, extractable facts, server-rendered content), so those two engine scores already tell you how Grok sees your pages. There is no separate on-page Grok lever to score.",
+ "lever":"Grok's one distinctive signal is heavy weighting of recent X posts (it can cite a post from hours ago). That is an off-page, X-presence play this on-page audit cannot measure.",
+ "caveat":"Grok scored lowest of the major models for citation accuracy in the Columbia Journalism Review test, so its attributions are the least reliable of any engine here.",
+ "trigger":"No Grok citation or referral export exists yet. When xAI ships one, Grok graduates from an advisory note to a calibrated, weighted engine like the other six.",
+ "proxy":["Perplexity","ChatGPT"],
+}
 SITE_IDS = {"robots","llms","sitemap","reachability","comparison"}
 STAT = {"good":1.0,"warn":0.35,"bad":0.0}   # tightened: a warning is worth less than half
 
@@ -569,6 +584,7 @@ def build(domain, origin, pages, sitecx):
             "date":datetime.date.today().isoformat(),
             "pages_crawled":len(pages),"overall":overall,"pillars":pill,"engines":eng,
             "engine_note":ENGINE_NOTE,"engine_weights":ENGINE_WEIGHTS,"check_meta":CHECK_META,
+            "grok_advisory":GROK_ADVISORY,
             "totals":dict(tot),"issues":issues,"site_checks":sitecx,
             "types":dict(Counter(p["type"] for p in pages)),
             "plan_phases":plan_phases,"pages":pages}
@@ -930,9 +946,9 @@ const ring=v=>`<div class="ring" style="--p:${v};--c:${col(v)}"><i>${v}</i></div
 const scb=v=>`<span class="sc" style="background:${col(v)}">${v}</span>`;
 const bd=p=>`<span class="badge ${p}">${p}</span>`;
 const ECOLS=['ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude'];
-const TABS=['Overview','Action Plan','Issues','Pages','|','ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude','|','Site structure','Response times'];
+const TABS=['Overview','Action Plan','Issues','Pages','|','ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude','Grok','|','Site structure','Response times'];
 let cur='Overview',sortk='score',sortd=1,pageFilter='';
-function tabsbar(){document.getElementById('tabs').innerHTML=TABS.map(t=>t=='|'?`<div class="tab sep">|</div>`:`<div class="tab ${t==cur?'on':''}" onclick="go('${t}')">${t}</div>`).join('')}
+function tabsbar(){document.getElementById('tabs').innerHTML=TABS.map(t=>t=='|'?`<div class="tab sep">|</div>`:`<div class="tab ${t==cur?'on':''}" onclick="go('${t}')">${t}${t=='Grok'?'<sup style="color:#8b8480;font-weight:700;font-size:9px;margin-left:2px">adv</sup>':''}</div>`).join('')}
 function go(t){cur=t;pageFilter='';tabsbar();render()}
 function render(){const w=document.getElementById('view');
  if(cur=='Overview')return w.innerHTML=ovw2();
@@ -941,6 +957,7 @@ function render(){const w=document.getElementById('view');
  if(cur=='Pages')return w.innerHTML=pagesView(null);
  if(cur=='Site structure')return w.innerHTML=structure();
  if(cur=='Response times')return w.innerHTML=speed();
+ if(cur=='Grok')return w.innerHTML=grokView();
  return w.innerHTML=engine(cur);}
 
 function diffCard(){if(!D.diff)return '';const x=D.diff;const s=(x.overall_d>0?'+':'')+x.overall_d;
@@ -977,7 +994,8 @@ function ovw2(){
    <div class="sech">The three questions <span class="s">Ch3 · same scale, so you can see which one is dragging</span></div>
    <div class="panel">${['Known','Findable','Trusted'].map(p=>prow(p,Q[p],D.pillars[p],pw[p])).join('')}<div class="qd" style="margin-top:10px">| quotable threshold, 70</div></div>
    <div class="sech">Readiness by engine <span class="s">Ch6-7 · ranked worst first</span></div>
-   <div class="panel">${engs.map(erow).join('')}<div class="qd" style="margin-top:10px">| quotable threshold, 70</div></div>
+   <div class="panel">${engs.map(erow).join('')}<div class="qd" style="margin-top:10px">| quotable threshold, 70</div>
+     <div onclick="go('Grok')" style="display:flex;gap:9px;align-items:center;cursor:pointer;border-top:1px solid var(--line);margin-top:12px;padding-top:12px"><span style="font-size:11px;font-weight:700;color:#c9c2bd;background:rgba(139,132,128,.14);border:1px solid rgba(139,132,128,.3);padding:2px 8px;border-radius:999px;flex:none">Grok</span><span class="qd">Not scored. Grok reads the same web signals as Perplexity and ChatGPT, so those cover it. See the advisory &rarr;</span></div></div>
    <div class="ov2">
      <div><div class="sech">Pages by type</div><div class="panel">${typesH}</div></div>
      <div><div class="sech">Crawler reachability</div><div class="panel">${reachH}</div></div>
@@ -1410,6 +1428,36 @@ function dl(name,rows){const csv=rows.map(r=>r.map(c=>`"${String(c==null?'':c).r
 function exportPages(){const rows=[['url','type','score','Known','Findable','Trusted',...ECOLS,'ms','errors']];
  D.pages.forEach(p=>rows.push([p.url,p.type,p.score,p.pillars.Known,p.pillars.Findable,p.pillars.Trusted,...ECOLS.map(e=>p.engines[e]),p.fetch_ms+p.render_ms,p.checks.filter(c=>c.status=='bad').map(c=>c.label).join('; ')]));
  dl(`cited-score-${D.domain}-pages.csv`,rows)}
+function grokView(){const G=D.grok_advisory||{};
+ const px=(G.proxy||[]).filter(e=>D.engines&&D.engines[e]!=null);
+ const proxyAvg=px.length?Math.round(px.reduce((a,e)=>a+D.engines[e],0)/px.length):null;
+ const proxyH=px.map(e=>{const v=D.engines[e];return `<div style="display:flex;align-items:center;gap:10px"><span style="width:90px;color:#b7afaa;font-size:12px">${e}</span><span style="flex:1;height:8px;border-radius:4px;background:#221d1a;overflow:hidden"><span style="display:block;width:${Math.max(2,v)}%;height:100%;background:${bcol(v)}"></span></span><span style="width:26px;text-align:right;color:#fff;font-weight:700;font-size:13px">${v}</span></div>`}).join('');
+ const block=(c,t,sub,body)=>`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:${c}"></span><h3>${t}</h3><span class="meta">${sub}</span></div><div class="apbox" style="padding:16px 24px"><div style="font-size:14px;line-height:1.65;color:#c9c2bd">${esc(body)}</div></div></section>`;
+ let h=`<div class="ap2"><div class="apmain">`;
+ h+=`<div class="apsum" style="display:grid;grid-template-columns:auto 1fr;gap:34px;align-items:center;padding:26px 28px">
+   <div style="display:flex;align-items:center;gap:22px">
+     <div class="sring" style="--p:0;--c:#3a3227"><i><span class="v" style="font-size:15px;letter-spacing:.5px">N/A</span><span class="o">ADVISORY</span></i></div>
+     <div style="display:flex;flex-direction:column;gap:9px">
+       <div class="htitle" style="font-size:20px;margin:0">${esc(G.name||'Grok (xAI)')}</div>
+       <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:600;color:#c9c2bd;background:rgba(139,132,128,.14);border:1px solid rgba(139,132,128,.3);padding:4px 9px;border-radius:999px">Advisory · not scored</span></div>
+       <div class="qd" style="line-height:1.5;max-width:250px">A large surface (~117M users) that sends almost no referrals. Covered here through its web-side proxy, not a fabricated score.</div>
+     </div>
+   </div>
+   <div style="border-left:1px solid var(--line);padding-left:32px;display:flex;flex-direction:column;gap:14px">
+     <div class="apk">HOW THIS ENGINE DECIDES</div>
+     <div style="font-size:14px;line-height:1.6;color:#c9c2bd;max-width:640px">${esc(G.how||'')}</div>
+   </div></div>`;
+ if(px.length)h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#3ecf8e"></span><h3>GROK'S WEB SIDE, VIA YOUR EXISTING SCORES</h3><span class="meta">it reads the same open-web signals as these two engines</span></div>
+   <div class="apbox" style="padding:18px 24px;display:flex;flex-direction:column;gap:12px">${proxyH}<div class="qd" style="line-height:1.55;border-top:1px solid var(--line);padding-top:12px">${px.join(' and ')} are your Grok web-side proxy${proxyAvg!=null?' (about '+proxyAvg+'/100 today)':''}. Improve those and Grok's open-web retrieval improves with them. ${esc(G.why||'')}</div></div></section>`;
+ h+=block('#FF4D00','THE ONE GROK-SPECIFIC LEVER','off-page, so outside this audit',G.lever||'');
+ h+=block('#f2b53c','ACCURACY CAVEAT','least reliable attributions of any engine here',G.caveat||'');
+ h+=block('#8b8480','WHAT WOULD MAKE IT A SCORED ENGINE','the honest trigger',G.trigger||'');
+ h+=`</div><div class="apside">
+   <div class="card2"><h3>Why advisory, not a 7th ring</h3><div class="qd" style="line-height:1.6">A scored engine has to be calibrated against real citation data. There is no Grok export to calibrate against, and its web weighting would just clone Perplexity's. A fabricated ring would cheapen the six that are earned.</div></div>
+   <div class="card2"><h3>If you want Grok visibility</h3><div class="qd" style="line-height:1.6">The lever is X presence, not this site. Keep shipping the parity, entity and freshness work that already feeds Grok's open-web pool, and treat any Grok mention as a free by-product of your X footprint.</div></div>
+   <div class="card2"><div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#3ecf8e"></span><span style="font-size:13px;font-weight:700">Informational, like llms.txt</span></div><div class="qd" style="line-height:1.6;margin-top:8px">Shown for completeness and deliberately not counted in your CITED Score, exactly as the tool treats llms.txt.</div></div>
+ </div></div>`;
+ return h}
 function printReport(){const Q={Known:'Do they know you?',Findable:'Can they find your answer?',Trusted:'Do they trust you?'};
  document.getElementById('printroot').innerHTML=`<h1>CITED Score — ${esc(D.domain)}</h1><p>${D.pages_crawled} pages · ${esc(D.generated)} · Overall ${D.overall}/100</p>`+
   `<h2>Action plan</h2>`+D.issues.map((i,x)=>`<p><b>${x+1}. ${esc(i.label)}</b> [${i.pillar}, ${i.ch}, ${i.effort}] ${i.gain_overall>0?'(+'+i.gain_overall+' overall)':''}<br>${esc(i.fix)} — ${i.count} pages</p>`).join('')+
@@ -1430,7 +1478,7 @@ tabsbar();render();
          "<div class='foot'>The CITED Score <b>estimates citability</b> from on-page, structural and technical signals. "
          "It does <b>not</b> measure citations. For measured citations, calibrate the model against your Bing Webmaster Tools AI Performance export "
          "(<code>--calibrate citations.csv</code>). Every check carries a source (engine documentation, first-party citation data, or a CITED chapter). "
-         "llms.txt is shown for reference only and is not scored (no citation correlation, Ch5).</div></div>"
+         "llms.txt and Grok are shown for reference only and are not scored (Ch5): llms.txt shows no citation correlation, and Grok has no citation export to calibrate against.</div></div>"
          "<div id='printroot'></div>"
          f"<script>window.__DATA__={payload};</script><script>{js}</script></body></html>")
     with open(path,"w",encoding="utf-8") as f: f.write(doc)
