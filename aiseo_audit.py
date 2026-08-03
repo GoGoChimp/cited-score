@@ -104,6 +104,22 @@ CHECK_META = {
                 "ev":"Cited text reads at ~grade 16 vs ~19 for uncited; overly complex prose is lifted less (Indig 2026, Ch5)."},
  "definitional":{"label":"Definitional opener ([X] is ...)","pillar":"Findable","ch":"Ch5","phase":2,"effort":"Low",
                 "ev":"Cited passages use definitional '[Entity] is' constructions ~2x more; a clean definition is the liftable answer (Indig 2026, Ch5)."},
+ "noindex":    {"label":"Indexable (no noindex directive)","pillar":"Findable","ch":"Ch7","phase":1,"effort":"Low",
+                "ev":"A meta-robots or X-Robots-Tag noindex removes the page from the index that feeds AI Overviews, Gemini and Copilot, so it cannot be cited (Ch7)."},
+ "speed":      {"label":"Fast server response (retrieval-ready)","pillar":"Findable","ch":"Ch3","phase":1,"effort":"Med",
+                "ev":"Live-retrieval engines abandon slow pages (499 timeouts) before they can cite them; a fast time-to-first-byte keeps the page retrieval-eligible (Ch3)."},
+ "schemavalidity":{"label":"Valid structured data (parses cleanly)","pillar":"Known","ch":"Ch4","phase":2,"effort":"Med",
+                "ev":"Malformed JSON-LD is silently dropped by the parser, so a broken block gives the engine no entity signal at all (Ch4)."},
+ "duplicate":  {"label":"Unique title & meta (not duplicated)","pillar":"Known","ch":"Ch4","phase":2,"effort":"Med",
+                "ev":"Duplicate titles or descriptions blur which page is the entity and split the signal across near-identical pages (Ch4)."},
+ "rankedlist": {"label":"Ranked Top-N list (on listicle pages)","pillar":"Findable","ch":"Ch5","phase":2,"effort":"Med",
+                "ev":"63% of AI citations are listicles; a page that promises 'best/top N' but has no ranked list forfeits the format engines cite most (Ch5)."},
+ "answerthird":{"label":"Answer in the first third of the page","pillar":"Findable","ch":"Ch5","phase":2,"effort":"Med",
+                "ev":"44.2% of ChatGPT citations come from the first third of the page; a buried answer is lifted far less (Indig 2026, Ch5)."},
+ "h2answer":   {"label":"Headings paired with a liftable answer","pillar":"Findable","ch":"Ch5","phase":2,"effort":"Med",
+                "ev":"Retrieval lifts a heading plus its 40-180 word answer as one chunk; a heading over a wall of text hands the engine nothing clean (Ch5)."},
+ "orphans":    {"label":"Reachable (internally linked + in sitemap)","pillar":"Findable","ch":"Ch7","phase":2,"effort":"Med",
+                "ev":"A page nothing links to, or one missing from the sitemap, is hard for a crawler to discover and rarely cited (Ch7)."},
  # INFORMATIONAL - not scored
  "llms":       {"label":"llms.txt (informational, not scored)","pillar":"Info","ch":"Ch5","phase":0,"effort":"Low",
                 "ev":"SE Ranking found NO correlation between llms.txt and citations; their model got more accurate without it (Ch5). Shown for reference; harmless, not required."},
@@ -140,6 +156,14 @@ FIX = {
  "author":"Add a named author (Person schema with name + sameAs) and a visible byline with credentials.",
  "sourced":"Cite an authoritative external source next to each statistic, as an inline link.",
  "comparison":"Publish at least one comparison or best-of page (X vs Y, best X for Y) with a structured table.",
+ "noindex":"Remove the noindex from the meta-robots tag or the X-Robots-Tag header so the page can be indexed and cited.",
+ "speed":"Speed up the server response (cache, CDN, lighter HTML) so time-to-first-byte stays under ~1s.",
+ "schemavalidity":"Fix the JSON-LD so every block is valid JSON with an @type (validate at schema.org / Rich Results Test).",
+ "duplicate":"Give each page a unique title and meta description so engines can tell them apart.",
+ "rankedlist":"On a 'best/top N' page, present the items as a numbered, ranked list, not prose.",
+ "answerthird":"Move the core answer into the first third of the page, not below the fold.",
+ "h2answer":"Follow each H2/H3 with a self-contained 40-180 word answer to that heading.",
+ "orphans":"Link to every page from related content and include it in the XML sitemap.",
 }
 # per-engine weights (which signals each engine actually weights). site ids allowed.
 # Render-parity CORRECTED 2026-07-19 after deep research (book/research/schema-render-parity-...):
@@ -149,12 +173,12 @@ FIX = {
 # Gemini + AI Overviews DO eventually see JS-injected schema, so parity is removed for them (it is
 # a reliability/speed issue there, not visibility). schema itself still weighted for Gemini.
 ENGINE_WEIGHTS = {
- "ChatGPT":     {"wordcount":3,"statdensity":3,"citations":3,"parity":3,"entity":2,"entitydensity":2,"schemacomplete":2,"author":2,"sourced":2,"answerfirst":2,"sections":2,"schema":1,"definitional":1,"readability":1,"freshness":1,"qheadings":1},
- "Perplexity":  {"freshness":3,"citations":3,"parity":3,"sourced":2,"entity":2,"entitydensity":2,"statdensity":2,"answerfirst":2,"liststables":2,"sections":2,"reachability":2,"definitional":1,"qheadings":1,"author":1,"comparison":1,"video":1},
- "AI Overviews":{"answerfirst":3,"qheadings":3,"definitional":2,"sections":2,"schema":2,"faq":2,"liststables":2,"entity":2,"entitydensity":1,"readability":1,"schemacomplete":2,"video":2,"freshness":1,"canonical":1,"sitemap":1,"title":1,"meta":1,"comparison":1,"author":1},
- "Gemini":      {"schema":3,"entity":3,"entitydensity":2,"schemacomplete":2,"statdensity":2,"answerfirst":2,"canonical":1,"sitemap":1,"faq":1,"citations":1,"author":1},
- "Copilot":     {"schema":3,"sitemap":2,"reachability":2,"liststables":2,"statdensity":2,"answerfirst":2,"parity":2,"entity":2,"entitydensity":1,"schemacomplete":2,"faq":2,"freshness":1,"sourced":1,"comparison":1,"video":1},
- "Claude":      {"sections":3,"parity":3,"answerfirst":2,"definitional":1,"readability":1,"statdensity":2,"qheadings":2,"liststables":2,"entity":2,"entitydensity":1,"citations":1,"author":1,"sourced":1},
+ "ChatGPT":     {"wordcount":3,"statdensity":3,"citations":3,"parity":3,"entity":2,"entitydensity":2,"schemacomplete":2,"author":2,"sourced":2,"answerfirst":2,"sections":2,"schema":1,"definitional":1,"readability":1,"freshness":1,"qheadings":1,"noindex":2,"speed":2,"schemavalidity":1,"answerthird":1,"h2answer":1},
+ "Perplexity":  {"freshness":3,"citations":3,"parity":3,"sourced":2,"entity":2,"entitydensity":2,"statdensity":2,"answerfirst":2,"liststables":2,"sections":2,"reachability":2,"definitional":1,"qheadings":1,"author":1,"comparison":1,"video":1,"noindex":2,"speed":2,"answerthird":1,"h2answer":1,"rankedlist":1,"orphans":1},
+ "AI Overviews":{"answerfirst":3,"qheadings":3,"definitional":2,"sections":2,"schema":2,"faq":2,"liststables":2,"entity":2,"entitydensity":1,"readability":1,"schemacomplete":2,"video":2,"freshness":1,"canonical":1,"sitemap":1,"title":1,"meta":1,"comparison":1,"author":1,"noindex":3,"speed":1,"answerthird":2,"h2answer":1,"rankedlist":1,"schemavalidity":1,"duplicate":1,"orphans":1},
+ "Gemini":      {"schema":3,"entity":3,"entitydensity":2,"schemacomplete":2,"statdensity":2,"answerfirst":2,"canonical":1,"sitemap":1,"faq":1,"citations":1,"author":1,"noindex":3,"schemavalidity":2,"duplicate":1},
+ "Copilot":     {"schema":3,"sitemap":2,"reachability":2,"liststables":2,"statdensity":2,"answerfirst":2,"parity":2,"entity":2,"entitydensity":1,"schemacomplete":2,"faq":2,"freshness":1,"sourced":1,"comparison":1,"video":1,"noindex":3,"speed":1,"schemavalidity":1,"rankedlist":1,"orphans":1,"duplicate":1},
+ "Claude":      {"sections":3,"parity":3,"answerfirst":2,"definitional":1,"readability":1,"statdensity":2,"qheadings":2,"liststables":2,"entity":2,"entitydensity":1,"citations":1,"author":1,"sourced":1,"noindex":2,"h2answer":2,"answerthird":1},
 }
 ENGINE_NOTE = {
  "ChatGPT":"Favours comprehensive, authoritative, source-cited content + strong entity grounding. Cites few sources per answer, so be THE definitive page.",
@@ -301,8 +325,8 @@ def classify(path, types):
 # Deliberately NARROW (the score must not be kind): a homepage still owes citations,
 # statistics and depth, so those stay in.
 NA_BY_TYPE = {
-    "home":     {"answerfirst","qheadings","sections","faq","freshness","schema","schemacomplete","author","sourced","video","readability","entitydensity","definitional"},
-    "listing":  {"answerfirst","qheadings","sections","faq","freshness","schema","statdensity","citations","wordcount","schemacomplete","author","sourced","video","entity","readability","entitydensity","definitional"},
+    "home":     {"answerfirst","qheadings","sections","faq","freshness","schema","schemacomplete","author","sourced","video","readability","entitydensity","definitional","answerthird","h2answer"},
+    "listing":  {"answerfirst","qheadings","sections","faq","freshness","schema","statdensity","citations","wordcount","schemacomplete","author","sourced","video","entity","readability","entitydensity","definitional","answerthird","h2answer"},
 }
 
 def chk(cid, status, detail):
@@ -310,7 +334,7 @@ def chk(cid, status, detail):
     return {"id":cid,"label":m["label"],"status":status,"detail":detail,
             "pillar":m["pillar"],"ch":m["ch"],"ev":m["ev"]}
 
-def analyze(url, status, raw, rendered, domain):
+def analyze(url, status, raw, rendered, domain, hdrs=None, fetch_ms=0):
     path = urllib.parse.urlparse(url).path or "/"
     soup = BeautifulSoup(rendered or raw or "", "lxml")
     rawsoup = BeautifulSoup(raw or "", "lxml")
@@ -334,6 +358,17 @@ def analyze(url, status, raw, rendered, domain):
     C.append(chk("answerfirst","good" if fp and 40<=fp<=60 else ("warn" if fp and 30<=fp<=90 else "bad"),f"opening para {fp or 0} words"))
     defn=bool(re.match(r"^\W{0,3}[A-Z][\w&/.\- ]{1,60}?\s+(is|are|means|refers to)\b", fptext))
     C.append(chk("definitional","good" if defn else "warn","definitional opener" if defn else "opener is not a definition"))
+    # answer-in-first-third: does a substantive (>=40w) answer sit in the first ~30% of the body?
+    _pws=[len(words(pp.get_text(" ",strip=True))) for pp in root.find_all("p")]
+    _totpw=sum(_pws) or 1; _ansat=None; _cw=0
+    for _n in _pws:
+        if _n>=40 and _ansat is None: _ansat=_cw
+        _cw+=_n
+    if _ansat is None: _af=("warn","no 40+ word answer paragraph")
+    else:
+        _fr=_ansat/_totpw
+        _af=("good",f"answer at {round(100*_fr)}% of page") if _fr<=0.34 else (("warn",f"answer at {round(100*_fr)}%") if _fr<=0.66 else ("bad",f"answer buried at {round(100*_fr)}%"))
+    C.append(chk("answerthird",_af[0],_af[1]))
     heads=root.find_all(["h2","h3"]); nh=len(heads)
     qh=sum(1 for h in heads if h.get_text(strip=True).endswith("?") or QSTART.match(h.get_text(strip=True)))
     qpct=round(100*qh/nh) if nh else 0
@@ -345,8 +380,25 @@ def analyze(url, status, raw, rendered, domain):
     elif walls<=max(1,len(secs)//5): sec_status="warn"; sec_detail=f"{walls} wall(s) of text over 220w"
     else: sec_status="bad"; sec_detail=f"{walls}/{len(secs)} sections are walls of text"
     C.append(chk("sections",sec_status,sec_detail))
+    # H2-to-answer pairing: is each heading followed by a liftable 40-180 word answer?
+    _live=[s for s in secs if 40<=s<=180]
+    if not secs: _hp=("warn","no H2/H3 sections")
+    else:
+        _hpct=round(100*len(_live)/len(secs))
+        _hp=("good" if _hpct>=50 else ("warn" if _hpct>=25 else "bad"),f"{len(_live)}/{len(secs)} liftable answer sections ({_hpct}%)")
+    C.append(chk("h2answer",_hp[0],_hp[1]))
     ntab=len(root.find_all("table")); nlist=len(root.find_all(["ol","ul"]))
     C.append(chk("liststables","good" if ntab+nlist>=1 else "warn",f"{ntab} tables, {nlist} lists"))
+    # ranked list: only judged where the page promises a listicle ("best/top N" in title or H1)
+    _h1t=h1s[0].get_text(" ",strip=True) if h1s else ""; _tt2=title+" "+_h1t
+    # listicle intent: "best/top N" (real count >=3, not a superlative like "Top 1%") OR "best/top ... <listicle noun>"
+    _lm=re.search(r"\b(?:top|best)\s+(\d{1,3})\b(?!\s*%)",_tt2,re.I)
+    _numint=bool(_lm) and int(_lm.group(1))>=3
+    _nounint=bool(re.search(r"\b(?:best|top)\b[\w\s/&,'-]{0,45}?\b(?:tools?|software|apps?|platforms?|services?|options?|alternatives?|agenc\w+|companies|solutions?|plugins?|providers?|vendors?|examples?|tips?|reasons?|strategies|frameworks?|templates?|books?|courses?)\b",_tt2,re.I))
+    _listintent=_numint or _nounint
+    _ranked=any(len(o.find_all("li"))>=3 for o in root.find_all("ol"))
+    if not _listintent: C.append(chk("rankedlist","na","not a ranked-list page"))
+    else: C.append(chk("rankedlist","good" if _ranked else "warn","ranked Top-N list present" if _ranked else "listicle title but no ranked (ol) list"))
     nums=len(NUM_RE.findall(body)); dens=round(100*nums/wc,2) if wc else 0
     C.append(chk("statdensity","good" if dens>=1.5 else ("warn" if dens>=0.6 else "bad"),f"{nums} numbers, {dens}/100w"))
     _sents=max(1,len(re.findall(r"[.!?]+(?:\s|$)",body)))
@@ -386,6 +438,21 @@ def analyze(url, status, raw, rendered, domain):
     C.append(chk("faq","good" if tset&{"FAQPage","HowTo","QAPage"} else "warn",", ".join(sorted(tset&{"FAQPage","HowTo","QAPage"})) or "none"))
     inj=sorted(set(types_r)-set(types_raw))
     C.append(chk("parity","bad" if inj else "good",("JS-injected only: "+", ".join(inj)) if inj else "in raw HTML"))
+    # schema validity: do the JSON-LD blocks parse? (malformed = silently invisible entity signal)
+    _ldt=soup.find_all("script",attrs={"type":"application/ld+json"}); _ldn=len(_ldt); _ldok=0; _ldtyped=0
+    def _hastype(n):
+        if isinstance(n,dict): return bool(n.get("@type")) or any(_hastype(v) for v in n.values())
+        if isinstance(n,list): return any(_hastype(x) for x in n)
+        return False
+    for _t2 in _ldt:
+        try:
+            _o=json.loads(_t2.string or _t2.get_text() or "{}"); _ldok+=1
+            if _hastype(_o): _ldtyped+=1
+        except Exception: pass
+    if _ldn==0: C.append(chk("schemavalidity","na","no structured data"))
+    elif _ldok<_ldn: C.append(chk("schemavalidity","bad",f"{_ldn-_ldok} of {_ldn} JSON-LD block(s) fail to parse"))
+    elif _ldtyped<_ldok: C.append(chk("schemavalidity","warn",f"{_ldok-_ldtyped} block(s) missing @type"))
+    else: C.append(chk("schemavalidity","good",f"{_ldok} valid JSON-LD block(s)"))
     d=find_date(soup,jsonld_objs(soup))
     if d:
         age=(datetime.date.today()-d).days
@@ -394,10 +461,31 @@ def analyze(url, status, raw, rendered, domain):
         C.append(chk("freshness","bad","no date found"))
     imgs=soup.find_all("img"); alts=sum(1 for i in imgs if (i.get("alt") or "").strip()); apct=round(100*alts/len(imgs)) if imgs else 100
     C.append(chk("alt","good" if apct>=90 else "warn",f"{alts}/{len(imgs)} ({apct}%)"))
-    il=sum(1 for a in root.find_all("a",href=True) if a["href"].startswith("/") or domain in a["href"])
+    il=0; il_targets=set()
+    for a in root.find_all("a",href=True):
+        h=a["href"]
+        if h.startswith("/") or domain in h:
+            il+=1
+            try: il_targets.add(urllib.parse.urlparse(urllib.parse.urljoin("https://"+domain,h)).path.rstrip("/") or "/")
+            except Exception: pass
     C.append(chk("internal","good" if il>=3 else "warn",f"{il} internal links"))
     can=soup.find("link",attrs={"rel":"canonical"})
     C.append(chk("canonical","good" if can and can.get("href") else "warn",can.get("href") if can else "none"))
+    # noindex: a meta-robots or X-Robots-Tag noindex is a hard citability gate (rendered DOM, since Google renders JS)
+    def _noidx(v):
+        toks=[t.strip() for t in (v or "").lower().replace(";",",").split(",")]
+        return "noindex" in toks or "none" in toks
+    noidx=""
+    for m in soup.find_all("meta"):
+        if (m.get("name") or "").lower() in ("robots","googlebot","bingbot") and _noidx(m.get("content")):
+            noidx="meta "+(m.get("name") or "robots").lower(); break
+    if not noidx and hdrs:
+        for k,v in hdrs.items():
+            if k.lower()=="x-robots-tag" and _noidx(v): noidx="X-Robots-Tag"; break
+    C.append(chk("noindex","bad" if noidx else "good",("noindex via "+noidx) if noidx else "indexable"))
+    # retrieval speed: raw-HTML fetch time as a time-to-first-byte proxy; live engines drop slow pages
+    fm=fetch_ms or 0
+    C.append(chk("speed","na" if fm<=0 else ("good" if fm<=1000 else ("warn" if fm<=2500 else "bad")),f"{fm} ms fetch"))
     # ---- entity / schema-completeness / author (deep JSON-LD read) ----
     objs=jsonld_objs(soup)
     nodes=[]; _st=list(objs)
@@ -447,7 +535,7 @@ def analyze(url, status, raw, rendered, domain):
     metrics={"words":wc,"headings":nh,"question_pct":qpct,"walls":walls,"stat_density":dens,
              "readability":fk,"entity_density":pnd,"definitional":defn,
              "ext_links":ext,"internal_links":il,"schema_types":sorted(tset),"images":len(imgs),"alt_pct":apct}
-    return {"path":path,"type":ptype,"title":title,"checks":C,"metrics":metrics,"rendered":rendered is not None}
+    return {"path":path,"type":ptype,"title":title,"meta":mdc,"checks":C,"metrics":metrics,"rendered":rendered is not None,"links":sorted(il_targets)}
 
 def site_checks(origin, domain):
     out=[]
@@ -475,10 +563,11 @@ def site_checks(origin, domain):
     return out
 
 def all_urls(origin, domain, cap):
-    urls=[]
+    urls=[]; sm_urls=[]
     st,_,sm,_=fetch_raw(origin+"/sitemap.xml")
     if st==200 and sm:
-        urls=re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", sm)
+        sm_urls=re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", sm)
+        urls=list(sm_urls)
     s,_,raw,_=fetch_raw(origin+"/")
     if raw:
         for a in BeautifulSoup(raw,"lxml").find_all("a",href=True):
@@ -491,12 +580,13 @@ def all_urls(origin, domain, cap):
         k=u.rstrip("/")
         if k not in done: done.add(k); seen.append(u)
     if cap and cap>0: seen=seen[:cap]
-    return seen
+    sitemap_paths={(urllib.parse.urlparse(u).path.rstrip("/") or "/") for u in sm_urls}
+    return seen, sitemap_paths
 
 def process(url, domain):
     st,hdrs,raw,fms=fetch_raw(url)
     rend,rms=(render(url) if st==200 else (None,0))
-    page=analyze(url,st,raw,rend,domain)
+    page=analyze(url,st,raw,rend,domain,hdrs,fms)
     page.update({"url":url,"status":st,"fetch_ms":fms,"render_ms":rms,
                  "depth":len([x for x in urllib.parse.urlparse(url).path.strip("/").split("/") if x]),
                  "server":hdrs.get("Server","")})
@@ -523,17 +613,42 @@ def page_scores(statuses):
             {k:(v if v is not None else 0) for k,v in pill.items()},
             {k:(v if v is not None else 0) for k,v in eng.items()})
 
-def build(domain, origin, pages, sitecx):
+def build(domain, origin, pages, sitecx, sitemap_paths=None):
+    ok200=[p for p in pages if p.get("status")==200]
+    def _np(x): return (x or "/").rstrip("/") or "/"
     # site-level: does the site publish comparison / best-of content (a top AI-cited format)?
     CMP_RE=re.compile(r"(vs\.?|versus|comparison|compare|best[- ]|top[- ]?\d+|alternativ|which[- ])",re.I)
     _cmp=[p for p in pages if CMP_RE.search((p.get("path") or "")+" "+(p.get("title") or ""))]
-    sitecx=list(sitecx)+[chk("comparison","good" if _cmp else "warn",(str(len(_cmp))+" comparison/best-of page(s)") if _cmp else "no comparison / best-of content found")]
+    _cc=chk("comparison","good" if _cmp else "warn",(str(len(_cmp))+" comparison/best-of page(s)") if _cmp else "no comparison / best-of content found")
+    _cc["urls"]=[p.get("url") for p in _cmp if p.get("url")]
+    sitecx=list(sitecx)+[_cc]
     scx={c["id"]:c["status"] for c in sitecx}
+    # per-page injected checks (need the whole page set): orphan/missing-from-sitemap + duplicate title/meta
+    _linked=set()
+    for p in pages: _linked|=set(p.get("links") or [])
+    _titles=Counter(t for t in ((p.get("title") or "").strip().lower() for p in ok200) if t)
+    _metas=Counter(m for m in ((p.get("meta") or "").strip().lower() for p in ok200) if m)
     for p in pages:
+        _tt=(p.get("title") or "").strip().lower(); _md=(p.get("meta") or "").strip().lower()
+        if _tt and _titles[_tt]>1: p["checks"].append(chk("duplicate","bad",f"title shared with {_titles[_tt]-1} other page(s)"))
+        elif _md and _metas[_md]>1: p["checks"].append(chk("duplicate","warn",f"meta shared with {_metas[_md]-1} other page(s)"))
+        else: p["checks"].append(chk("duplicate","good","unique title & meta"))
+        _pp=_np(p.get("path"))
+        if p.get("status")==200 and _pp not in ("","/"):
+            _unl=_pp not in _linked; _mis=bool(sitemap_paths) and _pp not in sitemap_paths
+            if _unl or _mis:
+                _r=[]
+                if _unl: _r.append("nothing links to it")
+                if _mis: _r.append("not in sitemap")
+                p["checks"].append(chk("orphans","warn"," + ".join(_r)))
+            else:
+                p["checks"].append(chk("orphans","good","linked"+(" and in sitemap" if sitemap_paths else "")))
+        else:
+            p["checks"].append(chk("orphans","good","home / entry page"))
         st={c["id"]:c["status"] for c in p["checks"]}; st.update(scx)
         o,pl,en=page_scores(st)
         p["cs"]=st; p["score"]=o; p["pillars"]=pl; p["engines"]=en
-    ok=[p for p in pages if p["status"]==200]
+    ok=ok200
     def avg(f): return round(sum(f(p) for p in ok)/len(ok)) if ok else 0
     overall=avg(lambda p:p["score"])
     pill={pl:avg(lambda p:p["pillars"][pl]) for pl in PILLARS}
@@ -1034,9 +1149,9 @@ function planRow(i,x){const eg=Object.entries(i.gain_engines).filter(([e,v])=>v>
    <div class="urls">${[...i.bad.map(u=>'● '+rel(u)),...i.warn.map(u=>'○ '+rel(u))].join('<br>')}</div></div>`}
 // ---- shared helpers for Action Plan + Issues ----
 const PDOT={Known:'#6f9dff',Findable:'#f2b53c',Trusted:'#3ecf8e'};
-const TTYPE={schema:'template',parity:'template',faq:'template',canonical:'template',robots:'template',sitemap:'template',reachability:'template',freshness:'template',internal:'template',http:'template',entity:'template',schemacomplete:'template',
- answerfirst:'copy',definitional:'copy',readability:'copy',entitydensity:'copy',qheadings:'copy',sections:'copy',liststables:'copy',wordcount:'copy',statdensity:'copy',h1:'copy',author:'copy',sourced:'copy',video:'copy',comparison:'copy',
- meta:'meta',title:'meta',alt:'meta',citations:'meta'};
+const TTYPE={schema:'template',parity:'template',faq:'template',canonical:'template',robots:'template',sitemap:'template',reachability:'template',freshness:'template',internal:'template',http:'template',entity:'template',schemacomplete:'template',noindex:'template',speed:'template',schemavalidity:'template',orphans:'template',
+ answerfirst:'copy',definitional:'copy',readability:'copy',entitydensity:'copy',qheadings:'copy',sections:'copy',liststables:'copy',wordcount:'copy',statdensity:'copy',h1:'copy',author:'copy',sourced:'copy',video:'copy',comparison:'copy',rankedlist:'copy',answerthird:'copy',h2answer:'copy',
+ meta:'meta',title:'meta',alt:'meta',citations:'meta',duplicate:'meta'};
 const EBARS=e=>{const n=(e=='High')?3:(e=='Med')?2:1,c=n==1?'#3ecf8e':n==2?'#f2b53c':'#ff4d00',lab=n==1?'low':n==2?'medium':'high';
  let b='';for(let k=0;k<3;k++)b+=`<span class="eb" style="background:${k<n?c:'#2C231C'}"></span>`;
  return `<span class="ebs">${b}</span><span style="color:${c}">${lab}</span>`};
@@ -1047,7 +1162,7 @@ function tgl(id){const e=document.getElementById(id);if(e)e.style.display=e.styl
 function bull(u,c){return `<span class="b"><span class="dotb" style="background:${c}"></span><a href="${esc(u)}" target="_blank">${rel(u)}</a></span>`}
 function urlList(id,i){return `<div id="${id}" class="apurls">${[...i.bad.map(u=>bull(u,'#ff4d3d')),...i.warn.map(u=>bull(u,'#f2b53c'))].join('')||'<span class="qd">No affected pages.</span>'}</div>`}
 function pdet(id){
- if(SITEIDS.has(id)){const sc=(D.site_checks||[]).find(c=>c.id==id)||{};const cl=sc.status=='good'?'ok':sc.status=='warn'?'wn':'er';return `<div id="pd_${id}" class="engdet"><span class="rst ${cl}">Site-wide check: ${sc.status||'n/a'}</span> <span class="qd">${esc(sc.detail||'')}</span></div>`;}
+ if(SITEIDS.has(id)){const sc=(D.site_checks||[]).find(c=>c.id==id)||{};const cl=sc.status=='good'?'ok':sc.status=='warn'?'wn':'er';const _u=sc.urls||[];const _l=_u.length?'<div class="egh" style="margin-top:8px">Pages ('+_u.length+')</div>'+_u.map(u=>'<span class="egp"><span class="dotb" style="background:#3ecf8e"></span><a href="'+esc(u)+'" target="_blank">'+rel(u)+'</a></span>').join(''):'';return `<div id="pd_${id}" class="engdet"><span class="rst ${cl}">Site-wide check: ${sc.status||'n/a'}</span> <span class="qd">${esc(sc.detail||'')}</span>${_l}</div>`;}
  const ok=D.pages.filter(p=>p.status==200), dcx=s=>s=='good'?'#3ecf8e':s=='warn'?'#f2b53c':'#ff4d3d';
  const rr=ok.map(p=>[p,p.cs[id]]).filter(x=>x[1]&&x[1]!='na'&&x[1]!='info');
  if(!rr.length)return `<div id="pd_${id}" class="engdet"><span class="qd">No applicable pages for this check.</span></div>`;
@@ -1300,7 +1415,7 @@ function pagesView(){
  h+=`</div>`;
  return h}
 const SITEIDS=new Set(['robots','llms','sitemap','reachability','comparison']);
-const SHORT={parity:'Schema in JS',answerfirst:'no opener',definitional:'no definition',readability:'hard to read',entitydensity:'few entities',sections:'walls of text',schema:'Article schema',wordcount:'thin content',freshness:'stale',qheadings:'H2s',faq:'no FAQ',liststables:'no tables',meta:'meta desc',title:'title',alt:'alt text',citations:'few sources',internal:'few links',statdensity:'few stats',canonical:'canonical',h1:'H1',robots:'bot blocked',sitemap:'no sitemap',reachability:'blocked',entity:'no entity',schemacomplete:'thin schema',author:'no author',sourced:'unsourced stats',video:'no video',comparison:'no comparison'};
+const SHORT={parity:'Schema in JS',answerfirst:'no opener',definitional:'no definition',readability:'hard to read',entitydensity:'few entities',sections:'walls of text',schema:'Article schema',wordcount:'thin content',freshness:'stale',qheadings:'H2s',faq:'no FAQ',liststables:'no tables',meta:'meta desc',title:'title',alt:'alt text',citations:'few sources',internal:'few links',statdensity:'few stats',canonical:'canonical',h1:'H1',robots:'bot blocked',sitemap:'no sitemap',reachability:'blocked',entity:'no entity',schemacomplete:'thin schema',author:'no author',sourced:'unsourced stats',video:'no video',comparison:'no comparison',noindex:'noindexed',speed:'slow response',schemavalidity:'invalid schema',duplicate:'dup title/meta',rankedlist:'no ranked list',answerthird:'answer buried',h2answer:'headings unanswered',orphans:'orphaned'};
 const EBOTS={'ChatGPT':['GPTBot','OAI-SearchBot'],'Perplexity':['PerplexityBot'],'AI Overviews':['Googlebot','Google-Extended'],'Gemini':['Google-Extended'],'Copilot':['Bingbot'],'Claude':['ClaudeBot','anthropic-ai']};
 const EOWNER={'ChatGPT':'OpenAI','Perplexity':'Perplexity','AI Overviews':'Google','Gemini':'Google','Copilot':'Microsoft','Claude':'Anthropic'};
 const ORD=['','strongest','second-strongest','third-strongest','fourth-strongest','fifth-strongest','sixth-strongest'];
@@ -1324,7 +1439,7 @@ function engine(e){
  const WD=(w,c)=>`<span class="wdots" style="color:${c}">${'●'.repeat(w)}<span style="color:#3a3227">${'●'.repeat(Math.max(0,3-w))}</span></span>`;
  const barC=pr=>pr>=90?'#3ecf8e':pr>=40?'#f2b53c':'#ff4d3d';
  const engDetail=id=>{
-   if(SITEIDS.has(id)){const sc=(D.site_checks||[]).find(c=>c.id==id)||{};const cl=sc.status=='good'?'ok':sc.status=='warn'?'wn':'er';return `<div id="eg_${id}" class="engdet"><span class="rst ${cl}">Site-wide check: ${sc.status||'n/a'}</span> <span class="qd">${esc(sc.detail||'')}</span></div>`;}
+   if(SITEIDS.has(id)){const sc=(D.site_checks||[]).find(c=>c.id==id)||{};const cl=sc.status=='good'?'ok':sc.status=='warn'?'wn':'er';const _u=sc.urls||[];const _l=_u.length?'<div class="egh" style="margin-top:8px">Pages ('+_u.length+')</div>'+_u.map(u=>'<span class="egp"><span class="dotb" style="background:#3ecf8e"></span><a href="'+esc(u)+'" target="_blank">'+rel(u)+'</a></span>').join(''):'';return `<div id="eg_${id}" class="engdet"><span class="rst ${cl}">Site-wide check: ${sc.status||'n/a'}</span> <span class="qd">${esc(sc.detail||'')}</span>${_l}</div>`;}
    const dcx=s=>s=='good'?'#3ecf8e':s=='warn'?'#f2b53c':'#ff4d3d';
    const rr=ok.map(p=>[p,p.cs[id]]).filter(x=>x[1]&&x[1]!='na'&&x[1]!='info');
    if(!rr.length)return `<div id="eg_${id}" class="engdet"><span class="qd">No applicable pages for this signal.</span></div>`;
@@ -1491,7 +1606,7 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None):
     def emit(phase,done,total,msg):
         if progress: progress(phase,done,total,msg)
     emit("discover",0,0,f"Discovering URLs for {domain}...")
-    urls=all_urls(origin,domain,max_pages)
+    urls,sitemap_paths=all_urls(origin,domain,max_pages)
     total=len(urls); done=[0]
     emit("discover",0,total,f"{total} URLs to crawl")
     def work(u):
@@ -1502,7 +1617,7 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None):
         pages=list(ex.map(work,urls))
     emit("site",total,total,"Site-wide checks...")
     sitecx=site_checks(origin,domain)
-    data=build(domain,origin,pages,sitecx)
+    data=build(domain,origin,pages,sitecx,sitemap_paths)
     if out: apply_diff(data,out); write_outputs(data,out)     # out=None -> crawl + score only, no files (used by benchmark)
     emit("done",total,total,f"{domain}: {data['overall']}/100, {data['pages_crawled']} pages")
     return data
