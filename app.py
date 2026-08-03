@@ -11,7 +11,7 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.6.0"                 # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.7.0"                 # semver; bump on every release + tag the GitHub release to match
 GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
 VERSION = f"v{APP_VERSION} - August 2026"
 
@@ -206,8 +206,8 @@ function check(job){fetch('/status/'+job).then(r=>r.json()).then(j=>{
   if(!j)return;
   const pct = j.total ? Math.round(100*j.done/j.total) : 0;
   $('fill').style.width=pct+'%';
-  $('phase').textContent = j.phase==='crawl' ? 'Crawling + rendering...' : j.phase==='site' ? 'Site-wide checks...' : j.phase==='discover' ? 'Discovering URLs...' : j.phase==='done' ? 'Done' : 'Working...';
-  $('count').textContent = j.total ? (j.done+' / '+j.total+' pages') : '';
+  $('phase').textContent = j.phase==='crawl' ? 'Crawling + rendering...' : j.phase==='links' ? 'Checking outbound links...' : j.phase==='site' ? 'Site-wide checks...' : j.phase==='discover' ? 'Discovering URLs...' : j.phase==='done' ? 'Done' : 'Working...';
+  $('count').textContent = j.total ? (j.done+' / '+j.total+(j.phase==='links'?' links':' pages')) : '';
   if(j.lines) $('log').textContent = j.lines.join('\n');
   $('log').scrollTop = $('log').scrollHeight;
   if(j.finished){ clearInterval(poll);

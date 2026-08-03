@@ -16,7 +16,12 @@ No API keys, no LLM. Uses your installed Chrome or Edge to render (essential: cu
 ## Download (Windows)
 Grab the latest `CITED-Score.exe` from the [Releases page](https://github.com/GoGoChimp/cited-score/releases/latest). Double-click it; no Python needed. It still needs Google Chrome or Microsoft Edge installed (used to render pages) and warns if neither is found. The app checks for newer releases on launch and shows an update banner when one is available.
 
-**First run:** the app is not code-signed yet, so Windows Defender SmartScreen may show "Windows protected your PC". Click **More info -> Run anyway**. This is expected for any unsigned app; the full source is in this repo, so you can inspect it or build the exe yourself.
+### Why Windows shows a warning (and why it's safe)
+On first run, Windows Defender SmartScreen may say **"Windows protected your PC"** with **"unknown publisher"**. Click **More info -> Run anyway**. This is **not** a virus warning.
+
+It appears for **any** app that is not code-signed. CITED Score is unsigned by choice: as of 2026, signing no longer earns an instant clean download (Microsoft removed that benefit from EV certificates in 2024, so every newly-signed app has to build reputation through downloads anyway), so signing a fast-moving free tool adds cost without removing the first-run prompt.
+
+Your real safeguards instead: the **full source is in this repo** (inspect it, or build the exe yourself with the steps below); the app makes **no network calls except the GitHub update check**; and it renders pages with **your own installed Chrome/Edge**, not a bundled browser. Nothing leaves your machine.
 
 ## Run from source
 Requirements: Python 3.10+, Google Chrome or Microsoft Edge, then `pip install -r requirements.txt`.
