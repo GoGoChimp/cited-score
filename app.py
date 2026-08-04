@@ -11,7 +11,7 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.9.1"                 # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.9.2"                 # semver; bump on every release + tag the GitHub release to match
 GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
 VERSION = f"v{APP_VERSION} - August 2026"
 
@@ -49,15 +49,16 @@ PORT = 5000
 def safe(d): return re.sub(r"[^a-z0-9._-]", "-", d.lower())[:80]
 
 INDEX = r"""<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>CITED Score</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300..900&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>CITED Score</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0d0b0a;--panel:#131110;--panel2:#0b0a09;--line:#2a2320;--muted:#8b8480;--txt:#f2ede9;--grn:#FF5C1A;--grn2:#ff7a3d;--ok:#3ecf8e;--red:#ff4d3d;--display:'Figtree',sans-serif}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 'Figtree',-apple-system,Segoe UI,Arial,sans-serif}
+:root{--bg:#171310;--panel:#1F1A15;--panel2:#0f0c0a;--line:#2E2823;--muted:#8A867F;--txt:#F5F1EA;--grn:#FF5C1A;--grn2:#ff7a3d;--ok:#3DD68C;--red:#F16A5F;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;--display:'Archivo',sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 'Archivo',-apple-system,Segoe UI,Arial,sans-serif}
 .wrap{max-width:1180px;margin:0 auto;padding:26px 26px 60px}
 a{color:var(--grn);text-decoration:none}
-.logo{display:inline-flex;align-items:center;gap:9px}
-.logo .lw{font-family:'Figtree',sans-serif;font-weight:800;font-size:22px;letter-spacing:-.01em;color:var(--txt);line-height:1}
-.logo .ls{font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.22em;color:var(--muted);text-transform:uppercase}
+.logo{display:inline-flex;align-items:center;gap:11px}
+.logo .wm{display:inline-flex;align-items:baseline;gap:8px}
+.logo .lw{font-family:'Archivo',sans-serif;font-weight:900;font-size:23px;letter-spacing:-.02em;color:var(--txt);line-height:1}
+.logo .ls{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.24em;color:var(--muted);text-transform:uppercase}
 .upd{display:flex;align-items:center;gap:16px;background:rgba(255,77,0,.07);border:1px solid rgba(255,77,0,.32);border-radius:14px;padding:14px 18px;margin-bottom:26px}
 .upd .uc{background:var(--grn);color:#0a0a0a;font-weight:800;font-size:11px;letter-spacing:.5px;padding:3px 8px;border-radius:5px}
 .upd .ut{font-weight:800}.upd .ud{color:var(--muted);font-size:13px}.upd .sp{flex:1}
@@ -90,7 +91,7 @@ a{color:var(--grn);text-decoration:none}
 .note2{color:var(--muted);font-size:12px;margin-top:12px}
 .chk{display:flex;gap:12px;padding:9px 0;font-size:14px}.chk b{font-family:var(--display);font-weight:800;color:var(--grn);width:22px;flex:0 0 22px}
 .bar{height:10px;background:#2a2320;border-radius:6px;overflow:hidden;margin:12px 0}.bar i{display:block;height:100%;background:var(--grn);width:0;transition:width .3s}
-.log{font:12px/1.5 ui-monospace,Consolas,monospace;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;height:170px;overflow:auto;white-space:pre-wrap}
+.log{font:12px/1.5 var(--mono);color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;height:170px;overflow:auto;white-space:pre-wrap}
 .tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:14px 0}
 .tile{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center}.tile .n{font-family:var(--display);font-weight:800;font-size:24px}.tile .l{font-size:11px;color:var(--muted)}
 .open{display:inline-block;margin-top:6px;background:var(--grn);color:#0a0a0a;font-weight:800;padding:11px 18px;border-radius:9px}
@@ -100,7 +101,7 @@ a{color:var(--grn);text-decoration:none}
 .tools{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:34px}
 @media(max-width:820px){.tools{grid-template-columns:1fr}}
 .tool .note2{margin-top:6px}
-.tool textarea{width:100%;min-height:92px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 12px;font:12px/1.5 ui-monospace,Consolas,monospace;resize:vertical;margin-top:10px;outline:none}
+.tool textarea{width:100%;min-height:92px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 12px;font:12px/1.5 var(--mono);resize:vertical;margin-top:10px;outline:none}
 .tool select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:9px 12px;font-size:13px;margin-top:10px;outline:none}
 .mini{margin-top:12px;background:var(--grn);color:#0a0a0a;border:0;border-radius:9px;padding:10px 16px;font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.4px;font-size:13px;cursor:pointer}
 .mini:hover:not(:disabled){background:var(--grn2)}.mini:disabled{opacity:.5;cursor:default}
@@ -112,13 +113,13 @@ a{color:var(--grn);text-decoration:none}
 .tout .best{color:var(--grn);font-weight:800}
 .rho.up{color:var(--ok)}.rho.dn{color:var(--red)}.rho.z{color:var(--muted)}
 .tag{font-size:10px;padding:1px 7px;border-radius:20px;border:1px solid var(--line);color:var(--muted)}
-.tag.up{color:var(--ok);border-color:#3ecf8e55}.tag.inv{color:#f2b53c;border-color:#f2b53c55}
+.tag.up{color:var(--ok);border-color:#3DD68C55}.tag.inv{color:#F0B429;border-color:#F0B42955}
 </style></head><body><div class="wrap">
 <div class="upd hide" id="upd"><span class="uc">Update</span><div><div class="ut" id="updmsg">Update available</div><div class="ud" id="upddesc"></div></div><div class="sp"></div><a class="updbtn" id="updlink" target="_blank">Update now</a><span class="later" onclick="dismissUpd()">Later</span></div>
 
 <div class="cols">
  <div class="main">
-   <div class="logo"><svg viewBox='0 0 200 200' width='27' height='27' style='flex:none'><path d='M161.3,48.6 A80,80 0 1 0 161.3,151.4 L147.4,139.8 A56,56 0 1 1 147.4,60.2 Z' fill='#F5F1EA'/><circle cx='100' cy='100' r='19' fill='#FF5C1A'/></svg><span class="lw">CITED</span><span class="ls">Score</span></div>
+   <div class="logo"><svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M161.3,48.6 A80,80 0 1 0 161.3,151.4 L147.4,139.8 A56,56 0 1 1 147.4,60.2 Z' fill='#F5F1EA'/><circle cx='100' cy='100' r='19' fill='#FF5C1A'/></svg><span class="wm"><span class="lw">CITED</span><span class="ls">Score</span></span></div>
    <h1 class="h1">Score every page the way an AI crawler would</h1>
    <div class="lede">Enter a website. CITED Score crawls every page and grades how citable it is for six engines, then tells you which fix moves the number fastest.</div>
    <div class="engrow"><span>ChatGPT</span><span>Perplexity</span><span>AI Overviews</span><span>Gemini</span><span>Copilot</span><span>Claude</span></div>

@@ -1082,15 +1082,16 @@ except Exception:                                     # fallback: dark app icon 
 def write_html(d, path):
     payload=json.dumps(d,ensure_ascii=False).replace("</","<\\/")
     css=r"""
-:root{--bg:#100D0B;--panel:#1A1613;--panel2:#241C15;--line:#2E2820;--muted:#9A9284;--txt:#F0EBE0;
- --grn:#FF5C1A;--grn2:#ff7a3d;--deep:#d1470f;--amber:#F5A623;--red:#F16A5F;--chip:#D63B2F}
+:root{--bg:#171310;--panel:#1F1A15;--panel2:#241C15;--line:#2E2823;--muted:#8A867F;--txt:#F5F1EA;
+ --grn:#FF5C1A;--grn2:#ff7a3d;--deep:#d1470f;--amber:#F0B429;--red:#F16A5F;--chip:#D63B2F;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 'Figtree',-apple-system,Segoe UI,Arial,sans-serif}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 'Archivo',-apple-system,Segoe UI,Arial,sans-serif}
 a{color:var(--txt);text-decoration:none}a:hover{color:var(--grn)}
 header{padding:18px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.logo{display:inline-flex;align-items:center;gap:9px}
-.logo .lw{font-family:'Figtree',sans-serif;font-weight:800;font-size:21px;letter-spacing:-.01em;color:var(--txt);line-height:1}
-.logo .ls{font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.22em;color:var(--muted);text-transform:uppercase}
+.logo{display:inline-flex;align-items:center;gap:11px}
+.logo .wm{display:inline-flex;align-items:baseline;gap:8px}
+.logo .lw{font-family:'Archivo',sans-serif;font-weight:900;font-size:22px;letter-spacing:-.02em;color:var(--txt);line-height:1}
+.logo .ls{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.24em;color:var(--muted);text-transform:uppercase}
 header .m{color:var(--muted);font-size:13px}
 .btns{margin-left:auto;display:flex;gap:8px}
 button{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px}
@@ -1115,7 +1116,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 th{color:var(--muted);font-weight:600;cursor:pointer;user-select:none;position:sticky;top:42px;background:#120F0C}
 tr:hover td{background:#201A14}.sc{font-weight:800;border-radius:6px;padding:2px 8px;color:#08110a;display:inline-block;min-width:30px;text-align:center}
 .badge{font-size:10px;padding:1px 6px;border-radius:20px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
-.badge.Known{border-color:#3aa0ff55;color:#7bbcff}.badge.Findable{border-color:#ff4d0055;color:var(--grn2)}.badge.Trusted{border-color:#f5a62355;color:var(--amber)}
+.badge.Known{border-color:#3aa0ff55;color:#7bbcff}.badge.Findable{border-color:#FF5C1A55;color:var(--grn2)}.badge.Trusted{border-color:#f5a62355;color:var(--amber)}
 .dot{font-weight:800}.dot.good{color:var(--grn)}.dot.warn{color:var(--amber)}.dot.bad{color:var(--red)}
 .issue{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
 .issue h4{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -1132,13 +1133,13 @@ tr:hover td{background:#201A14}.sc{font-weight:800;border-radius:6px;padding:2px
 input.search{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-size:13px;width:260px;margin-bottom:12px}
 .foot{color:var(--muted);font-size:12px;padding:20px 26px;border-top:1px solid var(--line);max-width:1000px}
 .diffline{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:13px}
-:root{--display:Impact,'Haettenschweiler','Arial Narrow',sans-serif;--ok:#3ecf8e;--warn2:#f2b53c;--err2:#ff4d3d}
+:root{--display:'Archivo',sans-serif;--ok:#3DD68C;--warn2:#F0B429;--err2:#ff4d3d}
 .ov{display:grid;grid-template-columns:1fr 336px;gap:22px;align-items:start}
 @media(max-width:1080px){.ov{grid-template-columns:1fr}}
 .ov2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
 @media(max-width:640px){.ov2{grid-template-columns:1fr}}
 .sech{font-family:var(--display);text-transform:uppercase;letter-spacing:.6px;font-size:17px;color:var(--txt);font-weight:400;margin:26px 0 12px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.sech .s{font-family:'Figtree',sans-serif;text-transform:none;letter-spacing:0;font-size:12px;color:var(--muted);font-weight:400}
+.sech .s{font-family:'Archivo',sans-serif;text-transform:none;letter-spacing:0;font-size:12px;color:var(--muted);font-weight:400}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
 .hero{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
 .sring{--p:0;--c:var(--grn);width:150px;height:150px;flex:0 0 150px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--c) calc(var(--p)*1%),#2C231C 0)}
@@ -1185,22 +1186,22 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .bl .num{font-family:var(--display);font-size:16px;width:28px;text-align:right}
 .rch{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid var(--line);font-size:13px}.rch:first-of-type{border-top:0}
 .rst{font-size:13px}.rst.ok{color:var(--ok)}.rst.wn{color:var(--warn2)}.rst.er{color:var(--err2)}.rst::before{content:'\25CF '}
-.sech,.htitle,.hclabel,.sring .v,.tval,.chstat .n,.dfgain,.bl .num,.dfh .t{font-family:'Figtree',sans-serif;font-weight:800;letter-spacing:0}
+.sech,.htitle,.hclabel,.sring .v,.tval,.chstat .n,.dfgain,.bl .num,.dfh .t{font-family:'Archivo',sans-serif;font-weight:800;letter-spacing:0}
 /* ===== Action Plan + Issues (mockup redesign) ===== */
 .ap2{display:grid;grid-template-columns:1fr 380px;gap:24px;align-items:start}
 .apmain{display:flex;flex-direction:column;gap:20px;min-width:0}
 .apside{display:flex;flex-direction:column;gap:20px;position:sticky;top:12px}
 .apsum,.issum{background:linear-gradient(180deg,#17130f,#141110);border:1px solid var(--line);border-radius:14px;padding:22px 26px}
-.apk{font-size:11px;font-weight:600;letter-spacing:.1em;color:var(--muted)}
-.apbn{font-family:'Figtree',sans-serif;font-size:46px;font-weight:900;line-height:1;letter-spacing:-.02em}
+.apk{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.16em;color:var(--muted);text-transform:uppercase}
+.apbn{font-family:'Archivo',sans-serif;font-size:46px;font-weight:900;line-height:1;letter-spacing:-.02em}
 .apintro{font-size:13px;line-height:1.6;color:#9d9691;max-width:900px}
 .aptier{display:flex;flex-direction:column;gap:12px}
 .aptierh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.aptierh h3{margin:0;font-size:16px;letter-spacing:.06em;font-family:'Figtree',sans-serif;font-weight:800}
+.aptierh h3{margin:0;font-size:16px;letter-spacing:.06em;font-family:'Archivo',sans-serif;font-weight:800}
 .aptierh .sq{width:9px;height:9px;border-radius:2px;flex:none}
 .aptierh .meta{font-size:12px;color:var(--muted)}
 .apbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:2px 22px 6px}
-.apbox.hot{border-color:#ff4d0047}
+.apbox.hot{border-color:#FF5C1A47}
 .apissue{border-bottom:1px solid #ffffff10}
 .apissue:last-child{border-bottom:0}
 .aprow{display:grid;gap:18px;align-items:center;padding:15px 0}
@@ -1208,9 +1209,9 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .eb{width:5px;height:11px;border-radius:1px;display:inline-block}
 .ebs{display:inline-flex;gap:2px;margin-right:6px;vertical-align:middle}
 .apchip{display:inline-block;font-size:11px;color:#c9c2bd;background:#ffffff10;padding:2px 7px;border-radius:4px;margin:0 6px 2px 0}
-.apgain{font-family:'Figtree',sans-serif;font-weight:900;letter-spacing:-.02em;line-height:1}
-.pbtn{font:inherit;font-size:12px;font-weight:600;color:var(--grn);background:transparent;border:1px solid #ff4d0066;border-radius:5px;padding:5px 10px;cursor:pointer}
-.pbtn:hover{background:#ff4d001f}
+.apgain{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.02em;line-height:1}
+.pbtn{font:inherit;font-size:12px;font-weight:600;color:var(--grn);background:transparent;border:1px solid #FF5C1A66;border-radius:5px;padding:5px 10px;cursor:pointer}
+.pbtn:hover{background:#FF5C1A1f}
 .pbtn.g{color:#c9c2bd;border-color:#ffffff28}.pbtn.g:hover{color:#fff;border-color:#ffffff5c}
 .apurls{display:none;font-size:12px;padding:2px 0 12px;columns:2;column-gap:24px}
 .apurls a{color:var(--muted)}.apurls a:hover{color:var(--txt)}
@@ -1218,21 +1219,21 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .dotb{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle;flex:none}
 .rmc{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
 .rmch{padding:16px 20px 12px;border-bottom:1px solid #ffffff12}
-.rmch h3{margin:0;font-size:15px;letter-spacing:.06em;font-family:'Figtree',sans-serif;font-weight:800}
+.rmch h3{margin:0;font-size:15px;letter-spacing:.06em;font-family:'Archivo',sans-serif;font-weight:800}
 .rmph{padding:16px 20px;border-bottom:1px solid #ffffff12}
 .rmph:last-child{border-bottom:0}
 .rmnum{font-size:12px;font-weight:800;padding:3px 8px;border-radius:4px;flex:none}
 .card2{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
-.card2 h3{margin:0 0 10px;font-size:15px;letter-spacing:.06em;font-family:'Figtree',sans-serif;font-weight:800}
+.card2 h3{margin:0 0 10px;font-size:15px;letter-spacing:.06em;font-family:'Archivo',sans-serif;font-weight:800}
 .rowsb{display:flex;align-items:center;justify-content:space-between;font-size:12px;padding:4px 0}
 .bigbtn{display:block;width:100%;text-align:center;font:inherit;font-size:13px;font-weight:700;color:#140b06;background:var(--grn);border:none;border-radius:8px;padding:12px;cursor:pointer}
 .bigbtn:hover{background:var(--grn2);color:#0a0a0a}
 .dashnote{display:flex;align-items:center;gap:10px;padding:14px 18px;border:1px dashed #ffffff24;border-radius:12px;font-size:11px;color:var(--muted);line-height:1.5}
 .issum{display:flex;align-items:center;gap:30px;flex-wrap:wrap}
-.issum .big{font-size:44px;font-weight:900;line-height:1;font-family:'Figtree',sans-serif;letter-spacing:-.02em}
+.issum .big{font-size:44px;font-weight:900;line-height:1;font-family:'Archivo',sans-serif;letter-spacing:-.02em}
 .istat{display:flex;flex-direction:column;gap:5px;justify-content:center}
 .inumwrap{display:flex;align-items:center;gap:8px;min-height:34px}
-.inum{font-family:'Figtree',sans-serif;font-size:34px;font-weight:900;line-height:1;letter-spacing:-.02em}
+.inum{font-family:'Archivo',sans-serif;font-size:34px;font-weight:900;line-height:1;letter-spacing:-.02em}
 .isub{font-size:12px;color:var(--muted);line-height:1.35}
 .vr{width:1px;align-self:stretch;min-height:44px;background:#ffffff14}
 .fpill{font:inherit;font-size:12px;font-weight:600;color:#c9c2bd;background:transparent;border:1px solid #ffffff28;border-radius:999px;padding:7px 14px;cursor:pointer}
@@ -1241,7 +1242,7 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .wpage{display:flex;align-items:center;gap:14px;padding:13px 20px;border-bottom:1px solid #ffffff10;cursor:pointer;color:inherit}
 .wpage:hover{background:#ffffff08}
 .wpage:last-child{border-bottom:0}
-.wpage .s{font-size:20px;font-weight:800;width:34px;font-family:'Figtree',sans-serif}
+.wpage .s{font-size:20px;font-weight:800;width:34px;font-family:'Archivo',sans-serif}
 @media(max-width:1080px){.ap2{grid-template-columns:1fr}.apside{position:static}.apurls{columns:1}}
 /* ===== Pages (mockup redesign) ===== */
 .pgsum{background:linear-gradient(180deg,#17130f,#141110);border:1px solid var(--line);border-radius:14px;padding:20px 26px;display:flex;align-items:center;gap:30px;flex-wrap:wrap}
@@ -1259,7 +1260,7 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .pgrow a{font-size:13px;font-weight:600;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pgrow a:hover{color:var(--grn)}
 .tybadge{font-size:10px;color:#6f6864;border:1px solid #ffffff1f;border-radius:3px;padding:1px 5px;flex:none}
-.schip{font-size:15px;font-weight:800;text-align:center;padding:5px 0;border-radius:6px;font-family:'Figtree',sans-serif}
+.schip{font-size:15px;font-weight:800;text-align:center;padding:5px 0;border-radius:6px;font-family:'Archivo',sans-serif}
 .ecell{font-size:12px;font-weight:600;text-align:center;padding:4px 0;border-radius:4px}
 .pgpill{font:inherit;font-size:12px;font-weight:600;color:#c9c2bd;background:transparent;border:1px solid #ffffff28;border-radius:999px;padding:7px 13px;cursor:pointer}
 .pgpill:hover{color:#fff}
@@ -1287,7 +1288,7 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .engwrow{padding:12px 20px;border-bottom:1px solid #ffffff0d}
 .engwrow:last-child{border-bottom:0}
 .engwhead{padding:12px 20px;background:#171412;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted)}
-.card2.hot{border-color:#ff4d004d}
+.card2.hot{border-color:#FF5C1A4d}
 .numbadge{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:800;flex:none}
 .stbar{position:relative;height:8px;border-radius:5px;background:#221d1a;overflow:hidden;flex:1}
 .stbar i{display:block;height:100%;border-radius:5px}
@@ -1301,12 +1302,12 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .stp a:hover{color:var(--txt)}.stp .qd{font-size:12px}
 .stcks{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
 .stck{font-size:10px;padding:2px 8px;border-radius:20px;border:1px solid var(--line);white-space:nowrap}
-.stck.bad{color:#ff9c88;border-color:#ff4d3d44}.stck.warn{color:#f2c574;border-color:#f2b53c44}
+.stck.bad{color:#ff9c88;border-color:#ff4d3d44}.stck.warn{color:#f2c574;border-color:#F0B42944}
 .strow{display:grid;grid-template-columns:170px 70px 1fr 52px;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid #ffffff0f}
 .strow:last-child{border-bottom:0}
 .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
 .statcard{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
-.statcard .n{font-family:'Figtree',sans-serif;font-size:30px;font-weight:900;line-height:1;letter-spacing:-.02em}
+.statcard .n{font-family:'Archivo',sans-serif;font-size:30px;font-weight:900;line-height:1;letter-spacing:-.02em}
 .statcard .l{font-size:11px;color:var(--muted);margin-top:6px}
 @media(max-width:1080px){.engcols{grid-template-columns:1fr 80px 160px 60px}.engwcols{grid-template-columns:60px 1fr 140px 56px 64px}}
 #printroot{display:none}
@@ -1320,8 +1321,8 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 """
     js=r"""
 const D=window.__DATA__;
-const col=s=>s>=75?'#ff4d00':s>=50?'#F5A623':'#F16A5F';
-const bcol=v=>v>=70?'#ff4d00':v>=50?'#f2b53c':'#ff4d3d';
+const col=s=>s>=75?'#FF5C1A':s>=50?'#F5A623':'#F16A5F';
+const bcol=v=>v>=70?'#FF5C1A':v>=50?'#F0B429':'#ff4d3d';
 const dlt=(now,was)=>{if(was==null)return'';const d=now-was,c=d>0?'up':d<0?'dn':'z',s=(d>0?'+':'')+d;return ` <span class="d ${c}">${s}</span>`};
 const dot=s=>`<span class="dot ${s}">●</span>`;
 const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1422,11 +1423,11 @@ function planRow(i,x){const eg=Object.entries(i.gain_engines).filter(([e,v])=>v>
    <div class="fix"><b>Fix (${i.count} page${i.count>1?'s':''}):</b> ${esc(i.fix)} <span class="muted">- click to list pages</span></div>
    <div class="urls">${[...i.bad.map(u=>'● '+rel(u)),...i.warn.map(u=>'○ '+rel(u))].join('<br>')}</div></div>`}
 // ---- shared helpers for Action Plan + Issues ----
-const PDOT={Known:'#6f9dff',Findable:'#f2b53c',Trusted:'#3ecf8e'};
+const PDOT={Known:'#6f9dff',Findable:'#F0B429',Trusted:'#3DD68C'};
 const TTYPE={schema:'template',parity:'template',faq:'template',canonical:'template',robots:'template',sitemap:'template',reachability:'template',freshness:'template',internal:'template',http:'template',entity:'template',schemacomplete:'template',noindex:'template',speed:'template',schemavalidity:'template',orphans:'template',brokenlinks:'template',reviewschema:'template',
  answerfirst:'copy',definitional:'copy',readability:'copy',entitydensity:'copy',qheadings:'copy',sections:'copy',liststables:'copy',wordcount:'copy',statdensity:'copy',h1:'copy',author:'copy',sourced:'copy',video:'copy',comparison:'copy',rankedlist:'copy',answerthird:'copy',h2answer:'copy',nearduplicate:'copy',
  meta:'meta',title:'meta',alt:'meta',citations:'meta',duplicate:'meta'};
-const EBARS=e=>{const n=(e=='High')?3:(e=='Med')?2:1,c=n==1?'#3ecf8e':n==2?'#f2b53c':'#ff4d00',lab=n==1?'low':n==2?'medium':'high';
+const EBARS=e=>{const n=(e=='High')?3:(e=='Med')?2:1,c=n==1?'#3DD68C':n==2?'#F0B429':'#FF5C1A',lab=n==1?'low':n==2?'medium':'high';
  let b='';for(let k=0;k<3;k++)b+=`<span class="eb" style="background:${k<n?c:'#2C231C'}"></span>`;
  return `<span class="ebs">${b}</span><span style="color:${c}">${lab}</span>`};
 const ACT=()=>D.issues.filter(i=>i.pillar!='Info'&&(i.gain_overall>0||i.severity=='bad'));
@@ -1434,10 +1435,10 @@ const AFFPAGES=()=>D.pages.filter(p=>p.checks.some(c=>c.status=='bad'||c.status=
 const gpos=i=>i.gain_overall>0?i.gain_overall:0;
 function tgl(id){const e=document.getElementById(id);if(e)e.style.display=e.style.display=='block'?'none':'block'}
 function bull(u,c){return `<span class="b"><span class="dotb" style="background:${c}"></span><a href="${esc(u)}" target="_blank">${rel(u)}</a></span>`}
-function urlList(id,i){return `<div id="${id}" class="apurls">${[...i.bad.map(u=>bull(u,'#ff4d3d')),...i.warn.map(u=>bull(u,'#f2b53c'))].join('')||'<span class="qd">No affected pages.</span>'}</div>`}
+function urlList(id,i){return `<div id="${id}" class="apurls">${[...i.bad.map(u=>bull(u,'#ff4d3d')),...i.warn.map(u=>bull(u,'#F0B429'))].join('')||'<span class="qd">No affected pages.</span>'}</div>`}
 function pdet(id){
- if(SITEIDS.has(id)){const sc=(D.site_checks||[]).find(c=>c.id==id)||{};const cl=sc.status=='good'?'ok':sc.status=='warn'?'wn':'er';const _u=sc.urls||[];const _l=_u.length?'<div class="egh" style="margin-top:8px">Pages ('+_u.length+')</div>'+_u.map(u=>'<span class="egp"><span class="dotb" style="background:#3ecf8e"></span><a href="'+esc(u)+'" target="_blank">'+rel(u)+'</a></span>').join(''):'';return `<div id="pd_${id}" class="engdet"><span class="rst ${cl}">Site-wide check: ${sc.status||'n/a'}</span> <span class="qd">${esc(sc.detail||'')}</span>${_l}</div>`;}
- const ok=D.pages.filter(p=>p.status==200), dcx=s=>s=='good'?'#3ecf8e':s=='warn'?'#f2b53c':'#ff4d3d';
+ if(SITEIDS.has(id)){const sc=(D.site_checks||[]).find(c=>c.id==id)||{};const cl=sc.status=='good'?'ok':sc.status=='warn'?'wn':'er';const _u=sc.urls||[];const _l=_u.length?'<div class="egh" style="margin-top:8px">Pages ('+_u.length+')</div>'+_u.map(u=>'<span class="egp"><span class="dotb" style="background:#3DD68C"></span><a href="'+esc(u)+'" target="_blank">'+rel(u)+'</a></span>').join(''):'';return `<div id="pd_${id}" class="engdet"><span class="rst ${cl}">Site-wide check: ${sc.status||'n/a'}</span> <span class="qd">${esc(sc.detail||'')}</span>${_l}</div>`;}
+ const ok=D.pages.filter(p=>p.status==200), dcx=s=>s=='good'?'#3DD68C':s=='warn'?'#F0B429':'#ff4d3d';
  const rr=ok.map(p=>[p,p.cs[id]]).filter(x=>x[1]&&x[1]!='na'&&x[1]!='info');
  if(!rr.length)return `<div id="pd_${id}" class="engdet"><span class="qd">No applicable pages for this check.</span></div>`;
  const fl=rr.filter(x=>x[1]!='good'),ps=rr.filter(x=>x[1]=='good');
@@ -1468,14 +1469,14 @@ function plan(){
    <div style="border-left:1px solid var(--line);padding-left:30px;display:flex;flex-direction:column;gap:11px">
      <div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)"><span style="font-weight:600;letter-spacing:.08em">WHERE THE ${tg} POINTS COME FROM</span><span>${edits} page edits across ${affp} pages</span></div>
      <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:#221d1a">
-       <div style="width:${Math.round(100*bG/TG)}%;background:#ff4d00"></div>
+       <div style="width:${Math.round(100*bG/TG)}%;background:#FF5C1A"></div>
        <div style="width:${Math.round(100*wG/TG)}%;background:#ff8a3d"></div>
        <div style="width:${Math.round(100*pG/TG)}%;background:#5a4034"></div></div>
      <div style="display:flex;gap:22px;font-size:12px;color:#9d9691;flex-wrap:wrap">
-       ${[['#ff4d00','Biggest movers',biggest.length,bG],['#ff8a3d','Worth doing',worth.length,wG],['#5a4034','Polish',polish.length,pG]].map(a=>`<span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:2px;background:${a[0]}"></span>${a[1]}, ${a[2]} fixes <b style="color:#fff">+${a[3]}</b></span>`).join('')}</div>
+       ${[['#FF5C1A','Biggest movers',biggest.length,bG],['#ff8a3d','Worth doing',worth.length,wG],['#5a4034','Polish',polish.length,pG]].map(a=>`<span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:2px;background:${a[0]}"></span>${a[1]}, ${a[2]} fixes <b style="color:#fff">+${a[3]}</b></span>`).join('')}</div>
    </div></div>`;
  h+=`<div class="apintro">Ranked by projected CITED Score gain if the fix is applied to every affected page. The projection re-scores the site after each fix, so gains do not double-count.</div>`;
- const tiers=[['#ff4d00','BIGGEST MOVERS',biggest,bG,'do these this month','apbox hot','big'],
+ const tiers=[['#FF5C1A','BIGGEST MOVERS',biggest,bG,'do these this month','apbox hot','big'],
               ['#ff8a3d','WORTH DOING',worth,wG,'structure for retrieval','apbox','mid'],
               ['#5a4034','POLISH',polish,pG,'low effort','apbox','sm']];
  tiers.forEach(t=>{const arr=t[2];if(!arr.length)return;
@@ -1514,7 +1515,7 @@ function planFix(i,size,accent){
  </div>${urls}</div>`}
 function roadmapCard(){
  const info={1:['Days 0–30 &middot; foundation','Quick technical wins, mostly template-level'],2:['Days 30–60 &middot; structure','Rewrite for retrieval, page by page'],3:['Days 60–90 &middot; polish','Small edits, then re-crawl and compare']};
- const acc={1:['#140b06','#ff4d00'],2:['#ff8a3d','#ff4d0029'],3:['#b7afaa','#ffffff14']};
+ const acc={1:['#140b06','#FF5C1A'],2:['#ff8a3d','#FF5C1A29'],3:['#b7afaa','#ffffff14']};
  let cum=D.overall,out='';
  [1,2,3].forEach(ph=>{const ids=(D.plan_phases&&D.plan_phases[ph])||[];if(!ids.length)return;
    const items=ids.map(id=>D.issues.find(y=>y.id==id)).filter(Boolean);
@@ -1522,7 +1523,7 @@ function roadmapCard(){
    out+=`<div class="rmph"><div style="display:flex;align-items:flex-start;gap:12px">
      <span class="rmnum" style="color:${acc[ph][0]};background:${acc[ph][1]}">0${ph}</span>
      <div style="flex:1"><div style="font-size:14px;font-weight:700">${info[ph][0]}</div><div class="qd">${info[ph][1]}</div></div>
-     <div style="text-align:right"><div style="font-size:20px;font-weight:900;font-family:'Figtree',sans-serif;letter-spacing:-.02em">${cum}</div><div style="font-size:11px;color:var(--ok)">+${g}</div></div></div>`;
+     <div style="text-align:right"><div style="font-size:20px;font-weight:900;font-family:'Archivo',sans-serif;letter-spacing:-.02em">${cum}</div><div style="font-size:11px;color:var(--ok)">+${g}</div></div></div>`;
    if(ph==3){out+=`<div class="qd" style="line-height:1.5;padding-left:4px;margin-top:8px">${items.slice(0,6).map(i=>esc(i.label.split('(')[0].split(',')[0].trim())).join(', ')} &mdash; ${items.reduce((a,i)=>a+i.count,0)} pages.</div>`}
    else{out+=`<div style="display:flex;flex-direction:column;gap:7px;font-size:12px;color:#b7afaa;padding-left:4px;margin-top:10px">${items.slice(0,6).map(i=>`<div style="display:flex;align-items:center;gap:9px"><span class="dotb" style="background:${PDOT[i.pillar]}"></span>${esc(i.label.split('(')[0].trim())}</div>`).join('')}</div>`}
    out+=`</div>`});
@@ -1571,14 +1572,14 @@ function issuesView(){
    const gs=iss.filter(i=>i.pillar==p&&show(i));if(!gs.length)return;
    const avail=iss.filter(i=>i.pillar==p).reduce((a,i)=>a+gpos(i),0);
    const failing=iss.filter(i=>i.pillar==p).length;
-   const bc=p=='Findable'?'#f2b53c33':'#ffffff14';
+   const bc=p=='Findable'?'#F0B42933':'#ffffff14';
    h+=`<section class="aptier"><div class="aptierh"><span class="dotb" style="width:9px;height:9px;margin:0;background:${PDOT[p]}"></span><h3>${QL[p]}</h3><span class="meta">score ${D.pillars[p]} &middot; ${failing} check${failing>1?'s':''} failing &middot; +${avail} available${p==weakest?' &middot; weakest pillar':''}</span></div><div class="apbox" style="border-color:${bc}">`;
    gs.forEach(i=>h+=issueRow(i,P));
    h+=`</div></section>`});
  h+=`</div><div class="apside">`+worstPagesCard()+oneChangeCard(errs,iss)+`<div class="dashnote"><span class="dotb" style="background:var(--ok)"></span>${passed} checks passed on every page &mdash; not listed here.</div></div></div>`;
  return h}
 function issueRow(i,P){
- const bad=i.severity=='bad', dc=bad?'#ff4d3d':'#f2b53c';
+ const bad=i.severity=='bad', dc=bad?'#ff4d3d':'#F0B429';
  const w=Math.min(100,Math.round(100*i.count/(P||1)));
  const gv=i.gain_overall>0?('+'+i.gain_overall):'—', gc=i.gain_overall>0?'var(--ok)':'var(--muted)';
  let body;
@@ -1619,7 +1620,7 @@ function pageRow(p){
  const[sbg,sfg]=PBAND(p.score);
  const fails=p.checks.filter(c=>c.status=='bad'||c.status=='warn');
  const nb=p.checks.filter(c=>c.status=='bad').length;
- const cc=nb?['#ff4d3d','rgba(255,77,61,.14)']:fails.length?['#f2b53c','rgba(242,181,60,.14)']:['#3ecf8e','rgba(62,207,142,.14)'];
+ const cc=nb?['#ff4d3d','rgba(255,77,61,.14)']:fails.length?['#F0B429','rgba(242,181,60,.14)']:['#3DD68C','rgba(62,207,142,.14)'];
  const labels=[...fails.filter(c=>c.status=='bad'),...fails.filter(c=>c.status=='warn')].map(c=>esc(c.label)).join(', ');
  const pill=v=>`<span style="font-size:12px;text-align:center;color:${v?'#b7afaa':'#ff8f6b'}">${v}</span>`;
  const ecell=v=>{const[b,f]=PBAND(v);return `<span class="ecell" style="background:${b};color:${f}">${v}</span>`};
@@ -1648,14 +1649,14 @@ function pagesView(){
  const median=n?(n%2?scores[(n-1)/2]:Math.round((scores[n/2-1]+scores[n/2])/2)):0;
  const dist=[0,0,0,0];D.pages.forEach(p=>{const s=p.score;dist[s<70?0:s<80?1:s<90?2:3]++});
  const clear=D.pages.filter(p=>p.score>=70).length,maxd=Math.max(...dist,1);
- const dcol=['#ff4d3d','#f2b53c','#3ecf8e','#2f9c6c'],dnum=['#ff8f6b','#f2c574','#7fdcae','#7fdcae'],dlab=['under 70','70–79','80–89','90+'];
+ const dcol=['#ff4d3d','#F0B429','#3DD68C','#2f9c6c'],dnum=['#ff8f6b','#f2c574','#7fdcae','#7fdcae'],dlab=['under 70','70–79','80–89','90+'];
  const wt={};ECOLS.forEach(e=>wt[e]=0);D.pages.forEach(p=>{let mn=1e9,me=null;ECOLS.forEach(e=>{if(p.engines[e]<mn){mn=p.engines[e];me=e}});if(me)wt[me]++});
- const ws=Object.entries(wt).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,4),wmax=Math.max(...ws.map(x=>x[1]),1),wc=['#ff5b2e','#ff8a3d','#f2b53c','#c98f2e'];
+ const ws=Object.entries(wt).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,4),wmax=Math.max(...ws.map(x=>x[1]),1),wc=['#ff5b2e','#ff8a3d','#F0B429','#c98f2e'];
  if(!sortk)sortk='score';
  let h=`<div style="display:flex;flex-direction:column;gap:18px">`;
  // summary
  h+=`<div class="pgsum">
-   <div><div class="apk">MEDIAN PAGE</div><div style="display:flex;align-items:baseline;gap:9px"><span style="font-size:40px;font-weight:900;line-height:1;font-family:'Figtree',sans-serif;letter-spacing:-.02em">${median}</span><span class="qd">quotable at 70</span></div></div>
+   <div><div class="apk">MEDIAN PAGE</div><div style="display:flex;align-items:baseline;gap:9px"><span style="font-size:40px;font-weight:900;line-height:1;font-family:'Archivo',sans-serif;letter-spacing:-.02em">${median}</span><span class="qd">quotable at 70</span></div></div>
    <div class="vr"></div>
    <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:9px">
      <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="apk">SCORE DISTRIBUTION</span><span class="qd">${clear} of ${D.pages.length} pages clear 70</span></div>
@@ -1675,7 +1676,7 @@ function pagesView(){
  const HCELL=(k,lab,al)=>`<span data-s="${k}" data-lab="${lab}" onclick="pgsort('${k}')" style="text-align:${al||'left'}">${lab}${sortk==k?(sortd>0?' ↑':' ↓'):''}</span>`;
  h+=`<div class="pgscroll"><div class="pgtbl">
    <div id="pghead" class="pgcols pghead">${HCELL('score','SCORE')}${HCELL('url','URL')}
-     <span title="Known" style="text-align:center;color:#6f9dff">KN</span><span title="Findable" style="text-align:center;color:#f2b53c">FI</span><span title="Trusted" style="text-align:center;color:#3ecf8e">TR</span>
+     <span title="Known" style="text-align:center;color:#6f9dff">KN</span><span title="Findable" style="text-align:center;color:#F0B429">FI</span><span title="Trusted" style="text-align:center;color:#3DD68C">TR</span>
      ${ECOLS.map(e=>HCELL(e,EABBR[e],'center')).join('')}
      ${HCELL('fetch_ms','LOAD','right')}<span>FAILING CHECKS</span></div>
    <div id="pgrows">${pgFiltered().map(pageRow).join('')}</div>
@@ -1711,10 +1712,10 @@ function engine(e){
  const topFix=high[0]||low[0];
  const hint=gap>0?(topFix?(TTYPE[topFix.id]=='template'?'One template fix clears most of the gap.':`The top fix adds +${topFix.lift}.`):''):'Already past the quotable threshold.';
  const WD=(w,c)=>`<span class="wdots" style="color:${c}">${'●'.repeat(w)}<span style="color:#3a3227">${'●'.repeat(Math.max(0,3-w))}</span></span>`;
- const barC=pr=>pr>=90?'#3ecf8e':pr>=40?'#f2b53c':'#ff4d3d';
+ const barC=pr=>pr>=90?'#3DD68C':pr>=40?'#F0B429':'#ff4d3d';
  const engDetail=id=>{
-   if(SITEIDS.has(id)){const sc=(D.site_checks||[]).find(c=>c.id==id)||{};const cl=sc.status=='good'?'ok':sc.status=='warn'?'wn':'er';const _u=sc.urls||[];const _l=_u.length?'<div class="egh" style="margin-top:8px">Pages ('+_u.length+')</div>'+_u.map(u=>'<span class="egp"><span class="dotb" style="background:#3ecf8e"></span><a href="'+esc(u)+'" target="_blank">'+rel(u)+'</a></span>').join(''):'';return `<div id="eg_${id}" class="engdet"><span class="rst ${cl}">Site-wide check: ${sc.status||'n/a'}</span> <span class="qd">${esc(sc.detail||'')}</span>${_l}</div>`;}
-   const dcx=s=>s=='good'?'#3ecf8e':s=='warn'?'#f2b53c':'#ff4d3d';
+   if(SITEIDS.has(id)){const sc=(D.site_checks||[]).find(c=>c.id==id)||{};const cl=sc.status=='good'?'ok':sc.status=='warn'?'wn':'er';const _u=sc.urls||[];const _l=_u.length?'<div class="egh" style="margin-top:8px">Pages ('+_u.length+')</div>'+_u.map(u=>'<span class="egp"><span class="dotb" style="background:#3DD68C"></span><a href="'+esc(u)+'" target="_blank">'+rel(u)+'</a></span>').join(''):'';return `<div id="eg_${id}" class="engdet"><span class="rst ${cl}">Site-wide check: ${sc.status||'n/a'}</span> <span class="qd">${esc(sc.detail||'')}</span>${_l}</div>`;}
+   const dcx=s=>s=='good'?'#3DD68C':s=='warn'?'#F0B429':'#ff4d3d';
    const rr=ok.map(p=>[p,p.cs[id]]).filter(x=>x[1]&&x[1]!='na'&&x[1]!='info');
    if(!rr.length)return `<div id="eg_${id}" class="engdet"><span class="qd">No applicable pages for this signal.</span></div>`;
    const fl=rr.filter(x=>x[1]!='good'),ps=rr.filter(x=>x[1]=='good');
@@ -1726,7 +1727,7 @@ function engine(e){
    const lab=hi?`<div style="display:flex;flex-direction:column;gap:4px;min-width:0"><span style="font-size:15px;font-weight:700">${esc(s.lab)} <span class="egcar">▾</span></span><span class="qd" style="line-height:1.5">${esc(s.ev)}</span></div>`
              :`<div style="display:flex;align-items:center;gap:12px;min-width:0"><span style="font-size:14px;font-weight:600;white-space:nowrap">${esc(s.lab)} <span class="egcar">▾</span></span><span class="qd" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.ev)}</span></div>`;
    return `<div class="engcols engrow" onclick="tgl('eg_${s.id}')" title="Show pages">${lab}${WD(s.w,dcol)}${bar}${lift}</div>${engDetail(s.id)}`};
- const estrong=s=>`<div><div class="engcols engrow" onclick="tgl('eg_${s.id}')" title="Show pages" style="padding:2px 0;border:0"><span style="font-size:13px;color:#c9c2bd">${esc(s.lab)} <span class="egcar">▾</span></span>${WD(s.w,'#3ecf8e')}<div style="display:flex;align-items:center;gap:10px"><div class="engbar" style="height:7px;flex:1"><i style="width:${s.pr}%;background:#3ecf8e"></i></div><span style="font-size:11px;color:${s.pr>=100?'#3ecf8e':'#7fdcae'};width:74px;flex:none">${s.pr}% · ${s.good}/${s.total}</span></div><span style="text-align:right;color:#6f6864">—</span></div>${engDetail(s.id)}</div>`;
+ const estrong=s=>`<div><div class="engcols engrow" onclick="tgl('eg_${s.id}')" title="Show pages" style="padding:2px 0;border:0"><span style="font-size:13px;color:#c9c2bd">${esc(s.lab)} <span class="egcar">▾</span></span>${WD(s.w,'#3DD68C')}<div style="display:flex;align-items:center;gap:10px"><div class="engbar" style="height:7px;flex:1"><i style="width:${s.pr}%;background:#3DD68C"></i></div><span style="font-size:11px;color:${s.pr>=100?'#3DD68C':'#7fdcae'};width:74px;flex:none">${s.pr}% · ${s.good}/${s.total}</span></div><span style="text-align:right;color:#6f6864">—</span></div>${engDetail(s.id)}</div>`;
  const secH=(c,name,sub)=>`<div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:${c}"></span><h3>${name}</h3><span class="meta">${sub}</span></div>`;
  let h=`<div class="ap2"><div class="apmain">`;
  h+=`<div class="apsum" style="display:grid;grid-template-columns:auto 1fr;gap:34px;align-items:center;padding:26px 28px">
@@ -1734,7 +1735,7 @@ function engine(e){
      <div class="sring" style="--p:${score}"><i><span class="v">${score}</span><span class="o">OF 100</span></i></div>
      <div style="display:flex;flex-direction:column;gap:9px">
        <div class="htitle" style="font-size:20px;margin:0">${e} READINESS</div>
-       <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:600;color:${gap>0?'#f2c574':'#3ecf8e'};background:${gap>0?'rgba(242,181,60,.14)':'rgba(62,207,142,.14)'};border:1px solid ${gap>0?'rgba(242,181,60,.3)':'rgba(62,207,142,.3)'};padding:4px 9px;border-radius:999px">${gap>0?gap+' pts to quotable':'clears 70 · quotable'}</span><span class="qd">threshold ${TH}</span></div>
+       <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:600;color:${gap>0?'#f2c574':'#3DD68C'};background:${gap>0?'rgba(242,181,60,.14)':'rgba(62,207,142,.14)'};border:1px solid ${gap>0?'rgba(242,181,60,.3)':'rgba(62,207,142,.3)'};padding:4px 9px;border-radius:999px">${gap>0?gap+' pts to quotable':'clears 70 · quotable'}</span><span class="qd">threshold ${TH}</span></div>
        <div class="qd" style="line-height:1.5;max-width:230px">Your ${ORD[rank]||'lower-ranked'} engine. ${hint}</div>
      </div>
    </div>
@@ -1747,9 +1748,9 @@ function engine(e){
        <div><div style="font-size:22px;font-weight:800">${pagesBelow}</div><div class="qd">pages below the threshold</div></div>
      </div>
    </div></div>`;
- if(high.length)h+=`<section class="aptier">${secH('#ff4d00','HIGH WEIGHT, LOW PASS RATE','where '+e+' is costing you the most — fix in this order')}<div class="apbox hot" style="padding:0 24px"><div class="engcols enghead"><span>SIGNAL</span><span>WEIGHT</span><span>SITE PASS RATE</span><span style="text-align:right">LIFT</span></div>${high.map(s=>esig(s,1)).join('')}</div></section>`;
- if(low.length)h+=`<section class="aptier">${secH('#f2b53c','LOWER WEIGHT, WORTH TIDYING',low.length+' signal'+(low.length>1?'s':'')+' · +'+low.reduce((a,s)=>a+(s.lift>0?s.lift:0),0)+' between them')}<div class="apbox" style="padding:2px 24px 6px">${low.map(s=>esig(s,0)).join('')}</div></section>`;
- if(strong.length)h+=`<section class="aptier">${secH('#3ecf8e','ALREADY STRONG',strong.length+' signal'+(strong.length>1?'s':'')+' · protect these when you edit')}<div class="apbox" style="padding:16px 24px;display:flex;flex-direction:column;gap:12px">${strong.map(estrong).join('')}</div></section>`;
+ if(high.length)h+=`<section class="aptier">${secH('#FF5C1A','HIGH WEIGHT, LOW PASS RATE','where '+e+' is costing you the most — fix in this order')}<div class="apbox hot" style="padding:0 24px"><div class="engcols enghead"><span>SIGNAL</span><span>WEIGHT</span><span>SITE PASS RATE</span><span style="text-align:right">LIFT</span></div>${high.map(s=>esig(s,1)).join('')}</div></section>`;
+ if(low.length)h+=`<section class="aptier">${secH('#F0B429','LOWER WEIGHT, WORTH TIDYING',low.length+' signal'+(low.length>1?'s':'')+' · +'+low.reduce((a,s)=>a+(s.lift>0?s.lift:0),0)+' between them')}<div class="apbox" style="padding:2px 24px 6px">${low.map(s=>esig(s,0)).join('')}</div></section>`;
+ if(strong.length)h+=`<section class="aptier">${secH('#3DD68C','ALREADY STRONG',strong.length+' signal'+(strong.length>1?'s':'')+' · protect these when you edit')}<div class="apbox" style="padding:16px 24px;display:flex;flex-direction:column;gap:12px">${strong.map(estrong).join('')}</div></section>`;
  const worst=[...ok].sort((a,b)=>a.engines[e]-b.engines[e]),w8=worst.slice(0,8);
  h+=`<section class="aptier"><div class="aptierh" style="justify-content:space-between"><div style="display:flex;align-items:center;gap:10px"><h3>WORST PAGES FOR ${e}</h3><span class="meta">${pagesBelow} of ${P} below ${TH} · showing the ${w8.length} weakest</span></div><span onclick="go('Pages')" style="font-size:12px;font-weight:600;color:var(--grn);cursor:pointer">See all ${P} pages →</span></div>
    <div style="background:var(--panel2);border:1px solid var(--line);border-radius:14px;overflow:hidden">
@@ -1762,17 +1763,17 @@ function engine(e){
  const acr=eranked.map(x=>`<div style="display:flex;align-items:center;gap:10px"><span style="width:82px;color:${x[0]==e?'#fff':'#b7afaa'};font-weight:${x[0]==e?'700':'400'}">${x[0]}</span><span style="flex:1;height:8px;border-radius:4px;background:#221d1a;overflow:hidden"><span style="display:block;width:${x[1]}%;height:100%;background:${x[0]==e?'#FF4D00':'#3a3227'}"></span></span><span style="width:24px;text-align:right;color:${x[0]==e?'#fff':'#b7afaa'};font-weight:${x[0]==e?'700':'400'}">${x[1]}</span></div>`).join('');
  const bnote=e==best[0]?`Same pages, different weightings. ${e} is your strongest surface — protect it as you edit.`:`Same pages, different weightings. ${e} runs ${best[1]-score} point${best[1]-score==1?'':'s'} behind ${best[0]}, your strongest.`;
  const fixes=high.concat(low).filter(s=>s.lift>0).slice(0,3);
- const doHtml=fixes.length?fixes.map((s,i)=>{const iss=IM[s.id]||{},title=(iss.fix||s.lab).split(' - ')[0].split('. ')[0].trim(),cnt=iss.count||(s.total-s.good),nb=i==0?'color:#140b06;background:#FF4D00':'color:#ff8f6b;background:rgba(255,77,0,.2)';
+ const doHtml=fixes.length?fixes.map((s,i)=>{const iss=IM[s.id]||{},title=(iss.fix||s.lab).split(' - ')[0].split('. ')[0].trim(),cnt=iss.count||(s.total-s.good),nb=i==0?'color:#140b06;background:#FF4D00':'color:#ff8f6b;background:rgba(255,92,26,.2)';
    return `<div style="display:flex;align-items:flex-start;gap:12px"><span class="numbadge" style="${nb}">${i+1}</span><div style="display:flex;flex-direction:column;gap:3px"><span style="font-size:13px;font-weight:600">${esc(title)}</span><span class="qd" style="line-height:1.5">${cnt} page${cnt==1?'':'s'} · +${s.lift} ${e}</span></div></div>`}).join(''):`<div class="qd">No fixes needed — ${e} passes every weighted signal.</div>`;
  const reach=(D.site_checks.find(c=>c.id=='reachability')||{}).status||'good';
- const rT=reach=='good'?['#3ecf8e','● allowed · '+P+'/'+P]:reach=='warn'?['#f2b53c','● partial']:['#ff9c88','● blocked'];
+ const rT=reach=='good'?['#3DD68C','● allowed · '+P+'/'+P]:reach=='warn'?['#F0B429','● partial']:['#ff9c88','● blocked'];
  const parityBad=ok.filter(p=>p.cs.parity=='bad'||p.cs.parity=='warn').length;
  const bots=(EBOTS[e]||[]).map(b=>`<div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:#b7afaa">${b}</span><span style="color:${rT[0]}">${rT[1]}</span></div>`).join('');
  const caNote=reach=='bad'?'Bots are blocked at the WAF — unblock them first.':parityBad?'Access is fine. The problem is what the crawler can read once it arrives.':'Access and rendering both look clean.';
  h+=`<div class="apside">
    <div class="card2"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><h3 style="margin:0">Across Your Engines</h3><span class="qd">site level</span></div><div style="display:flex;flex-direction:column;gap:10px;font-size:12px">${acr}</div><div class="qd" style="line-height:1.5;border-top:1px solid var(--line);padding-top:11px;margin-top:12px">${bnote}</div></div>
    <div class="card2 hot"><h3>Do this for ${e}</h3><div style="display:flex;flex-direction:column;gap:13px">${doHtml}</div>${fixes.length?`<button class="bigbtn" style="border-radius:6px;margin-top:6px" onclick="go('Action Plan')">Open the action plan</button>`:''}</div>
-   <div class="card2"><h3>Crawler Access</h3><div style="display:flex;flex-direction:column;gap:11px">${bots}<div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:#b7afaa">Server-rendered schema</span><span style="color:${parityBad?'#ff9c88':'#3ecf8e'}">● ${parityBad?parityBad+' pages JS-only':'all '+P+' server-rendered'}</span></div></div><div class="qd" style="line-height:1.5;border-top:1px solid var(--line);padding-top:11px;margin-top:2px">${caNote}</div></div>
+   <div class="card2"><h3>Crawler Access</h3><div style="display:flex;flex-direction:column;gap:11px">${bots}<div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:#b7afaa">Server-rendered schema</span><span style="color:${parityBad?'#ff9c88':'#3DD68C'}">● ${parityBad?parityBad+' pages JS-only':'all '+P+' server-rendered'}</span></div></div><div class="qd" style="line-height:1.5;border-top:1px solid var(--line);padding-top:11px;margin-top:2px">${caNote}</div></div>
  </div></div>`;
  return h}
 function structure(){
@@ -1789,25 +1790,25 @@ function structure(){
    const chips=[...bad.map(c=>`<span class="stck bad">${esc(c.label)}</span>`),...warn.map(c=>`<span class="stck warn">${esc(c.label)}</span>`)].join('');
    return `<div class="stp"><span class="schip" style="background:${b[0]};color:${b[1]}">${p.score}</span><div style="flex:1;min-width:0"><div style="display:flex;gap:10px;align-items:baseline"><a href="${esc(p.url)}" target="_blank">${rel(p.url)}</a><span class="qd" style="flex:none;color:${bad.length?'#ff9c88':warn.length?'#f2c574':'var(--ok)'}">${sum}</span></div>${chips?`<div class="stcks">${chips}</div>`:''}</div></div>`};
  const rows=(list,lab)=>list.map((x,i)=>{const a=avg(x[1]),b=PBAND(a),id='st_'+lab+i;return `<div class="strow" onclick="tgl('${id}')" style="cursor:pointer"><span style="font-weight:600">${esc(x[0])} <span class="egcar">▾</span></span><span class="qd">${x[1].length} page${x[1].length>1?'s':''}</span><div class="stbar" title="avg score ${a}/100"><span class="stthr"></span><i style="width:${a}%;background:var(--grn)"></i></div><span class="schip" style="background:${b[0]};color:${b[1]}">${a}</span></div><div id="${id}" class="stdet">${[...x[1]].sort((p,q)=>p.score-q.score).map(stpage).join('')}</div>`}).join('');
- h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#ff4d00"></span><h3>BY TOP-LEVEL SECTION</h3><span class="meta">${secs.length} section${secs.length>1?'s':''}</span></div><div class="apbox" style="padding:6px 22px">${rows(secs.map(s=>['/'+s[0],s[1]]),'sec')}</div></section>`;
+ h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF5C1A"></span><h3>BY TOP-LEVEL SECTION</h3><span class="meta">${secs.length} section${secs.length>1?'s':''}</span></div><div class="apbox" style="padding:6px 22px">${rows(secs.map(s=>['/'+s[0],s[1]]),'sec')}</div></section>`;
  const depths=Object.keys(byDepth).map(Number).sort((a,b)=>a-b),maxd=Math.max(...depths.map(d=>byDepth[d].length),1);
- h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#f2b53c"></span><h3>BY CRAWL DEPTH</h3><span class="meta">clicks from the homepage</span></div><div class="apbox" style="padding:6px 22px">${rows(depths.map(d=>['Depth '+d,byDepth[d]]),'dep')}</div></section>`;
+ h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#F0B429"></span><h3>BY CRAWL DEPTH</h3><span class="meta">clicks from the homepage</span></div><div class="apbox" style="padding:6px 22px">${rows(depths.map(d=>['Depth '+d,byDepth[d]]),'dep')}</div></section>`;
  h+=`</div>`;return h}
 function speed(){
- const sc2=ms=>ms<=800?'#3ecf8e':ms<=1800?'#f2b53c':'#ff4d3d',sl=ms=>ms<=800?'Fast':ms<=1800?'OK':'Slow';
+ const sc2=ms=>ms<=800?'#3DD68C':ms<=1800?'#F0B429':'#ff4d3d',sl=ms=>ms<=800?'Fast':ms<=1800?'OK':'Slow';
  const ps=[...D.pages].sort((a,b)=>b.fetch_ms-a.fetch_ms);
  const avgf=Math.round(ps.reduce((a,p)=>a+p.fetch_ms,0)/ps.length),avgr=Math.round(ps.reduce((a,p)=>a+p.render_ms,0)/ps.length);
  const fast=ps.filter(p=>p.fetch_ms<=800).length,okc=ps.filter(p=>p.fetch_ms>800&&p.fetch_ms<=1800).length,slow=ps.filter(p=>p.fetch_ms>1800).length;
  let h=`<div style="display:flex;flex-direction:column;gap:18px">`;
  h+=`<div class="statgrid">
    <div class="statcard"><div class="n" style="color:${sc2(avgf)}">${avgf}<span style="font-size:14px;color:var(--muted)"> ms</span></div><div class="l">Avg server response · <b style="color:${sc2(avgf)}">${sl(avgf)}</b></div></div>
-   <div class="statcard"><div class="n" style="color:#3ecf8e">${fast}</div><div class="l">Fast ≤ 0.8s</div></div>
-   <div class="statcard"><div class="n" style="color:#f2b53c">${okc}</div><div class="l">OK ≤ 1.8s</div></div>
+   <div class="statcard"><div class="n" style="color:#3DD68C">${fast}</div><div class="l">Fast ≤ 0.8s</div></div>
+   <div class="statcard"><div class="n" style="color:#F0B429">${okc}</div><div class="l">OK ≤ 1.8s</div></div>
    <div class="statcard"><div class="n" style="color:#ff4d3d">${slow}</div><div class="l">Slow &gt; 1.8s</div></div>
    <div class="statcard"><div class="n">${avgr}<span style="font-size:14px;color:var(--muted)"> ms</span></div><div class="l">Avg render (tool overhead)</div></div></div>`;
  h+=`<div class="qd" style="line-height:1.6;max-width:900px">Server response graded on Google's TTFB thresholds: Fast ≤ 0.8s, OK ≤ 1.8s, Slow &gt; 1.8s. Render time is the tool's headless-Chrome overhead, not your site's speed.</div>`;
  h+=`<div class="qd" style="line-height:1.6;max-width:900px;border-top:1px solid var(--line);padding-top:12px"><b style="color:var(--txt)">This is a scored check</b> (the <b>Fast server response</b> signal, Findable pillar): <b style="color:${sc2(avgf)}">${fast} of ${ps.length}</b> pages pass. It feeds the live-retrieval engines - <b>ChatGPT, Perplexity, Copilot, AI Overviews</b> - which abandon slow pages before they can cite them, so a Slow page is a citation risk, not just a UX one.</div>`;
- h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#ff4d00"></span><h3>SLOWEST PAGES</h3><span class="meta">by server response time</span></div>
+ h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF5C1A"></span><h3>SLOWEST PAGES</h3><span class="meta">by server response time</span></div>
    <div style="background:var(--panel2);border:1px solid var(--line);border-radius:14px;overflow:hidden">
    <div style="display:grid;grid-template-columns:140px 1fr 90px;gap:16px;padding:12px 20px;background:#171412;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted)"><span>SERVER RESPONSE</span><span>URL</span><span style="text-align:right">RENDER MS</span></div>
    ${ps.slice(0,40).map(p=>`<div style="display:grid;grid-template-columns:140px 1fr 90px;gap:16px;align-items:center;padding:11px 20px;border-bottom:1px solid #ffffff0d"><span><span style="font-size:11px;font-weight:700;color:${sc2(p.fetch_ms)};background:${sc2(p.fetch_ms)}22;padding:3px 8px;border-radius:4px">${p.fetch_ms} ms</span> <span class="qd">${sl(p.fetch_ms)}</span></span><a href="${esc(p.url)}" target="_blank" style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rel(p.url)}</a><span class="qd" style="text-align:right">${p.render_ms}</span></div>`).join('')}
@@ -1837,15 +1838,15 @@ function grokView(){const G=D.grok_advisory||{};
      <div class="apk">HOW THIS ENGINE DECIDES</div>
      <div style="font-size:14px;line-height:1.6;color:#c9c2bd;max-width:640px">${esc(G.how||'')}</div>
    </div></div>`;
- if(px.length)h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#3ecf8e"></span><h3>GROK'S WEB SIDE, VIA YOUR EXISTING SCORES</h3><span class="meta">it reads the same open-web signals as these two engines</span></div>
+ if(px.length)h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#3DD68C"></span><h3>GROK'S WEB SIDE, VIA YOUR EXISTING SCORES</h3><span class="meta">it reads the same open-web signals as these two engines</span></div>
    <div class="apbox" style="padding:18px 24px;display:flex;flex-direction:column;gap:12px">${proxyH}<div class="qd" style="line-height:1.55;border-top:1px solid var(--line);padding-top:12px">${px.join(' and ')} are your Grok web-side proxy${proxyAvg!=null?' (about '+proxyAvg+'/100 today)':''}. Improve those and Grok's open-web retrieval improves with them. ${esc(G.why||'')}</div></div></section>`;
  h+=block('#FF4D00','THE ONE GROK-SPECIFIC LEVER','off-page, so outside this audit',G.lever||'');
- h+=block('#f2b53c','ACCURACY CAVEAT','least reliable attributions of any engine here',G.caveat||'');
+ h+=block('#F0B429','ACCURACY CAVEAT','least reliable attributions of any engine here',G.caveat||'');
  h+=block('#8b8480','WHAT WOULD MAKE IT A SCORED ENGINE','the honest trigger',G.trigger||'');
  h+=`</div><div class="apside">
    <div class="card2"><h3>Why advisory, not a 7th ring</h3><div class="qd" style="line-height:1.6">A scored engine has to be calibrated against real citation data. There is no Grok export to calibrate against, and its web weighting would just clone Perplexity's. A fabricated ring would cheapen the six that are earned.</div></div>
    <div class="card2"><h3>If you want Grok visibility</h3><div class="qd" style="line-height:1.6">The lever is X presence, not this site. Keep shipping the parity, entity and freshness work that already feeds Grok's open-web pool, and treat any Grok mention as a free by-product of your X footprint.</div></div>
-   <div class="card2"><div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#3ecf8e"></span><span style="font-size:13px;font-weight:700">Informational, like llms.txt</span></div><div class="qd" style="line-height:1.6;margin-top:8px">Shown for completeness and deliberately not counted in your CITED Score, exactly as the tool treats llms.txt.</div></div>
+   <div class="card2"><div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#3DD68C"></span><span style="font-size:13px;font-weight:700">Informational, like llms.txt</span></div><div class="qd" style="line-height:1.6;margin-top:8px">Shown for completeness and deliberately not counted in your CITED Score, exactly as the tool treats llms.txt.</div></div>
  </div></div>`;
  return h}
 function agentView(){
@@ -1861,10 +1862,10 @@ function agentView(){
  ];
  var sig=a.signals||{};
  var ln=function(u,dc){return '<span class="egp"><span class="dotb" style="background:'+dc+'"></span><a href="'+esc(u)+'" target="_blank">'+rel(u)+'</a></span>';};
- var bar=function(k,label,desc){var n=c[k]||0;var pct=Math.round(100*n/tot);var col=n?(pct>=50?'#3ecf8e':'#f2b53c'):'#ff9c88';
+ var bar=function(k,label,desc){var n=c[k]||0;var pct=Math.round(100*n/tot);var col=n?(pct>=50?'#3DD68C':'#F0B429'):'#ff9c88';
    var s=sig[k]||{has:[],missing_money:[]};var miss=(s.missing_money||[]).length;var hn=(s.has||[]).length;
    var det='<div id="ag_'+k+'" class="engdet">'
-     +'<div class="egh">Present on ('+hn+')</div>'+(hn?(s.has||[]).map(function(u){return ln(u,'#3ecf8e')}).join(''):'<span class="egp qd">none</span>')
+     +'<div class="egh">Present on ('+hn+')</div>'+(hn?(s.has||[]).map(function(u){return ln(u,'#3DD68C')}).join(''):'<span class="egp qd">none</span>')
      +'<div class="egh" style="margin-top:10px">Missing on '+miss+' commercial page'+(miss==1?'':'s')+' (should add)</div>'+(miss?(s.missing_money||[]).map(function(u){return ln(u,'#ff4d3d')}).join(''):'<span class="egp qd">none</span>')
      +'<div class="qd" style="column-span:all;margin-top:10px;line-height:1.5">Only commercial / transactable pages are flagged as missing - editorial and blog pages do not need to be actionable.</div></div>';
    return '<div class="apissue"><div class="aprow" onclick="tgl(\'ag_'+k+'\')" style="grid-template-columns:1fr;gap:5px;cursor:pointer;padding:13px 0">'
@@ -1874,7 +1875,7 @@ function agentView(){
      +'</div>'+det+'</div>';};
  var matrix=SIG.map(function(s){return bar(s[0],s[1],s[2])}).join('');
  var proto=a.protocols||{}; var pk=Object.keys(proto);
- var protoH=pk.length?pk.map(function(k){var p=proto[k];var col=p.found?'#3ecf8e':'#8b8480';return '<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line)"><span style="min-width:0"><b style="font-size:13px">'+k+'</b> <span class="qd" style="font-size:11px">'+p.path+'</span></span><span style="color:'+col+';font-weight:700;font-size:12px;flex:none">'+(p.found?'✓ found':'not found')+'</span></div>';}).join(''):'<span class="qd">Not probed (benchmark run).</span>';
+ var protoH=pk.length?pk.map(function(k){var p=proto[k];var col=p.found?'#3DD68C':'#8b8480';return '<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line)"><span style="min-width:0"><b style="font-size:13px">'+k+'</b> <span class="qd" style="font-size:11px">'+p.path+'</span></span><span style="color:'+col+';font-weight:700;font-size:12px;flex:none">'+(p.found?'✓ found':'not found')+'</span></div>';}).join(''):'<span class="qd">Not probed (benchmark run).</span>';
  var protoFound=pk.filter(function(k){return proto[k].found}).length;
  return `<div class="ap2"><div class="apmain">
    <div class="apsum" style="padding:24px 28px">
@@ -1883,7 +1884,7 @@ function agentView(){
    </div>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>ACTIONABLE SIGNALS ON YOUR SITE</h3><span class="meta">${a.any_n||0} of ${tot} pages expose at least one &middot; ${a.money_n||0} commercial &middot; click a signal to see which pages</span></div><div class="apbox" style="padding:6px 22px 16px">${matrix}</div></section>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>PROTOCOL &amp; DISCOVERY FILES</h3><span class="meta">${protoFound} of ${pk.length} present &middot; how an agent connects programmatically</span></div><div class="apbox" style="padding:6px 22px 14px">${protoH}<div class="qd" style="line-height:1.55;border-top:1px solid var(--line);padding-top:11px;margin-top:6px">These are emerging and nascent - most sites have none yet - so this is forward guidance, not a mark against you. The one to watch is the <b>MCP server card</b> (<code>/.well-known/mcp.json</code>): as agents standardise on MCP, it becomes how they discover your tools and actions.</div></div></section>
-   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#f2b53c"></span><h3>ACTIONABLE, NOT DESCRIPTIVE, SCHEMA</h3><span class="meta">the distinction that matters</span></div><div class="apbox" style="padding:16px 22px"><div style="font-size:14px;line-height:1.65;color:#c9c2bd">Agentic does not make <b>all</b> schema matter - it splits it. <b>Descriptive</b> schema (Article, breadcrumbs, FAQ) stays a minor entity signal. <b>Actionable</b> schema (Offer + price + availability, potentialAction, ContactPoint) is the structured path an agent transacts through. Add the actionable subset to your commercial pages, and <b>server-render it</b> - an agent that doesn't run JS can't see JS-injected schema, exactly like today's crawlers.</div></div></section>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#F0B429"></span><h3>ACTIONABLE, NOT DESCRIPTIVE, SCHEMA</h3><span class="meta">the distinction that matters</span></div><div class="apbox" style="padding:16px 22px"><div style="font-size:14px;line-height:1.65;color:#c9c2bd">Agentic does not make <b>all</b> schema matter - it splits it. <b>Descriptive</b> schema (Article, breadcrumbs, FAQ) stays a minor entity signal. <b>Actionable</b> schema (Offer + price + availability, potentialAction, ContactPoint) is the structured path an agent transacts through. Add the actionable subset to your commercial pages, and <b>server-render it</b> - an agent that doesn't run JS can't see JS-injected schema, exactly like today's crawlers.</div></div></section>
    </div>
    <div class="apside">
      <div class="card2"><h3>Do this first</h3><div class="qd" style="line-height:1.6">On product / service pages, add an <b>Offer</b> with price + availability, and a <b>potentialAction</b> for the primary action (buy / book / contact). That is the minimum an agent needs to act on you.</div></div>
@@ -1894,7 +1895,7 @@ function aicrawlerView(){
  var ac=D.aicrawler||{bots:[],has_robots:false};
  var bots=ac.bots||[];
  var reach=(D.site_checks||[]).find(function(c){return c.id=='reachability'})||{};
- var col={allowed:'#3ecf8e',partial:'#f2b53c',blocked:'#ff4d3d'};
+ var col={allowed:'#3DD68C',partial:'#F0B429',blocked:'#ff4d3d'};
  var serving=bots.filter(function(b){return b.role=='serving'});
  var servingBlocked=serving.filter(function(b){return b.status=='blocked'||b.status=='partial'});
  var allowedN=bots.filter(function(b){return b.status=='allowed'}).length;
@@ -1915,11 +1916,11 @@ function aicrawlerView(){
  }).join('');
  var ch=(D.diff&&D.diff.bot_changes)||[];
  var pill=function(txt,cc){return '<span style="text-transform:uppercase;font-weight:700;font-size:12px;letter-spacing:.03em;color:'+cc+'">'+esc(txt)+'</span>';};
- var chH=ch.length?`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#f2b53c"></span><h3>ACCESS CHANGED SINCE LAST CRAWL</h3><span class="meta">since ${esc((D.diff&&D.diff.since)||'')}</span></div><div class="apbox" style="padding:10px 22px 14px">`+ch.map(function(c){var cc=col[c.now]||'#f2b53c';return '<div style="display:flex;align-items:baseline;gap:9px;padding:6px 0;font-size:13px"><b style="min-width:150px">'+esc(c.bot)+'</b>'+pill(c.was,'#8b8480')+'<span style="color:#8b8480">&rarr;</span>'+pill(c.now,cc)+'</div>';}).join('')+`</div></section>`:'';
+ var chH=ch.length?`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#F0B429"></span><h3>ACCESS CHANGED SINCE LAST CRAWL</h3><span class="meta">since ${esc((D.diff&&D.diff.since)||'')}</span></div><div class="apbox" style="padding:10px 22px 14px">`+ch.map(function(c){var cc=col[c.now]||'#F0B429';return '<div style="display:flex;align-items:baseline;gap:9px;padding:6px 0;font-size:13px"><b style="min-width:150px">'+esc(c.bot)+'</b>'+pill(c.was,'#8b8480')+'<span style="color:#8b8480">&rarr;</span>'+pill(c.now,cc)+'</div>';}).join('')+`</div></section>`:'';
  var headline;
- if(!ac.has_robots)headline='<span style="color:#f2b53c">No robots.txt found - every bot is allowed by default. Fine for citation, but you have no control lever.</span>';
+ if(!ac.has_robots)headline='<span style="color:#F0B429">No robots.txt found - every bot is allowed by default. Fine for citation, but you have no control lever.</span>';
  else if(servingBlocked.length)headline='<span style="color:#ff9c88"><b>'+servingBlocked.length+' citation bot'+(servingBlocked.length==1?'':'s')+' restricted</b> ('+servingBlocked.map(function(b){return esc(b.name)}).join(', ')+') - those engines cannot fully cite you.</span>';
- else headline='<span style="color:#3ecf8e"><b>All citation bots allowed.</b> '+allowedN+' of '+bots.length+' AI bots allowed overall.</span>';
+ else headline='<span style="color:#3DD68C"><b>All citation bots allowed.</b> '+allowedN+' of '+bots.length+' AI bots allowed overall.</span>';
  var reachNote=reach.status=='bad'
    ?'<div class="qd" style="margin-top:8px;color:#ff9c88">Live WAF test: '+esc(reach.detail||'')+' - a bot allowed in robots.txt can still be blocked at the firewall.</div>'
    :'<div class="qd" style="margin-top:8px">Live WAF test (GPTBot / PerplexityBot): '+esc(reach.detail||'reachable')+'.</div>';
@@ -1945,11 +1946,11 @@ function infogainView(){
  var g=D.infogain||{pages:[],bands:{high:0,medium:0,low:0},total:0};
  var b=g.bands||{high:0,medium:0,low:0}; var tot=g.total||1;
  var pl=function(u){return (u||'').replace(/^https?:\/\/[^/]+/,'')||'/';};
- var bandcol={high:'#3ecf8e',medium:'#f2b53c',low:'#ff9c88'};
- var gchip=function(txt){return '<span style="font-size:11px;padding:1px 7px;border-radius:10px;margin-right:5px;background:rgba(62,207,142,.14);color:#3ecf8e">'+txt+'</span>';};
+ var bandcol={high:'#3DD68C',medium:'#F0B429',low:'#ff9c88'};
+ var gchip=function(txt){return '<span style="font-size:11px;padding:1px 7px;border-radius:10px;margin-right:5px;background:rgba(62,207,142,.14);color:#3DD68C">'+txt+'</span>';};
  var td='padding:9px 12px;border-top:1px solid var(--line)';
  var th='padding:9px 12px;position:static;background:#141110';
- var rows=(g.pages||[]).map(function(p){var col=bandcol[p.band]||'#8b8480';var fc=(p.figures>=15?'#3ecf8e':(p.figures>=6?'#f2b53c':'#8b8480'));
+ var rows=(g.pages||[]).map(function(p){var col=bandcol[p.band]||'#8b8480';var fc=(p.figures>=15?'#3DD68C':(p.figures>=6?'#F0B429':'#8b8480'));
    var sc='';
    if(p.firsthand)sc+=gchip('first-hand');
    if(p.proprietary)sc+=gchip('proprietary');
@@ -1966,7 +1967,7 @@ function infogainView(){
    <div class="apsum" style="padding:24px 28px">
      <div class="apk">INFORMATION GAIN &middot; ADVISORY (PROXY, NOT SCORED)</div>
      <div style="font-size:14px;line-height:1.65;color:#c9c2bd;max-width:740px;margin-top:10px">Original data is the one moat AI cannot route around - pages that state their own numbers, first-hand research and named frameworks get cited where derivative rehash does not (Indig: 15+ distinct figures = information-gain 62.1 vs 40.2 for &le;1). A local crawler <b>cannot prove true originality</b> (no web-corpus to diff against), so this is a labelled <b>proxy</b>: distinct-figure density, first-hand-research language, a named proprietary asset, and real data tables - minus near-duplication.</div>
-     <div style="display:flex;gap:12px;margin-top:18px">${tile('original / high',b.high||0,'#3ecf8e')}${tile('some / medium',b.medium||0,'#f2b53c')}${tile('thin / low',b.low||0,'#ff9c88')}</div>
+     <div style="display:flex;gap:12px;margin-top:18px">${tile('original / high',b.high||0,'#3DD68C')}${tile('some / medium',b.medium||0,'#F0B429')}${tile('thin / low',b.low||0,'#ff9c88')}</div>
    </div>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>PAGES BY INFORMATION-GAIN PROXY</h3><span class="meta">${tot} pages &middot; ranked most original first</span></div>
      <div class="apbox" style="padding:0"><table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left"><th style="${th}">Page</th><th style="${th};text-align:center">Band</th><th style="${th};text-align:center">Figures</th><th style="${th}">Original-data signals</th></tr></thead><tbody>${rows||'<tr><td colspan="4" style="padding:14px">no pages</td></tr>'}</tbody></table></div></section>
@@ -1978,7 +1979,7 @@ function infogainView(){
 }
 function offpageView(){
  var o=D.offpage||{declared:[],missing:[],sameas_count:0};
- var pill=function(t,ok){return '<span style="display:inline-block;font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;margin:3px 4px 3px 0;'+(ok?'color:#3ecf8e;background:rgba(62,207,142,.12);border:1px solid rgba(62,207,142,.3)':'color:#ff9c88;background:rgba(255,77,61,.1);border:1px solid rgba(255,77,61,.28)')+'">'+t+'</span>';};
+ var pill=function(t,ok){return '<span style="display:inline-block;font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;margin:3px 4px 3px 0;'+(ok?'color:#3DD68C;background:rgba(62,207,142,.12);border:1px solid rgba(62,207,142,.3)':'color:#ff9c88;background:rgba(255,77,61,.1);border:1px solid rgba(255,77,61,.28)')+'">'+t+'</span>';};
  var declared=(o.declared||[]).map(function(d){return pill(d+' ✓',true)}).join('')||'<span class="qd">None declared in your schema.</span>';
  var missing=(o.missing||[]).map(function(m){return pill(m,false)}).join('')||'<span class="qd">You declare all the high-value surfaces - now earn active, well-reviewed presence on each.</span>';
  var plays=[
@@ -1994,8 +1995,8 @@ function offpageView(){
      <div class="apk">OFF-PAGE PRESENCE &middot; ADVISORY (NOT SCORED)</div>
      <div style="font-size:14px;line-height:1.65;color:#c9c2bd;max-width:730px;margin-top:10px">CITED Score audits your pages, but AI citation is dominated by <b>off-page</b> signals this on-page crawl cannot measure. A brand's own site is cited in only <b>~16%</b> of AI responses; the other ~84% are third-party sources (Reddit, YouTube, review sites, roundups), and brand mentions correlate with citation far more than backlinks (0.664 vs 0.218). This tab is directional guidance, not a score.</div>
    </div>
-   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#3ecf8e"></span><h3>PROFILES YOU DECLARE</h3><span class="meta">from your schema sameAs (${o.sameas_count} links)</span></div><div class="apbox" style="padding:14px 20px">${declared}</div></section>
-   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#ff4d00"></span><h3>HIGH-VALUE SURFACES TO SECURE</h3><span class="meta">AI-cited surfaces not in your declared set</span></div><div class="apbox" style="padding:14px 20px">${missing}<div class="qd" style="margin-top:10px;line-height:1.5">"Declared" only means present in your schema - it does not confirm an active, well-reviewed profile. Verify each, because these are where AI looks.</div></div></section>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#3DD68C"></span><h3>PROFILES YOU DECLARE</h3><span class="meta">from your schema sameAs (${o.sameas_count} links)</span></div><div class="apbox" style="padding:14px 20px">${declared}</div></section>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF5C1A"></span><h3>HIGH-VALUE SURFACES TO SECURE</h3><span class="meta">AI-cited surfaces not in your declared set</span></div><div class="apbox" style="padding:14px 20px">${missing}<div class="qd" style="margin-top:10px;line-height:1.5">"Declared" only means present in your schema - it does not confirm an active, well-reviewed profile. Verify each, because these are where AI looks.</div></div></section>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>DO THIS OFF-PAGE (data-backed)</h3><span class="meta">ranked by evidence</span></div><div class="apbox" style="padding:4px 20px 14px">${playsH}</div></section>
    </div>
    <div class="apside">
@@ -2007,7 +2008,7 @@ function exportBroken(){var bl=D.broken_links||[];var rows=[['status','broken_ur
 function brokenView(){
  var bl=D.broken_links||[], dom=D.domain||'';
  var isInt=function(u){return u.indexOf('//'+dom)>=0||u.indexOf('//www.'+dom)>=0};
- if(!bl.length) return `<div class="wrap"><div class="sech">Broken outbound links</div><div class="panel"><div style="display:flex;align-items:center;gap:10px"><span style="width:9px;height:9px;border-radius:50%;background:#3ecf8e"></span><b>No broken links found.</b></div><div class="qd" style="margin-top:8px">Checked every outbound content link across the crawl. Only genuinely dead targets count (404/410/5xx); 403/429 bot-blocks and timeouts are excluded to avoid false positives.</div></div></div>`;
+ if(!bl.length) return `<div class="wrap"><div class="sech">Broken outbound links</div><div class="panel"><div style="display:flex;align-items:center;gap:10px"><span style="width:9px;height:9px;border-radius:50%;background:#3DD68C"></span><b>No broken links found.</b></div><div class="qd" style="margin-top:8px">Checked every outbound content link across the crawl. Only genuinely dead targets count (404/410/5xx); 403/429 bot-blocks and timeouts are excluded to avoid false positives.</div></div></div>`;
  var internal=bl.filter(b=>isInt(b.url));
  var rows=bl.slice().sort((a,c)=>((isInt(a.url)?0:1)-(isInt(c.url)?0:1))||(c.sources.length-a.sources.length));
  var th=t=>`<th style="padding:10px;font-size:11px;color:#8b8480;font-weight:600;text-align:left;position:static;background:transparent">${t}</th>`;
@@ -2043,12 +2044,12 @@ tabsbar();render();
     doc=("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
          f"<title>CITED Score: {H.escape(d['domain'])}</title><link rel='icon' href=\"{FAVICON}\">"
          "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
-         "<link href='https://fonts.googleapis.com/css2?family=Figtree:wght@300..900&display=swap' rel='stylesheet'>"
+         "<link href='https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap' rel='stylesheet'>"
          f"<style>{css}</style></head><body>"
-         f"<header><span class='logo'><svg viewBox='0 0 200 200' width='27' height='27' style='flex:none'><path d='M161.3,48.6 A80,80 0 1 0 161.3,151.4 L147.4,139.8 A56,56 0 1 1 147.4,60.2 Z' fill='#F5F1EA'/><circle cx='100' cy='100' r='19' fill='#FF5C1A'/></svg><span class='lw'>CITED</span><span class='ls'>Score</span></span>"
+         f"<header><span class='logo'><svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M161.3,48.6 A80,80 0 1 0 161.3,151.4 L147.4,139.8 A56,56 0 1 1 147.4,60.2 Z' fill='#F5F1EA'/><circle cx='100' cy='100' r='19' fill='#FF5C1A'/></svg><span class='wm'><span class='lw'>CITED</span><span class='ls'>Score</span></span></span>"
          f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--txt);font-weight:600'>{H.escape(d['domain'])}</a> &middot; {d['pages_crawled']} pages &middot; {d['generated']}</span>"
          "<span class='btns'><button onclick='printReport()'>Print / PDF</button><button onclick='exportPages()'>Export CSV</button></span></header>"
-         + ((f"<div style='padding:14px 24px;background:linear-gradient(90deg,rgba(255,77,0,.10),transparent);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#8b8480'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#8b8480'>by GoGoChimp</span>" + (f"<div style='color:#c9c2bd;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
+         + ((f"<div style='padding:14px 24px;background:linear-gradient(90deg,rgba(255,92,26,.10),transparent);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#8b8480'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#8b8480'>by GoGoChimp</span>" + (f"<div style='color:#c9c2bd;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
        + "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view'></div>"
          "<div class='foot'>The CITED Score <b>estimates citability</b> from on-page, structural and technical signals. "
          "It does <b>not</b> measure citations. For measured citations, calibrate the model against your Bing Webmaster Tools AI Performance export "
