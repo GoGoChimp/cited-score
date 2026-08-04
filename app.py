@@ -11,7 +11,7 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.9.0"                 # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.9.1"                 # semver; bump on every release + tag the GitHub release to match
 GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
 VERSION = f"v{APP_VERSION} - August 2026"
 
@@ -51,12 +51,13 @@ def safe(d): return re.sub(r"[^a-z0-9._-]", "-", d.lower())[:80]
 INDEX = r"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>CITED Score</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300..900&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0d0b0a;--panel:#131110;--panel2:#0b0a09;--line:#2a2320;--muted:#8b8480;--txt:#f2ede9;--grn:#ff4d00;--grn2:#ff6524;--ok:#3ecf8e;--red:#ff4d3d;--display:'Figtree',sans-serif}
+:root{--bg:#0d0b0a;--panel:#131110;--panel2:#0b0a09;--line:#2a2320;--muted:#8b8480;--txt:#f2ede9;--grn:#FF5C1A;--grn2:#ff7a3d;--ok:#3ecf8e;--red:#ff4d3d;--display:'Figtree',sans-serif}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 'Figtree',-apple-system,Segoe UI,Arial,sans-serif}
 .wrap{max-width:1180px;margin:0 auto;padding:26px 26px 60px}
 a{color:var(--grn);text-decoration:none}
-.logo{font-family:Impact,'Haettenschweiler','Arial Narrow',sans-serif;font-size:26px;font-weight:400;letter-spacing:-.3px;text-transform:uppercase}
-.chip{background:var(--grn);color:#0a0a0a;font-family:'Figtree',sans-serif;font-weight:800;font-size:11px;padding:1px 5px;border-radius:4px;vertical-align:super;margin-left:4px}
+.logo{display:inline-flex;align-items:center;gap:9px}
+.logo .lw{font-family:'Figtree',sans-serif;font-weight:800;font-size:22px;letter-spacing:-.01em;color:var(--txt);line-height:1}
+.logo .ls{font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.22em;color:var(--muted);text-transform:uppercase}
 .upd{display:flex;align-items:center;gap:16px;background:rgba(255,77,0,.07);border:1px solid rgba(255,77,0,.32);border-radius:14px;padding:14px 18px;margin-bottom:26px}
 .upd .uc{background:var(--grn);color:#0a0a0a;font-weight:800;font-size:11px;letter-spacing:.5px;padding:3px 8px;border-radius:5px}
 .upd .ut{font-weight:800}.upd .ud{color:var(--muted);font-size:13px}.upd .sp{flex:1}
@@ -117,7 +118,7 @@ a{color:var(--grn);text-decoration:none}
 
 <div class="cols">
  <div class="main">
-   <div class="logo">CITED<span class="chip">Score</span></div>
+   <div class="logo"><svg viewBox='0 0 200 200' width='27' height='27' style='flex:none'><path d='M161.3,48.6 A80,80 0 1 0 161.3,151.4 L147.4,139.8 A56,56 0 1 1 147.4,60.2 Z' fill='#F5F1EA'/><circle cx='100' cy='100' r='19' fill='#FF5C1A'/></svg><span class="lw">CITED</span><span class="ls">Score</span></div>
    <h1 class="h1">Score every page the way an AI crawler would</h1>
    <div class="lede">Enter a website. CITED Score crawls every page and grades how citable it is for six engines, then tells you which fix moves the number fastest.</div>
    <div class="engrow"><span>ChatGPT</span><span>Perplexity</span><span>AI Overviews</span><span>Gemini</span><span>Copilot</span><span>Claude</span></div>
