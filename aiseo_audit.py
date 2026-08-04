@@ -617,21 +617,54 @@ def site_checks(origin, domain):
         out.append(chk("llms","info","not found"))
     return out
 
-def all_urls(origin, domain, cap):
-    urls=[]; sm_urls=[]
-    st,_,sm,_=fetch_raw(origin+"/sitemap.xml")
-    if st==200 and sm:
-        sm_urls=re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", sm)
-        urls=list(sm_urls)
-    s,_,raw,_=fetch_raw(origin+"/")
-    if raw:
-        for a in BeautifulSoup(raw,"lxml").find_all("a",href=True):
-            u=urllib.parse.urljoin(origin,a["href"].strip()); u,_=urllib.parse.urldefrag(u)
-            p=urllib.parse.urlparse(u)
-            if p.scheme in ("http","https") and domain in p.netloc.replace("www.","") and not ASSET_RE.search(p.path):
-                urls.append(u)
+def all_urls(origin, domain, cap, start=None):
+    """Discover page URLs: sitemaps (following sitemap-INDEX files into their child sitemaps,
+    located via robots.txt 'Sitemap:' lines + common names), plus links from the homepage and
+    the start page. Fixes two gaps: index sitemaps were read as if they were page lists, and
+    only the homepage was link-crawled so entering a hub like /blog found nothing."""
+    def same(u):
+        p=urllib.parse.urlparse(u)
+        return (p.scheme in ("http","https") and domain in p.netloc.replace("www.","")
+                and not ASSET_RE.search(p.path) and not p.path.lower().endswith((".xml",".xml.gz")))
+    # 1. locate sitemaps: robots.txt Sitemap: directives first, then common defaults
+    sm_seed=[]
+    _,_,rob,_=fetch_raw(origin+"/robots.txt")
+    if rob: sm_seed += re.findall(r"(?im)^\s*sitemap:\s*(\S+)", rob)
+    sm_seed += [origin+"/sitemap.xml", origin+"/sitemap_index.xml", origin+"/sitemap-index.xml", origin+"/wp-sitemap.xml"]
+    # 2. fetch sitemaps, recursing one-or-more levels through index files, until we have enough page urls
+    want=(cap*3 if cap and cap>0 else 5000)
+    sm_urls=[]; seen_sm=set(); queue=list(dict.fromkeys(sm_seed)); fetched=0
+    while queue and len(sm_urls)<want and fetched<300:
+        smu=queue.pop(0)
+        if smu in seen_sm: continue
+        seen_sm.add(smu); fetched+=1
+        st,_,body,_=fetch_raw(smu)
+        if st!=200 or not body: continue
+        locs=re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", body)
+        if "<sitemapindex" in body.lower():                 # index -> every loc is a child sitemap
+            for loc in locs:
+                loc=loc.strip()
+                if loc not in seen_sm: queue.append(loc)
+        else:                                               # urlset -> locs are pages
+            for loc in locs:
+                loc=loc.strip()
+                if same(loc): sm_urls.append(loc)
+    # 3. links from the homepage AND the start page (so entering /blog discovers its articles)
+    link_urls=[]
+    hops=[origin+"/"]
+    if start and same(start) and start.rstrip("/")!=(origin+"/").rstrip("/"): hops.append(start)
+    for pg in dict.fromkeys(hops):
+        _,_,raw,_=fetch_raw(pg)
+        if raw:
+            for a in BeautifulSoup(raw,"lxml").find_all("a",href=True):
+                u=urllib.parse.urljoin(pg,a["href"].strip()); u,_=urllib.parse.urldefrag(u)
+                if same(u): link_urls.append(u)
+    # 4. assemble: homepage + start + sitemap pages (real content first) + discovered links, de-duped
+    ordered=[origin+"/"]
+    if start and same(start): ordered.append(start)
+    ordered += sm_urls + link_urls
     seen=[]; done=set()
-    for u in [origin+"/"]+urls:
+    for u in ordered:
         k=u.rstrip("/")
         if k not in done: done.add(k); seen.append(u)
     if cap and cap>0: seen=seen[:cap]
@@ -947,6 +980,11 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
         it["gain_engines"]=eg
         te=max(eg.items(),key=lambda x:x[1]) if eg else ("",0)
         it["top_engine"]=te[0]; it["top_engine_gain"]=te[1]
+    # true combined ceiling for the Action Plan headline: fix every flagged warn/bad to good and
+    # re-score the whole site once. The independent per-fix gains undercount this, because fixing
+    # multiple signals on a page compounds, so summing standalone gains understates the real total.
+    _pa=[page_scores({k:('good' if v in ('warn','bad') else v) for k,v in p["cs"].items()})[0] for p in ok]
+    proj_all = round(sum(_pa)/len(_pa)) if _pa else overall
     # rank: projected overall gain, then severity, then pages
     issues.sort(key=lambda x:(-x["gain_overall"],x["severity"]!="bad",-x["count"]))
     plan_phases={1:[],2:[],3:[]}
@@ -963,7 +1001,7 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
             "pages_crawled":len(pages),"overall":overall,"pillars":pill,"engines":eng,
             "engine_note":ENGINE_NOTE,"engine_weights":ENGINE_WEIGHTS,"check_meta":CHECK_META,
             "grok_advisory":GROK_ADVISORY,
-            "totals":dict(tot),"issues":issues,"site_checks":sitecx,"broken_links":broken_links,"offpage":offpage,"agentready":agentready,"infogain":infogain,"aicrawler":aicrawler or {},
+            "totals":dict(tot),"issues":issues,"site_checks":sitecx,"broken_links":broken_links,"offpage":offpage,"agentready":agentready,"infogain":infogain,"aicrawler":aicrawler or {},"proj_all":proj_all,
             "client":client,"intro":intro,"access_blocked":access_blocked,
             "types":dict(Counter(p["type"] for p in pages)),
             "plan_phases":plan_phases,"pages":pages}
@@ -1448,7 +1486,7 @@ function pdet(id){
 function plan(){
  const overall=D.overall, act=ACT();
  if(!act.length)return `<div class="dashnote"><span class="dotb" style="background:var(--ok)"></span>Nothing to fix — every scored check passes across the crawl.</div>`;
- const tg=act.reduce((a,i)=>a+gpos(i),0), proj=Math.min(100,overall+tg);
+ const tg=act.reduce((a,i)=>a+gpos(i),0), proj=(D.proj_all!=null?D.proj_all:Math.min(100,overall+tg));
  const affS=new Set();act.forEach(i=>{i.bad.forEach(u=>affS.add(u));i.warn.forEach(u=>affS.add(u))});
  const edits=act.reduce((a,i)=>a+i.count,0), affp=affS.size;
  const biggest=act.filter(i=>i.gain_overall>=2);
@@ -1467,7 +1505,7 @@ function plan(){
        <div style="display:flex;align-items:baseline;gap:8px"><div class="apbn">${proj}<span style="font-size:18px;color:var(--muted);font-weight:800">/100</span></div><div style="font-size:14px;font-weight:700;color:var(--ok)">+${proj-overall} pts</div></div></div>
    </div>
    <div style="border-left:1px solid var(--line);padding-left:30px;display:flex;flex-direction:column;gap:11px">
-     <div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)"><span style="font-weight:600;letter-spacing:.08em">WHERE THE ${tg} POINTS COME FROM</span><span>${edits} page edits across ${affp} pages</span></div>
+     <div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)"><span style="font-weight:600;letter-spacing:.08em">RANKED BY STANDALONE IMPACT</span><span>${edits} page edits across ${affp} pages</span></div>
      <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:#221d1a">
        <div style="width:${Math.round(100*bG/TG)}%;background:#FF5C1A"></div>
        <div style="width:${Math.round(100*wG/TG)}%;background:#ff8a3d"></div>
@@ -1475,7 +1513,7 @@ function plan(){
      <div style="display:flex;gap:22px;font-size:12px;color:#9d9691;flex-wrap:wrap">
        ${[['#FF5C1A','Biggest movers',biggest.length,bG],['#ff8a3d','Worth doing',worth.length,wG],['#5a4034','Polish',polish.length,pG]].map(a=>`<span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:2px;background:${a[0]}"></span>${a[1]}, ${a[2]} fixes <b style="color:#fff">+${a[3]}</b></span>`).join('')}</div>
    </div></div>`;
- h+=`<div class="apintro">Ranked by projected CITED Score gain if the fix is applied to every affected page. The projection re-scores the site after each fix, so gains do not double-count.</div>`;
+ h+=`<div class="apintro">Each fix shows its <b>standalone</b> CITED Score gain if applied to every affected page. Fixes compound across a page, so applying them all reaches <b>${proj}/100</b>, higher than the standalone gains add up to on their own.</div>`;
  const tiers=[['#FF5C1A','BIGGEST MOVERS',biggest,bG,'do these this month','apbox hot','big'],
               ['#ff8a3d','WORTH DOING',worth,wG,'structure for retrieval','apbox','mid'],
               ['#5a4034','POLISH',polish,pG,'low effort','apbox','sm']];
@@ -2067,7 +2105,7 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, cl
     def emit(phase,done,total,msg):
         if progress: progress(phase,done,total,msg)
     emit("discover",0,0,f"Discovering URLs for {domain}...")
-    urls,sitemap_paths=all_urls(origin,domain,max_pages)
+    urls,sitemap_paths=all_urls(origin,domain,max_pages,url)
     total=len(urls); done=[0]
     emit("discover",0,total,f"{total} URLs to crawl")
     def work(u):
