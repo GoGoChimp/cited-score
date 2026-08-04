@@ -11,7 +11,7 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.7.0"                 # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.9.0"                 # semver; bump on every release + tag the GitHub release to match
 GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
 VERSION = f"v{APP_VERSION} - August 2026"
 
@@ -130,6 +130,9 @@ a{color:var(--grn);text-decoration:none}
      <div class="opts" id="opts">
        <div><label>Max pages (blank = entire site)</label><input id="maxp" type="number" placeholder="all" min="1"></div>
        <div><label>Parallel renderers</label><select id="workers"><option>4</option><option selected>6</option><option>8</option><option>10</option></select></div>
+       <div><label>Client name (white-label report, optional)</label><input id="client" type="text" placeholder="e.g. Acme Corp"></div>
+       <div><label>Intro line (optional)</label><input id="intro" type="text" placeholder="Prepared as part of your Q3 review"></div>
+       <div style="display:flex;align-items:center;gap:8px;grid-column:1/-1"><input id="dolinks" type="checkbox" checked style="width:auto"><label style="margin:0">Check for broken links (adds ~30-60s at the end)</label></div>
      </div>
      <div id="chrome" class="note2"></div>
    </div>
@@ -199,7 +202,7 @@ function run(){
   const url=$('url').value.trim(); if(!url)return;
   $('run').disabled=true; $('form').classList.add('hide'); $('progress').classList.remove('hide'); $('done').classList.add('hide');
   $('log').textContent=''; $('phase').textContent='Discovering URLs...'; $('fill').style.width='0';
-  fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,max_pages:$('maxp').value,workers:$('workers').value})})
+  fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,max_pages:$('maxp').value,workers:$('workers').value,client:$('client').value,intro:$('intro').value,links:$('dolinks').checked})})
     .then(r=>r.json()).then(d=>{ if(d.error){$('phase').innerHTML='<span class=err>'+d.error+'</span>';return;} poll=setInterval(()=>check(d.job),1000); });
 }
 function check(job){fetch('/status/'+job).then(r=>r.json()).then(j=>{
@@ -356,6 +359,9 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(url if url.startswith("http") else "https://" + url)
         dom = parsed.netloc.replace("www.", "")
         if not dom: return self._json(400, {"error": "That does not look like a URL."})
+        client = (body.get("client") or "").strip() or None
+        intro = (body.get("intro") or "").strip() or None
+        dolinks = body.get("links") is not False   # default True unless explicitly unchecked
         base = os.path.join(REPORTS, safe(dom))
         job = str(int(time.time() * 1000))
         JOBS[job] = {"phase": "start", "done": 0, "total": 0, "lines": [], "finished": False,
@@ -365,7 +371,7 @@ class Handler(BaseHTTPRequestHandler):
             j["lines"] = (j["lines"] + [msg])[-14:]
         def worker():
             try:
-                data = A.run_audit(url, out=base, max_pages=maxp, workers=workers, progress=prog)
+                data = A.run_audit(url, out=base, max_pages=maxp, workers=workers, progress=prog, client=client, intro=intro, links=dolinks)
                 JOBS[job]["report"] = "/report/" + safe(dom)
                 JOBS[job]["summary"] = {"overall": data["overall"], "pages": data["pages_crawled"],
                                         "pillars": data["pillars"], "engines": data["engines"]}

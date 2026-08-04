@@ -380,7 +380,16 @@ def analyze(url, status, raw, rendered, domain, hdrs=None, fetch_ms=0):
         _af=("good",f"answer at {round(100*_fr)}% of page") if _fr<=0.34 else (("warn",f"answer at {round(100*_fr)}%") if _fr<=0.66 else ("bad",f"answer buried at {round(100*_fr)}%"))
     C.append(chk("answerthird",_af[0],_af[1]))
     heads=root.find_all(["h2","h3"]); nh=len(heads)
-    qh=sum(1 for h in heads if h.get_text(strip=True).endswith("?") or QSTART.match(h.get_text(strip=True)))
+    def _qshape(t):
+        t=(t or "").strip()
+        hasfig=bool(re.search(r"\d",t))
+        # "How we work" / "What we do" = about-us nav labels, not retrieval queries (unless they carry a figure)
+        if re.match(r"^\s*(?:how|what|why|who|where)\s+(?:we|our|i|us|you)\b",t,re.I) and not hasfig: return False
+        if t.endswith("?") or QSTART.match(t): return True
+        # claim-shaped: a heading carrying a concrete figure reads as a liftable factual claim
+        if hasfig and len(t.split())>=3: return True
+        return False
+    qh=sum(1 for h in heads if _qshape(h.get_text(strip=True)))
     qpct=round(100*qh/nh) if nh else 0
     C.append(chk("qheadings","good" if qpct>=30 else ("warn" if qpct>=10 else "bad"),f"{qh}/{nh} ({qpct}%)"))
     # self-contained sections: flag WALLS of text (un-liftable chunks), not short blocks
@@ -542,6 +551,26 @@ def analyze(url, status, raw, rendered, domain, hdrs=None, fetch_ms=0):
     # review / rating schema (social-proof signal for commercial pages)
     hasrev=bool({"Review","AggregateRating"} & set(types_r)) or any(isinstance(n,dict) and (n.get("aggregateRating") or n.get("review") or n.get("reviewRating") or n.get("ratingValue")) for n in nodes)
     C.append(chk("reviewschema","good" if hasrev else "warn","Review/AggregateRating present" if hasrev else "no Review/AggregateRating schema"))
+    # ---- agent-readiness (advisory, not scored): can an AI agent ACT on this page? ACTIONABLE schema only ----
+    _ACT={"OrderAction","BuyAction","ReserveAction","ScheduleAction","ContactAction","SubscribeAction","RegisterAction","PayAction","RentAction","BookAction","ChooseAction","SellAction"}
+    def _offval(n):
+        o=n.get("offers"); return o if isinstance(o,dict) else (o[0] if isinstance(o,list) and o and isinstance(o[0],dict) else {})
+    _ag_action=bool(_ACT & set(types_r)) or any(isinstance(n,dict) and n.get("potentialAction") for n in nodes)
+    _ag_offer=("Offer" in types_r) or any(isinstance(n,dict) and (n.get("offers") or n.get("price") is not None) for n in nodes)
+    _ag_price=any(isinstance(n,dict) and (n.get("price") is not None or _offval(n).get("price") is not None) for n in nodes)
+    _ag_avail=any(isinstance(n,dict) and (n.get("availability") or _offval(n).get("availability")) for n in nodes)
+    _ag_prodserv=bool({"Product","Service","SoftwareApplication","WebApplication","Event","Course","MenuItem","Reservation","Trip"} & set(types_r))
+    _ag_contact=("ContactPoint" in types_r) or any(isinstance(n,dict) and n.get("contactPoint") for n in nodes)
+    agent={"action":_ag_action,"offer":_ag_offer,"price":_ag_price,"avail":_ag_avail,"prodserv":_ag_prodserv,"contact":_ag_contact}
+    # ---- information-gain proxy (advisory, not scored): does this page add ORIGINAL information? ----
+    # A local crawler cannot prove true originality (no web-corpus to diff against), so we score a
+    # labelled PROXY: distinct-figure density + first-hand-research language + a named proprietary asset
+    # + a real data table (near-duplication is folded in at build). Indig: 15+ distinct figures -> IG 62.1 vs 40.2 for <=1.
+    _ig_figs=len(set(m.group(0).strip() for m in NUM_RE.finditer(body)))
+    _ig_firsthand=bool(re.search(r"\b(?:our (?:data|study|survey|research|analysis|experiment|test(?:ing|s)?|findings?|results?|dataset|benchmark|audit|methodology|numbers)|we (?:surveyed|tested|analy[sz]ed|measured|found|ran|studied|tracked|collected|compared|interviewed)|in our (?:study|test|research|experience|analysis|data)|according to our)\b", body, re.I))
+    _ig_propr=bool(re.search(r"\bthe [A-Z][A-Za-z0-9]+(?:[ /-][A-Z0-9][A-Za-z0-9]+){0,4}\s+(?:Method|Framework|Model|Rule|Gap|Index|Score|Study|Survey|Report|Formula|System|Protocol|Stack|Playbook|Benchmark)\b", body)) or bool(re.search(r"\bour (?:proprietary|own|original|in-house|internal|custom)\b", body, re.I))
+    _ig_datatable=any(len(NUM_RE.findall(t.get_text(' ',strip=True)))>=4 for t in root.find_all("table"))
+    infogain={"figures":_ig_figs,"firsthand":_ig_firsthand,"proprietary":_ig_propr,"datatable":_ig_datatable}
     # ---- phase-3 data: outbound content links (for broken-link check) + content fingerprints (near-dup) ----
     outlinks=set()
     for a in root.find_all("a",href=True):
@@ -561,7 +590,7 @@ def analyze(url, status, raw, rendered, domain, hdrs=None, fetch_ms=0):
              "readability":fk,"entity_density":pnd,"definitional":defn,
              "ext_links":ext,"internal_links":il,"schema_types":sorted(tset),"images":len(imgs),"alt_pct":apct}
     return {"path":path,"type":ptype,"title":title,"meta":mdc,"checks":C,"metrics":metrics,"rendered":rendered is not None,
-            "links":sorted(il_targets),"outlinks":sorted(outlinks),"simhash":simhash,"chash":chash,"sameas":sameas}
+            "links":sorted(il_targets),"outlinks":sorted(outlinks),"simhash":simhash,"chash":chash,"sameas":sameas,"agent":agent,"infogain":infogain}
 
 def site_checks(origin, domain):
     out=[]
@@ -667,6 +696,82 @@ def check_links(pages, cap=800, workers=16, progress=None):
                 if progress: progress(_done,_tot,f"{stt if stt is not None else 'x'} {u}")
     return status
 
+def agent_protocols(origin):
+    """Advisory probe of the emerging agent protocol / discovery files (Protocol & Interaction
+    dimension of agent-readiness). Parallel, short timeout, returns {label: {found, path}}."""
+    PATHS=[("MCP server card","/.well-known/mcp.json"),
+           ("Plugin manifest","/.well-known/ai-plugin.json"),
+           ("Agent manifest","/.well-known/agent.json"),
+           ("Agent skills index","/agents.json"),
+           ("OpenAPI / API catalog","/openapi.json"),
+           ("OAuth discovery","/.well-known/oauth-authorization-server")]
+    def probe(item):
+        name,path=item
+        st,_,body,_=fetch_raw(origin+path,timeout=8)
+        return name,{"found":bool(st==200 and body),"path":path}
+    out={}
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for name,r in ex.map(probe,PATHS): out[name]=r
+    return out
+
+# ------------------------------------------------------------------ AI-crawler exposure monitor
+# The major AI crawlers, split by ROLE: "serving" bots fetch to answer/cite live (blocking one
+# removes you from that engine's answers); "training" bots feed model training (blocking is a
+# legitimate content-protection choice that does NOT stop live-search citation).
+AI_BOTS=[
+ ("GPTBot","GPTBot","OpenAI","training","ChatGPT model training + browsing"),
+ ("OAI-SearchBot","OAI-SearchBot","OpenAI","serving","ChatGPT search-result citations"),
+ ("ChatGPT-User","ChatGPT-User","OpenAI","serving","ChatGPT user-triggered fetch"),
+ ("ClaudeBot","ClaudeBot","Anthropic","serving","Claude training + answer citations"),
+ ("anthropic-ai","anthropic-ai","Anthropic","training","Claude (legacy UA)"),
+ ("Claude-User","Claude-User","Anthropic","serving","Claude user-triggered fetch"),
+ ("Googlebot","Googlebot","Google","serving","Google Search + AI Overviews serving"),
+ ("Google-Extended","Google-Extended","Google","training","Gemini / Vertex training (not AIO serving)"),
+ ("PerplexityBot","PerplexityBot","Perplexity","serving","Perplexity answer index"),
+ ("Perplexity-User","Perplexity-User","Perplexity","serving","Perplexity user-triggered fetch"),
+ ("Bingbot","Bingbot","Microsoft","serving","Copilot + Bing AI answers"),
+ ("Applebot-Extended","Applebot-Extended","Apple","training","Apple Intelligence training"),
+ ("Meta-ExternalAgent","Meta-ExternalAgent","Meta","training","Meta AI training / serving"),
+ ("Bytespider","Bytespider","ByteDance","training","TikTok / Doubao AI"),
+ ("CCBot","CCBot","Common Crawl","training","open corpus feeding many LLMs"),
+]
+def _parse_robots(text):
+    """Parse robots.txt into User-agent groups: [{agents:set, dis:[...], allow:[...]}]. Consecutive
+    User-agent lines (before any rule) share the following ruleset per the standard."""
+    groups=[]; cur=None; after_rule=False
+    for raw in (text or "").splitlines():
+        line=raw.split("#",1)[0].strip()
+        if not line or ":" not in line: continue
+        field,_,val=line.partition(":"); field=field.strip().lower(); val=val.strip()
+        if field=="user-agent":
+            if cur is None or after_rule:
+                cur={"agents":set(),"dis":[],"allow":[]}; groups.append(cur)
+            cur["agents"].add(val.lower()); after_rule=False
+        elif field=="disallow" and cur is not None:
+            cur["dis"].append(val); after_rule=True
+        elif field=="allow" and cur is not None:
+            cur["allow"].append(val); after_rule=True
+    return groups
+def _bot_status(groups, ua):
+    """allowed / partial / blocked for a bot UA: exact group match wins, else the * fallback."""
+    ua=ua.lower(); grp=None
+    for g in groups:
+        if ua in g["agents"]: grp=g; break
+    if grp is None:
+        for g in groups:
+            if "*" in g["agents"]: grp=g; break
+    if grp is None: return "allowed"
+    if any((a or "").strip()=="/" for a in grp["allow"]): return "allowed"   # explicit root Allow wins the tie
+    if any((d or "").strip()=="/" for d in grp["dis"]): return "blocked"
+    if any((d or "").strip() for d in grp["dis"]): return "partial"
+    return "allowed"
+def ai_crawler_matrix(origin):
+    """Static AI-bot access matrix read from robots.txt (advisory exposure monitor)."""
+    st,_,robots,_=fetch_raw(origin+"/robots.txt")
+    groups=_parse_robots(robots)
+    bots=[{"name":n,"ua":ua,"op":op,"role":role,"purpose":pur,"status":_bot_status(groups,ua)} for n,ua,op,role,pur in AI_BOTS]
+    return {"has_robots":bool(st==200 and robots),"bots":bots}
+
 # ------------------------------------------------------------------ scoring
 def _score(statuses, weights):
     tot=got=0.0
@@ -688,7 +793,7 @@ def page_scores(statuses):
             {k:(v if v is not None else 0) for k,v in pill.items()},
             {k:(v if v is not None else 0) for k,v in eng.items()})
 
-def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, client=None, intro=None):
+def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, client=None, intro=None, protocols=None, aicrawler=None):
     ok200=[p for p in pages if p.get("status")==200]
     def _np(x): return (x or "/").rstrip("/") or "/"
     # site-level: does the site publish comparison / best-of content (a top AI-cited format)?
@@ -767,13 +872,50 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
     _declared=[nm for nm,dm in _SURF if _decl(dm,nm)]
     _HV=["Wikipedia","Reddit","YouTube","Trustpilot","G2","LinkedIn"]
     offpage={"declared":_declared,"missing":[s for s in _HV if s not in _declared],"sameas_count":len(_allsame)}
+    # agent-readiness advisory: which pages expose each ACTIONABLE signal + which COMMERCIAL pages lack it.
+    # "Money page" = a transactable page (a blog does not need an Offer; a service / pricing page does).
+    _agkeys=["action","offer","price","avail","prodserv","contact"]
+    _UTIL_RE=re.compile(r"(?:^|/)(?:about|privacy|terms|cookie|legal|sitemap|404|thank|thanks|login|log-in|account|cart|search|category|tag|author)(?:/|$|-)",re.I)
+    def _ismoney(p):
+        tset=set((p.get("metrics") or {}).get("schema_types") or []); ag=p.get("agent") or {}
+        if {"Product","Service","Offer","SoftwareApplication","WebApplication","Event","Course"} & tset or ag.get("prodserv") or ag.get("offer"): return True
+        if p.get("type") in ("article","listing"): return False              # editorial: not a transaction surface
+        if _UTIL_RE.search(urllib.parse.urlparse((p.get("url") or "")).path.lower()): return False
+        return True                                                          # a non-editorial, non-utility landing page is commercially actionable
+    _money=[p for p in ok200 if _ismoney(p)]
+    _agcount={k:sum(1 for p in ok200 if (p.get("agent") or {}).get(k)) for k in _agkeys}
+    _agsignals={k:{"has":[p.get("url") for p in ok200 if (p.get("agent") or {}).get(k)][:80],
+                   "missing_money":[p.get("url") for p in _money if not (p.get("agent") or {}).get(k)][:80]} for k in _agkeys}
+    _agany=[p.get("url") for p in ok200 if any((p.get("agent") or {}).values())]
+    agentready={"counts":_agcount,"total":len(ok200),"pages_any":_agany[:60],"any_n":len(_agany),
+                "protocols":protocols or {},"signals":_agsignals,"money_n":len(_money),"money_urls":[p.get("url") for p in _money][:120]}
+    # information-gain proxy (advisory): band each page from original-data signals; near-duplicate = derivative -> low.
+    _igp=[]
+    for p in ok200:
+        ig=p.get("infogain") or {}
+        _dup=bool([u for u in _bychash.get(p.get("chash"),[]) if u!=p.get("url")]) or bool(_near.get(p.get("url")))
+        f=ig.get("figures",0)
+        pts=(2 if f>=15 else (1 if f>=6 else 0))+(1 if ig.get("firsthand") else 0)+(1 if ig.get("proprietary") else 0)+(1 if ig.get("datatable") else 0)
+        band="low" if _dup else ("high" if pts>=3 else ("medium" if pts>=1 else "low"))
+        _igp.append({"url":p.get("url"),"figures":f,"firsthand":bool(ig.get("firsthand")),"proprietary":bool(ig.get("proprietary")),
+                     "datatable":bool(ig.get("datatable")),"dup":_dup,"pts":pts,"band":band})
+    _igorder={"high":0,"medium":1,"low":2}
+    _igp.sort(key=lambda x:(_igorder[x["band"]],-x["pts"],-x["figures"]))
+    infogain={"pages":_igp,"bands":{b:sum(1 for x in _igp if x["band"]==b) for b in ("high","medium","low")},"total":len(ok200)}
     for p in pages:
-        for _k in ("outlinks","_broken","simhash","chash","links","sameas"): p.pop(_k,None)
+        for _k in ("outlinks","_broken","simhash","chash","links","sameas","agent","infogain"): p.pop(_k,None)
     ok=ok200
     def avg(f): return round(sum(f(p) for p in ok)/len(ok)) if ok else 0
     overall=avg(lambda p:p["score"])
     pill={pl:avg(lambda p:p["pillars"][pl]) for pl in PILLARS}
     eng={e:avg(lambda p:p["engines"][e]) for e in ENGINE_WEIGHTS}
+    # access gate: if AI bots are blocked (robots) or WAF-blocked (reachability), the whole site is
+    # uncitable regardless of page quality -> cap the headline so a block visibly tanks the score.
+    _scx2={c["id"]:c["status"] for c in sitecx}
+    access_blocked = _scx2.get("robots")=="bad" or _scx2.get("reachability")=="bad"
+    if access_blocked:
+        overall=min(overall,25); pill["Findable"]=min(pill.get("Findable",0),25)
+        eng={e:min(v,25) for e,v in eng.items()}
     # ---- issues aggregated (+ pillar/chapter/evidence/effort) ----
     agg=defaultdict(lambda:{"warn":[],"bad":[]})
     for p in pages:
@@ -821,8 +963,8 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
             "pages_crawled":len(pages),"overall":overall,"pillars":pill,"engines":eng,
             "engine_note":ENGINE_NOTE,"engine_weights":ENGINE_WEIGHTS,"check_meta":CHECK_META,
             "grok_advisory":GROK_ADVISORY,
-            "totals":dict(tot),"issues":issues,"site_checks":sitecx,"broken_links":broken_links,"offpage":offpage,
-            "client":client,"intro":intro,
+            "totals":dict(tot),"issues":issues,"site_checks":sitecx,"broken_links":broken_links,"offpage":offpage,"agentready":agentready,"infogain":infogain,"aicrawler":aicrawler or {},
+            "client":client,"intro":intro,"access_blocked":access_blocked,
             "types":dict(Counter(p["type"] for p in pages)),
             "plan_phases":plan_phases,"pages":pages}
 
@@ -847,8 +989,12 @@ def apply_diff(data, outbase):
                       "pillars_was":prev.get("pillars",{}),"engines_was":prev.get("engines",{}),
                       "improved":[m for m in moved if m["d"]>0][:8],
                       "declined":[m for m in moved if m["d"]<0][:8]}
+        _prevbots=prev.get("aicrawler") or {}                       # AI-bot access change tracking
+        _curbots={b["name"]:b["status"] for b in ((data.get("aicrawler") or {}).get("bots") or [])}
+        data["diff"]["bot_changes"]=[{"bot":n,"was":_prevbots[n],"now":s} for n,s in _curbots.items() if n in _prevbots and _prevbots[n]!=s]
     snap={"date":data["date"],"generated":data["generated"],"overall":data["overall"],
           "pillars":data["pillars"],"engines":data["engines"],
+          "aicrawler":{b["name"]:b["status"] for b in ((data.get("aicrawler") or {}).get("bots") or [])},
           "pages":{p["url"]:p["score"] for p in data["pages"]}}
     with open(hist,"a",encoding="utf-8") as f: f.write(json.dumps(snap)+"\n")
 
@@ -1183,7 +1329,7 @@ const ring=v=>`<div class="ring" style="--p:${v};--c:${col(v)}"><i>${v}</i></div
 const scb=v=>`<span class="sc" style="background:${col(v)}">${v}</span>`;
 const bd=p=>`<span class="badge ${p}">${p}</span>`;
 const ECOLS=['ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude'];
-const TABS=['Overview','Action Plan','Issues','Pages','Off-page','|','ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude','Grok','|','Site structure','Response times','Broken links'];
+const TABS=['Overview','Action Plan','Issues','Pages','Off-page','Agent-ready','Info gain','|','ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude','Grok','|','Site structure','Response times','Broken links','AI crawlers'];
 let cur='Overview',sortk='score',sortd=1,pageFilter='';
 function tabsbar(){document.getElementById('tabs').innerHTML=TABS.map(t=>t=='|'?`<div class="tab sep">|</div>`:`<div class="tab ${t==cur?'on':''}" onclick="go('${t}')">${t}${t=='Grok'?'<sup style="color:#8b8480;font-weight:700;font-size:9px;margin-left:2px">adv</sup>':''}</div>`).join('')}
 function go(t){cur=t;pageFilter='';tabsbar();render()}
@@ -1196,6 +1342,9 @@ function render(){const w=document.getElementById('view');
  if(cur=='Response times')return w.innerHTML=speed();
  if(cur=='Broken links')return w.innerHTML=brokenView();
  if(cur=='Off-page')return w.innerHTML=offpageView();
+ if(cur=='Agent-ready')return w.innerHTML=agentView();
+ if(cur=='Info gain')return w.innerHTML=infogainView();
+ if(cur=='AI crawlers')return w.innerHTML=aicrawlerView();
  if(cur=='Grok')return w.innerHTML=grokView();
  return w.innerHTML=engine(cur);}
 
@@ -1222,7 +1371,7 @@ function ovw2(){
  const P=D.pages.length, parityBad=D.pages.filter(p=>p.cs&&p.cs.parity=='bad').length, reach=((D.site_checks||[]).find(s=>s.id=='reachability')||{}).status||'good';
  const rr=(name,st,txt)=>`<div class="rch"><span>${name}</span><span class="rst ${st=='good'?'ok':st=='warn'?'wn':'er'}">${txt}</span></div>`;
  const reachH=rr('GPTBot',reach,reach=='good'?`allowed · ${P}/${P} pages`:reach=='warn'?'partial':'blocked')+rr('PerplexityBot',reach,reach=='good'?`allowed · ${P}/${P} pages`:reach=='warn'?'partial':'blocked')+rr('Google-Extended',reach=='bad'?'bad':'warn',reach=='bad'?'blocked':'partial')+rr('Server-rendered schema',parityBad?'bad':'good',parityBad?`${parityBad} pages JS-injected only`:`all ${P} pages server-rendered`);
- return `<div class="ov"><div>
+ return `${D.access_blocked?'<div style="background:rgba(255,77,61,.14);border:1px solid rgba(255,77,61,.4);border-radius:12px;padding:14px 18px;margin-bottom:16px;color:#ff9c88;font-size:14px"><b>AI crawlers are blocked.</b> robots.txt or your WAF is blocking GPTBot / PerplexityBot / Bingbot, so nothing on this site can be cited by AI until it is fixed. The overall score is capped to reflect that - see the robots / reachability checks.</div>':''}<div class="ov"><div>
    <div class="panel"><div class="hero">
      <div class="sring" style="--p:${D.overall};--c:var(--grn)"><i><span class="v">${D.overall}</span><span class="o">OF 100</span></i></div>
      <div style="flex:1;min-width:190px"><div class="htitle">CITED Score</div><div class="hsub">Weighted across six engines. Pages score as <b>quotable</b> at 70.</div>${odtxt}</div>
@@ -1698,6 +1847,134 @@ function grokView(){const G=D.grok_advisory||{};
    <div class="card2"><div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#3ecf8e"></span><span style="font-size:13px;font-weight:700">Informational, like llms.txt</span></div><div class="qd" style="line-height:1.6;margin-top:8px">Shown for completeness and deliberately not counted in your CITED Score, exactly as the tool treats llms.txt.</div></div>
  </div></div>`;
  return h}
+function agentView(){
+ var a=D.agentready||{counts:{},total:0,pages_any:[],any_n:0};
+ var c=a.counts||{}, tot=a.total||1;
+ var SIG=[
+   ['action','Action schema','potentialAction / OrderAction / ReserveAction / ContactAction - tells an agent what it can DO'],
+   ['offer','Machine-readable Offer','Offer / offers / price - an agent can read what you sell'],
+   ['price','Explicit price','a specific machine-readable price, not buried in prose'],
+   ['avail','Availability','availability / stock status an agent can check before acting'],
+   ['prodserv','Product / Service entity','a transactable Product or Service @type'],
+   ['contact','Contact / booking point','a ContactPoint an agent can reach or book through']
+ ];
+ var sig=a.signals||{};
+ var ln=function(u,dc){return '<span class="egp"><span class="dotb" style="background:'+dc+'"></span><a href="'+esc(u)+'" target="_blank">'+rel(u)+'</a></span>';};
+ var bar=function(k,label,desc){var n=c[k]||0;var pct=Math.round(100*n/tot);var col=n?(pct>=50?'#3ecf8e':'#f2b53c'):'#ff9c88';
+   var s=sig[k]||{has:[],missing_money:[]};var miss=(s.missing_money||[]).length;var hn=(s.has||[]).length;
+   var det='<div id="ag_'+k+'" class="engdet">'
+     +'<div class="egh">Present on ('+hn+')</div>'+(hn?(s.has||[]).map(function(u){return ln(u,'#3ecf8e')}).join(''):'<span class="egp qd">none</span>')
+     +'<div class="egh" style="margin-top:10px">Missing on '+miss+' commercial page'+(miss==1?'':'s')+' (should add)</div>'+(miss?(s.missing_money||[]).map(function(u){return ln(u,'#ff4d3d')}).join(''):'<span class="egp qd">none</span>')
+     +'<div class="qd" style="column-span:all;margin-top:10px;line-height:1.5">Only commercial / transactable pages are flagged as missing - editorial and blog pages do not need to be actionable.</div></div>';
+   return '<div class="apissue"><div class="aprow" onclick="tgl(\'ag_'+k+'\')" style="grid-template-columns:1fr;gap:5px;cursor:pointer;padding:13px 0">'
+     +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-weight:700;font-size:14px">'+label+' <span class="egcar">▾</span></span><span style="color:'+col+';font-weight:700;font-size:13px;white-space:nowrap">'+n+' / '+tot+' pages</span></div>'
+     +'<div style="height:7px;border-radius:4px;background:#221d1a;overflow:hidden;margin:1px 0"><span style="display:block;width:'+Math.max(2,pct)+'%;height:100%;background:'+col+'"></span></div>'
+     +'<div class="qd" style="line-height:1.5">'+desc+'</div>'
+     +'</div>'+det+'</div>';};
+ var matrix=SIG.map(function(s){return bar(s[0],s[1],s[2])}).join('');
+ var proto=a.protocols||{}; var pk=Object.keys(proto);
+ var protoH=pk.length?pk.map(function(k){var p=proto[k];var col=p.found?'#3ecf8e':'#8b8480';return '<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line)"><span style="min-width:0"><b style="font-size:13px">'+k+'</b> <span class="qd" style="font-size:11px">'+p.path+'</span></span><span style="color:'+col+';font-weight:700;font-size:12px;flex:none">'+(p.found?'✓ found':'not found')+'</span></div>';}).join(''):'<span class="qd">Not probed (benchmark run).</span>';
+ var protoFound=pk.filter(function(k){return proto[k].found}).length;
+ return `<div class="ap2"><div class="apmain">
+   <div class="apsum" style="padding:24px 28px">
+     <div class="apk">AGENT-READINESS &middot; ADVISORY (NOT SCORED YET)</div>
+     <div style="font-size:14px;line-height:1.65;color:#c9c2bd;max-width:730px;margin-top:10px">The next shift is answers &rarr; <b>agents</b>: AI that browses, compares and <b>transacts</b> on the user's behalf. An agent doesn't just read your page, it needs to <b>act</b> - read a price, check availability, book, contact. Actions need machine-readable precision prose can't give. This tab reads whether AI can <b>act</b> on you, not just cite you. Forward-looking and directional, not part of the CITED Score yet.</div>
+   </div>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>ACTIONABLE SIGNALS ON YOUR SITE</h3><span class="meta">${a.any_n||0} of ${tot} pages expose at least one &middot; ${a.money_n||0} commercial &middot; click a signal to see which pages</span></div><div class="apbox" style="padding:6px 22px 16px">${matrix}</div></section>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>PROTOCOL &amp; DISCOVERY FILES</h3><span class="meta">${protoFound} of ${pk.length} present &middot; how an agent connects programmatically</span></div><div class="apbox" style="padding:6px 22px 14px">${protoH}<div class="qd" style="line-height:1.55;border-top:1px solid var(--line);padding-top:11px;margin-top:6px">These are emerging and nascent - most sites have none yet - so this is forward guidance, not a mark against you. The one to watch is the <b>MCP server card</b> (<code>/.well-known/mcp.json</code>): as agents standardise on MCP, it becomes how they discover your tools and actions.</div></div></section>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#f2b53c"></span><h3>ACTIONABLE, NOT DESCRIPTIVE, SCHEMA</h3><span class="meta">the distinction that matters</span></div><div class="apbox" style="padding:16px 22px"><div style="font-size:14px;line-height:1.65;color:#c9c2bd">Agentic does not make <b>all</b> schema matter - it splits it. <b>Descriptive</b> schema (Article, breadcrumbs, FAQ) stays a minor entity signal. <b>Actionable</b> schema (Offer + price + availability, potentialAction, ContactPoint) is the structured path an agent transacts through. Add the actionable subset to your commercial pages, and <b>server-render it</b> - an agent that doesn't run JS can't see JS-injected schema, exactly like today's crawlers.</div></div></section>
+   </div>
+   <div class="apside">
+     <div class="card2"><h3>Do this first</h3><div class="qd" style="line-height:1.6">On product / service pages, add an <b>Offer</b> with price + availability, and a <b>potentialAction</b> for the primary action (buy / book / contact). That is the minimum an agent needs to act on you.</div></div>
+     <div class="card2"><h3>Why it isn't scored</h3><div class="qd" style="line-height:1.6">Agentic search is emerging, not mainstream, and agent support for Action schema is still nascent (it could be "declared but unread" for a while). So this is a forward-looking advisory - the same honest treatment as Grok and llms.txt - and it graduates to a scored "Actionable" pillar as agents arrive.</div></div>
+   </div></div>`;
+}
+function aicrawlerView(){
+ var ac=D.aicrawler||{bots:[],has_robots:false};
+ var bots=ac.bots||[];
+ var reach=(D.site_checks||[]).find(function(c){return c.id=='reachability'})||{};
+ var col={allowed:'#3ecf8e',partial:'#f2b53c',blocked:'#ff4d3d'};
+ var serving=bots.filter(function(b){return b.role=='serving'});
+ var servingBlocked=serving.filter(function(b){return b.status=='blocked'||b.status=='partial'});
+ var allowedN=bots.filter(function(b){return b.status=='allowed'}).length;
+ var ops=[],seen={};
+ bots.forEach(function(b){if(!seen[b.op]){seen[b.op]=[];ops.push(b.op);}seen[b.op].push(b);});
+ var roleBadge=function(r){return r=='serving'
+   ?'<span style="font-size:9px;font-weight:800;color:#ff8a3d;letter-spacing:.05em">CITATION</span>'
+   :'<span style="font-size:9px;font-weight:800;color:#8b8480;letter-spacing:.05em">TRAINING</span>';};
+ var grid=ops.map(function(op){
+   return '<div style="margin-top:15px"><div class="egh" style="margin-bottom:2px">'+esc(op)+'</div>'+seen[op].map(function(b){
+     return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line)">'
+       +'<span class="dotb" style="background:'+col[b.status]+'"></span>'
+       +'<span style="font-weight:600;font-size:13px;width:150px;flex:none">'+esc(b.name)+'</span>'
+       +'<span style="width:66px;flex:none">'+roleBadge(b.role)+'</span>'
+       +'<span class="qd" style="flex:1;font-size:12px;min-width:0">'+esc(b.purpose)+'</span>'
+       +'<span style="color:'+col[b.status]+';font-weight:700;font-size:12px;text-transform:uppercase;flex:none">'+b.status+'</span></div>';
+   }).join('')+'</div>';
+ }).join('');
+ var ch=(D.diff&&D.diff.bot_changes)||[];
+ var pill=function(txt,cc){return '<span style="text-transform:uppercase;font-weight:700;font-size:12px;letter-spacing:.03em;color:'+cc+'">'+esc(txt)+'</span>';};
+ var chH=ch.length?`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#f2b53c"></span><h3>ACCESS CHANGED SINCE LAST CRAWL</h3><span class="meta">since ${esc((D.diff&&D.diff.since)||'')}</span></div><div class="apbox" style="padding:10px 22px 14px">`+ch.map(function(c){var cc=col[c.now]||'#f2b53c';return '<div style="display:flex;align-items:baseline;gap:9px;padding:6px 0;font-size:13px"><b style="min-width:150px">'+esc(c.bot)+'</b>'+pill(c.was,'#8b8480')+'<span style="color:#8b8480">&rarr;</span>'+pill(c.now,cc)+'</div>';}).join('')+`</div></section>`:'';
+ var headline;
+ if(!ac.has_robots)headline='<span style="color:#f2b53c">No robots.txt found - every bot is allowed by default. Fine for citation, but you have no control lever.</span>';
+ else if(servingBlocked.length)headline='<span style="color:#ff9c88"><b>'+servingBlocked.length+' citation bot'+(servingBlocked.length==1?'':'s')+' restricted</b> ('+servingBlocked.map(function(b){return esc(b.name)}).join(', ')+') - those engines cannot fully cite you.</span>';
+ else headline='<span style="color:#3ecf8e"><b>All citation bots allowed.</b> '+allowedN+' of '+bots.length+' AI bots allowed overall.</span>';
+ var reachNote=reach.status=='bad'
+   ?'<div class="qd" style="margin-top:8px;color:#ff9c88">Live WAF test: '+esc(reach.detail||'')+' - a bot allowed in robots.txt can still be blocked at the firewall.</div>'
+   :'<div class="qd" style="margin-top:8px">Live WAF test (GPTBot / PerplexityBot): '+esc(reach.detail||'reachable')+'.</div>';
+ var noidx=(D.pages||[]).filter(function(p){return p.cs&&p.cs.noindex=='bad'});
+ var noidxNote=noidx.length
+   ?'<div class="qd" style="margin-top:6px;color:#ff9c88">Page level: '+noidx.length+' of '+(D.pages||[]).length+' pages are noindexed - excluded from AI citation regardless of bot access (see the Indexable check).</div>'
+   :'<div class="qd" style="margin-top:6px">Page level: all '+(D.pages||[]).length+' pages are indexable - no per-page noindex suppressing citation.</div>';
+ return `<div class="ap2"><div class="apmain">
+   <div class="apsum" style="padding:24px 28px">
+     <div class="apk">AI-CRAWLER EXPOSURE &middot; ADVISORY</div>
+     <div style="font-size:14px;line-height:1.65;color:#c9c2bd;max-width:740px;margin-top:10px">Crawler access is the on/off switch for AI citation, and it is becoming a battleground (Cloudflare AI-blocking, pay-per-crawl, page-level controls). A blocked <b>citation</b> bot means that engine literally cannot quote you; a blocked <b>training</b> bot is a legitimate content-protection choice that does not stop live-search citation. This is the full matrix.</div>
+     <div style="margin-top:14px;font-size:14px;line-height:1.55">${headline}${reachNote}${noidxNote}</div>
+   </div>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>AI-BOT ACCESS MATRIX</h3><span class="meta">${allowedN} of ${bots.length} allowed &middot; from robots.txt</span></div><div class="apbox" style="padding:2px 22px 16px">${grid}</div></section>
+   ${chH}
+   </div>
+   <div class="apside">
+     <div class="card2"><h3>What to do</h3><div class="qd" style="line-height:1.6">Allow every <b>CITATION</b> bot (OAI-SearchBot, PerplexityBot, ClaudeBot, Googlebot, Bingbot) - blocking one removes you from that engine's answers. <b>TRAINING</b> bots (GPTBot, Google-Extended, CCBot, Applebot-Extended) are your call: block them to keep content out of model training and you can still be cited via the live-search bots.</div></div>
+     <div class="card2"><h3>How this is read</h3><div class="qd" style="line-height:1.6">Straight from your robots.txt User-agent groups (exact match, else the <code>*</code> fallback). "Blocked" = a <code>Disallow: /</code> that applies to the bot; "partial" = some paths disallowed. Re-crawl to track when access changes. Note: <b>Google-Extended</b> governs Gemini/Vertex <b>training</b> only - it does <b>not</b> remove you from AI Overviews (that uses Googlebot).</div></div>
+   </div></div>`;
+}
+function infogainView(){
+ var g=D.infogain||{pages:[],bands:{high:0,medium:0,low:0},total:0};
+ var b=g.bands||{high:0,medium:0,low:0}; var tot=g.total||1;
+ var pl=function(u){return (u||'').replace(/^https?:\/\/[^/]+/,'')||'/';};
+ var bandcol={high:'#3ecf8e',medium:'#f2b53c',low:'#ff9c88'};
+ var gchip=function(txt){return '<span style="font-size:11px;padding:1px 7px;border-radius:10px;margin-right:5px;background:rgba(62,207,142,.14);color:#3ecf8e">'+txt+'</span>';};
+ var td='padding:9px 12px;border-top:1px solid var(--line)';
+ var th='padding:9px 12px;position:static;background:#141110';
+ var rows=(g.pages||[]).map(function(p){var col=bandcol[p.band]||'#8b8480';var fc=(p.figures>=15?'#3ecf8e':(p.figures>=6?'#f2b53c':'#8b8480'));
+   var sc='';
+   if(p.firsthand)sc+=gchip('first-hand');
+   if(p.proprietary)sc+=gchip('proprietary');
+   if(p.datatable)sc+=gchip('data table');
+   if(p.dup)sc+='<span style="font-size:11px;padding:1px 7px;border-radius:10px;background:rgba(255,156,136,.14);color:#ff9c88">near-dup</span>';
+   if(!sc)sc='<span class="qd" style="font-size:12px">figures only</span>';
+   return '<tr>'
+    +'<td style="'+td+';font-weight:600">'+esc(pl(p.url))+'</td>'
+    +'<td style="'+td+';text-align:center"><span style="color:'+col+';font-weight:700;text-transform:uppercase;font-size:12px">'+p.band+'</span></td>'
+    +'<td style="'+td+';text-align:center;color:'+fc+'">'+p.figures+'</td>'
+    +'<td style="'+td+'">'+sc+'</td></tr>';}).join('');
+ var tile=function(lbl,n,col){return '<div style="flex:1;background:#17130f;border:1px solid var(--line);border-radius:10px;padding:14px 16px;text-align:center"><div style="font-size:26px;font-weight:800;color:'+col+'">'+n+'</div><div class="qd" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-top:2px">'+lbl+'</div></div>';};
+ return `<div class="ap2"><div class="apmain">
+   <div class="apsum" style="padding:24px 28px">
+     <div class="apk">INFORMATION GAIN &middot; ADVISORY (PROXY, NOT SCORED)</div>
+     <div style="font-size:14px;line-height:1.65;color:#c9c2bd;max-width:740px;margin-top:10px">Original data is the one moat AI cannot route around - pages that state their own numbers, first-hand research and named frameworks get cited where derivative rehash does not (Indig: 15+ distinct figures = information-gain 62.1 vs 40.2 for &le;1). A local crawler <b>cannot prove true originality</b> (no web-corpus to diff against), so this is a labelled <b>proxy</b>: distinct-figure density, first-hand-research language, a named proprietary asset, and real data tables - minus near-duplication.</div>
+     <div style="display:flex;gap:12px;margin-top:18px">${tile('original / high',b.high||0,'#3ecf8e')}${tile('some / medium',b.medium||0,'#f2b53c')}${tile('thin / low',b.low||0,'#ff9c88')}</div>
+   </div>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>PAGES BY INFORMATION-GAIN PROXY</h3><span class="meta">${tot} pages &middot; ranked most original first</span></div>
+     <div class="apbox" style="padding:0"><table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left"><th style="${th}">Page</th><th style="${th};text-align:center">Band</th><th style="${th};text-align:center">Figures</th><th style="${th}">Original-data signals</th></tr></thead><tbody>${rows||'<tr><td colspan="4" style="padding:14px">no pages</td></tr>'}</tbody></table></div></section>
+   </div>
+   <div class="apside">
+     <div class="card2"><h3>Do this first</h3><div class="qd" style="line-height:1.6">Take your <b>thin / low</b> pages and add something only you can say: a first-hand result, an original statistic with its source, a named framework, or a data table. One genuinely original figure beats ten borrowed ones.</div></div>
+     <div class="card2"><h3>Why it's a proxy</h3><div class="qd" style="line-height:1.6">True information gain needs a web-corpus comparison this local tool does not do. These signals <b>correlate</b> with original content but cannot confirm novelty - so it is an honest directional read, not part of the CITED Score. The underlying stat / citation / sourced checks already feed the Trusted pillar.</div></div>
+   </div></div>`;
+}
 function offpageView(){
  var o=D.offpage||{declared:[],missing:[],sameas_count:0};
  var pill=function(t,ok){return '<span style="display:inline-block;font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;margin:3px 4px 3px 0;'+(ok?'color:#3ecf8e;background:rgba(62,207,142,.12);border:1px solid rgba(62,207,142,.3)':'color:#ff9c88;background:rgba(255,77,61,.1);border:1px solid rgba(255,77,61,.28)')+'">'+t+'</span>';};
@@ -1780,7 +2057,7 @@ tabsbar();render();
          f"<script>window.__DATA__={payload};</script><script>{js}</script></body></html>")
     with open(path,"w",encoding="utf-8") as f: f.write(doc)
 
-def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, client=None, intro=None):
+def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, client=None, intro=None, links=True):
     """Crawl + score a whole site and write out.html/.json/.csv. progress(phase, done,
     total, msg) is called through the run so a UI can show live status. Returns the data."""
     if not url.startswith("http"): url="https://"+url
@@ -1800,10 +2077,12 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, cl
     emit("site",total,total,"Site-wide checks...")
     sitecx=site_checks(origin,domain)
     linkstatus={}
-    if out:                                    # full audit (not the capped benchmark path) -> check outbound links
+    if out and links:                          # full audit (not the capped benchmark path) -> check outbound links
         emit("links",0,0,"Checking outbound links...")
         linkstatus=check_links(pages, progress=lambda d,t,m: emit("links",d,t,m))
-    data=build(domain,origin,pages,sitecx,sitemap_paths,linkstatus,client,intro)
+    protocols=agent_protocols(origin) if out else {}    # agent protocol/discovery probe (advisory)
+    aicrawler=ai_crawler_matrix(origin) if out else {}  # AI-bot access matrix (advisory monitor)
+    data=build(domain,origin,pages,sitecx,sitemap_paths,linkstatus,client,intro,protocols,aicrawler)
     if out: apply_diff(data,out); write_outputs(data,out)     # out=None -> crawl + score only, no files (used by benchmark)
     emit("done",total,total,f"{domain}: {data['overall']}/100, {data['pages_crawled']} pages")
     return data
@@ -1831,6 +2110,7 @@ def main():
     ap.add_argument("--report",help="existing report.json for --calibrate")
     ap.add_argument("--client",help="white-label: client name shown in the report banner")
     ap.add_argument("--intro",help="white-label: optional intro line shown under the client banner")
+    ap.add_argument("--no-links",action="store_true",help="skip the broken-link check (faster)")
     a=ap.parse_args()
     if a.calibrate:
         calibrate(a.report or (a.out+".json"), a.calibrate); return
@@ -1838,7 +2118,7 @@ def main():
     print(f"Chrome: {CHROME or 'NONE (raw only)'}")
     def prog(phase,done,total,msg):
         print(f"  [{done}/{total}] {msg}" if phase=="crawl" else msg, flush=True)
-    data=run_audit(a.url,out=a.out,max_pages=a.max_pages,workers=a.workers,progress=prog,client=a.client,intro=a.intro)
+    data=run_audit(a.url,out=a.out,max_pages=a.max_pages,workers=a.workers,progress=prog,client=a.client,intro=a.intro,links=not a.no_links)
     print(f"\n=== CITED Score: {data['domain']} === {data['overall']}/100 | {data['pages_crawled']} pages")
     print("Pillars: "+" | ".join(f"{k} {v}" for k,v in data['pillars'].items()))
     print("Engines: "+" | ".join(f"{e} {v}" for e,v in data['engines'].items()))
