@@ -84,7 +84,7 @@ CHECK_META = {
  "sitemap":    {"label":"XML sitemap present","pillar":"Findable","ch":"Ch7","phase":1,"effort":"Low",
                 "ev":"The sitemap is how engines discover every page (Ch7)."},
  "reachability":{"label":"AI crawlers not network-blocked","pillar":"Findable","ch":"Ch7","phase":1,"effort":"Low",
-                "ev":"A Cloudflare/WAF 403 on GPTBot silently blocks citation (live reachability test, Ch7)."},
+                "ev":"A Cloudflare/WAF 403 on the citation-serving bots (ChatGPT-User, OAI-SearchBot, Googlebot, Bingbot) silently blocks citation, and blocking Google/Bing is a search-indexing risk too (live reachability test, Ch7)."},
  # TRUSTED - authority + citability (ch4 trust, Princeton GEO)
  "wordcount":  {"label":"Substantive content (>=300 words)","pillar":"Trusted","ch":"Ch4","phase":3,"effort":"High",
                 "ev":"Thin pages rarely earn citations; depth signals a real answer (Ch4)."},
@@ -605,11 +605,19 @@ def site_checks(origin, domain):
     out.append(chk("robots","bad" if blocked else "good",("robots.txt "+("found" if robots else "missing"))+(("; BLOCKS "+", ".join(sorted(set(blocked)))) if blocked else "; none blocked")))
     st3,_,sm,_=fetch_raw(origin+"/sitemap.xml")
     out.append(chk("sitemap","good" if st3==200 and "<url" in sm.lower() else "warn","found" if st3==200 else "missing"))
-    reach=[]
-    for ua in ["GPTBot/1.0","PerplexityBot/1.0"]:
-        s,_,_,_=fetch_raw(origin+"/",ua=ua); reach.append((ua.split("/")[0],s))
-    bl=[b for b,s in reach if s in (401,403,429) or s is None]
-    out.append(chk("reachability","bad" if bl else "good","; ".join(f"{b}:{s}" for b,s in reach)))
+    # live reachability: probe the SERVING bots that fetch at CITATION time (not GPTBot, a training
+    # bot). A WAF 403 here means the engine cannot fetch the page to cite it, even if robots "allows"
+    # the bot. Googlebot/Bingbot blocked = a classic-search-indexing risk on top of the AI one.
+    def _rprobe(item):
+        nm,ua=item; s,_,_,_=fetch_raw(origin+"/",ua=ua); return (nm,s)
+    with ThreadPoolExecutor(max_workers=6) as _ex:
+        reach=list(_ex.map(_rprobe, SERVING_UAS))
+    _blk=lambda s: s in (401,403,429) or s is None
+    bl=[b for b,s in reach if _blk(s)]
+    srch=[b for b,s in reach if _blk(s) and b in ("Googlebot","Bingbot")]
+    _det="; ".join(f"{b}:{s if s is not None else 'x'}" for b,s in reach)
+    if srch: _det+=" | search crawler blocked ("+", ".join(srch)+"): Google/Bing indexing risk, not just AI"
+    out.append(chk("reachability","bad" if bl else "good",_det))
     st2,_,llms,_=fetch_raw(origin+"/llms.txt")
     if st2==200 and llms:
         out.append(chk("llms","info","present"+("" if "](" in llms else " (no markdown links)")))
@@ -768,6 +776,18 @@ AI_BOTS=[
  ("Bytespider","Bytespider","ByteDance","training","TikTok / Doubao AI"),
  ("CCBot","CCBot","Common Crawl","training","open corpus feeding many LLMs"),
 ]
+# The bots that fetch at CITATION time (serving), with realistic UA strings for the live WAF probe.
+# GPTBot is deliberately EXCLUDED: it is a training crawler, so probing it misleads (a site can
+# allow GPTBot yet firewall-block ChatGPT-User, the bot that actually fetches to cite). Googlebot
+# and Bingbot are included because a WAF "block AI training" rule can 403 them too (indexing risk).
+SERVING_UAS=[
+ ("ChatGPT-User","ChatGPT-User/1.0 (+https://openai.com/bot)"),
+ ("OAI-SearchBot","OAI-SearchBot/1.0 (+https://openai.com/searchbot)"),
+ ("PerplexityBot","Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)"),
+ ("ClaudeBot","Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)"),
+ ("Googlebot","Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"),
+ ("Bingbot","Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)"),
+]
 def _parse_robots(text):
     """Parse robots.txt into User-agent groups: [{agents:set, dis:[...], allow:[...]}]. Consecutive
     User-agent lines (before any rule) share the following ruleset per the standard."""
@@ -799,10 +819,19 @@ def _bot_status(groups, ua):
     if any((d or "").strip() for d in grp["dis"]): return "partial"
     return "allowed"
 def ai_crawler_matrix(origin):
-    """Static AI-bot access matrix read from robots.txt (advisory exposure monitor)."""
+    """AI-bot access matrix: robots.txt rules for every bot, PLUS a live reachability probe of the
+    citation-serving bots, so the tab can show robots-allowed-but-firewall-blocked. Per bot, `reach`
+    is the HTTP status fetching the homepage as that bot (0 = unreachable/failed; null = not probed)."""
     st,_,robots,_=fetch_raw(origin+"/robots.txt")
     groups=_parse_robots(robots)
-    bots=[{"name":n,"ua":ua,"op":op,"role":role,"purpose":pur,"status":_bot_status(groups,ua)} for n,ua,op,role,pur in AI_BOTS]
+    _uamap=dict(SERVING_UAS)
+    def _probe(nm):
+        s,_,_,_=fetch_raw(origin+"/",ua=_uamap[nm]); return (nm, s if s is not None else 0)
+    reachmap={}
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for nm,s in ex.map(_probe,[n for n,_ in SERVING_UAS]): reachmap[nm]=s
+    bots=[{"name":n,"ua":ua,"op":op,"role":role,"purpose":pur,
+           "status":_bot_status(groups,ua),"reach":reachmap.get(n)} for n,ua,op,role,pur in AI_BOTS]
     return {"has_robots":bool(st==200 and robots),"bots":bots}
 
 # ------------------------------------------------------------------ scoring
@@ -1729,7 +1758,7 @@ function pagesView(){
  return h}
 const SITEIDS=new Set(['robots','llms','sitemap','reachability','comparison']);
 const SHORT={parity:'Schema in JS',answerfirst:'no opener',definitional:'no definition',readability:'hard to read',entitydensity:'few entities',sections:'walls of text',schema:'Article schema',wordcount:'thin content',freshness:'stale',qheadings:'H2s',faq:'no FAQ',liststables:'no tables',meta:'meta desc',title:'title',alt:'alt text',citations:'few sources',internal:'few links',statdensity:'few stats',canonical:'canonical',h1:'H1',robots:'bot blocked',sitemap:'no sitemap',reachability:'blocked',entity:'no entity',schemacomplete:'thin schema',author:'no author',sourced:'unsourced stats',video:'no video',comparison:'no comparison',noindex:'noindexed',speed:'slow response',schemavalidity:'invalid schema',duplicate:'dup title/meta',rankedlist:'no ranked list',answerthird:'answer buried',h2answer:'headings unanswered',orphans:'orphaned',brokenlinks:'broken links',nearduplicate:'near-duplicate',reviewschema:'no review schema'};
-const EBOTS={'ChatGPT':['GPTBot','OAI-SearchBot'],'Perplexity':['PerplexityBot'],'AI Overviews':['Googlebot','Google-Extended'],'Gemini':['Google-Extended'],'Copilot':['Bingbot'],'Claude':['ClaudeBot','anthropic-ai']};
+const EBOTS={'ChatGPT':['OAI-SearchBot','ChatGPT-User'],'Perplexity':['PerplexityBot','Perplexity-User'],'AI Overviews':['Googlebot'],'Gemini':['Googlebot','Google-Extended'],'Copilot':['Bingbot'],'Claude':['ClaudeBot','Claude-User']};
 const EOWNER={'ChatGPT':'OpenAI','Perplexity':'Perplexity','AI Overviews':'Google','Gemini':'Google','Copilot':'Microsoft','Claude':'Anthropic'};
 const ORD=['','strongest','second-strongest','third-strongest','fourth-strongest','fifth-strongest','sixth-strongest'];
 function engine(e){
@@ -1934,9 +1963,17 @@ function aicrawlerView(){
  var bots=ac.bots||[];
  var reach=(D.site_checks||[]).find(function(c){return c.id=='reachability'})||{};
  var col={allowed:'#3DD68C',partial:'#F0B429',blocked:'#ff4d3d'};
+ var isBlk=function(r){return r===0||r==401||r==403||r==429;};       // reach status meaning blocked; >0 non-blocking = ok; null = not probed
+ var fwBlocked=function(b){return b.reach!=null&&isBlk(b.reach);};    // robots may allow, but the firewall 403s
+ var effCol=function(b){return (b.status=='blocked'||fwBlocked(b))?col.blocked:(b.status=='partial'?col.partial:col.allowed);};
+ var reachLabel=function(b){
+   if(b.reach==null) return '<span style="width:104px;flex:none"></span>';
+   var blk=isBlk(b.reach);
+   return '<span style="color:'+(blk?'#ff4d3d':'#3DD68C')+';font-weight:700;font-size:11px;flex:none;width:104px;text-align:right">'+(blk?('firewall '+(b.reach||'x')):'reachable')+'</span>';
+ };
  var serving=bots.filter(function(b){return b.role=='serving'});
- var servingBlocked=serving.filter(function(b){return b.status=='blocked'||b.status=='partial'});
- var allowedN=bots.filter(function(b){return b.status=='allowed'}).length;
+ var servingBlocked=serving.filter(function(b){return b.status=='blocked'||b.status=='partial'||fwBlocked(b);});
+ var allowedN=bots.filter(function(b){return b.status=='allowed'&&!fwBlocked(b);}).length;
  var ops=[],seen={};
  bots.forEach(function(b){if(!seen[b.op]){seen[b.op]=[];ops.push(b.op);}seen[b.op].push(b);});
  var roleBadge=function(r){return r=='serving'
@@ -1944,12 +1981,13 @@ function aicrawlerView(){
    :'<span style="font-size:9px;font-weight:800;color:#8b8480;letter-spacing:.05em">TRAINING</span>';};
  var grid=ops.map(function(op){
    return '<div style="margin-top:15px"><div class="egh" style="margin-bottom:2px">'+esc(op)+'</div>'+seen[op].map(function(b){
-     return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line)">'
-       +'<span class="dotb" style="background:'+col[b.status]+'"></span>'
-       +'<span style="font-weight:600;font-size:13px;width:150px;flex:none">'+esc(b.name)+'</span>'
-       +'<span style="width:66px;flex:none">'+roleBadge(b.role)+'</span>'
+     return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)">'
+       +'<span class="dotb" style="background:'+effCol(b)+'"></span>'
+       +'<span style="font-weight:600;font-size:13px;width:140px;flex:none">'+esc(b.name)+'</span>'
+       +'<span style="width:62px;flex:none">'+roleBadge(b.role)+'</span>'
        +'<span class="qd" style="flex:1;font-size:12px;min-width:0">'+esc(b.purpose)+'</span>'
-       +'<span style="color:'+col[b.status]+';font-weight:700;font-size:12px;text-transform:uppercase;flex:none">'+b.status+'</span></div>';
+       +reachLabel(b)
+       +'<span style="color:'+col[b.status]+';font-weight:700;font-size:12px;text-transform:uppercase;flex:none;width:64px;text-align:right">'+b.status+'</span></div>';
    }).join('')+'</div>';
  }).join('');
  var ch=(D.diff&&D.diff.bot_changes)||[];
@@ -1959,9 +1997,12 @@ function aicrawlerView(){
  if(!ac.has_robots)headline='<span style="color:#F0B429">No robots.txt found - every bot is allowed by default. Fine for citation, but you have no control lever.</span>';
  else if(servingBlocked.length)headline='<span style="color:#ff9c88"><b>'+servingBlocked.length+' citation bot'+(servingBlocked.length==1?'':'s')+' restricted</b> ('+servingBlocked.map(function(b){return esc(b.name)}).join(', ')+') - those engines cannot fully cite you.</span>';
  else headline='<span style="color:#3DD68C"><b>All citation bots allowed.</b> '+allowedN+' of '+bots.length+' AI bots allowed overall.</span>';
- var reachNote=reach.status=='bad'
-   ?'<div class="qd" style="margin-top:8px;color:#ff9c88">Live WAF test: '+esc(reach.detail||'')+' - a bot allowed in robots.txt can still be blocked at the firewall.</div>'
-   :'<div class="qd" style="margin-top:8px">Live WAF test (GPTBot / PerplexityBot): '+esc(reach.detail||'reachable')+'.</div>';
+ var searchRisk=bots.filter(function(b){return (b.name=='Googlebot'||b.name=='Bingbot')&&fwBlocked(b);});
+ var reachNote=searchRisk.length
+   ?'<div class="qd" style="margin-top:8px;color:#ff9c88"><b>Search crawler blocked.</b> '+searchRisk.map(function(b){return esc(b.name)+' ('+b.reach+')'}).join(', ')+' is firewall-blocked, a Google/Bing <b>indexing</b> risk, not just an AI one. A WAF "block AI training" rule can 403 the search crawlers too (Cloudflare formalises this on 15 Sep 2026).</div>'
+   :(reach.status=='bad'
+     ?'<div class="qd" style="margin-top:8px;color:#ff9c88">Live WAF test: '+esc(reach.detail||'')+'. A bot that robots.txt "allows" can still be blocked at the firewall.</div>'
+     :'<div class="qd" style="margin-top:8px">Live WAF test (citation-serving bots): '+esc(reach.detail||'reachable')+'.</div>');
  var noidx=(D.pages||[]).filter(function(p){return p.cs&&p.cs.noindex=='bad'});
  var noidxNote=noidx.length
    ?'<div class="qd" style="margin-top:6px;color:#ff9c88">Page level: '+noidx.length+' of '+(D.pages||[]).length+' pages are noindexed - excluded from AI citation regardless of bot access (see the Indexable check).</div>'
@@ -1969,7 +2010,7 @@ function aicrawlerView(){
  return `<div class="ap2"><div class="apmain">
    <div class="apsum" style="padding:24px 28px">
      <div class="apk">AI-CRAWLER EXPOSURE &middot; ADVISORY</div>
-     <div style="font-size:14px;line-height:1.65;color:#c9c2bd;max-width:740px;margin-top:10px">Crawler access is the on/off switch for AI citation, and it is becoming a battleground (Cloudflare AI-blocking, pay-per-crawl, page-level controls). A blocked <b>citation</b> bot means that engine literally cannot quote you; a blocked <b>training</b> bot is a legitimate content-protection choice that does not stop live-search citation. This is the full matrix.</div>
+     <div style="font-size:14px;line-height:1.65;color:#c9c2bd;max-width:740px;margin-top:10px">Crawler access is the on/off switch for AI citation, and it is becoming a battleground (Cloudflare AI-blocking, pay-per-crawl, page-level controls). A blocked <b>citation</b> bot means that engine literally cannot quote you; a blocked <b>training</b> bot is a legitimate content-protection choice that does not stop live-search citation. This matrix pairs your robots.txt rules with a <b>live firewall probe</b> of the citation-serving bots (the ones that fetch at answer time), because a robots.txt "allow" means nothing if the firewall 403s the bot.</div>
      <div style="margin-top:14px;font-size:14px;line-height:1.55">${headline}${reachNote}${noidxNote}</div>
    </div>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>AI-BOT ACCESS MATRIX</h3><span class="meta">${allowedN} of ${bots.length} allowed &middot; from robots.txt</span></div><div class="apbox" style="padding:2px 22px 16px">${grid}</div></section>
@@ -1977,7 +2018,7 @@ function aicrawlerView(){
    </div>
    <div class="apside">
      <div class="card2"><h3>What to do</h3><div class="qd" style="line-height:1.6">Allow every <b>CITATION</b> bot (OAI-SearchBot, PerplexityBot, ClaudeBot, Googlebot, Bingbot) - blocking one removes you from that engine's answers. <b>TRAINING</b> bots (GPTBot, Google-Extended, CCBot, Applebot-Extended) are your call: block them to keep content out of model training and you can still be cited via the live-search bots.</div></div>
-     <div class="card2"><h3>How this is read</h3><div class="qd" style="line-height:1.6">Straight from your robots.txt User-agent groups (exact match, else the <code>*</code> fallback). "Blocked" = a <code>Disallow: /</code> that applies to the bot; "partial" = some paths disallowed. Re-crawl to track when access changes. Note: <b>Google-Extended</b> governs Gemini/Vertex <b>training</b> only - it does <b>not</b> remove you from AI Overviews (that uses Googlebot).</div></div>
+     <div class="card2"><h3>How this is read</h3><div class="qd" style="line-height:1.6">Two signals per bot: the <b>robots.txt</b> rule (allowed / partial / blocked, exact UA match else the <code>*</code> fallback), and a <b>live fetch</b> as that bot to catch a firewall 403 robots cannot show. A red "firewall" beside a green "allowed" is the mismatch that matters. We probe the <b>citation-serving</b> bots (ChatGPT-User, OAI-SearchBot, PerplexityBot, Googlebot, Bingbot, ClaudeBot), <b>not GPTBot</b>, which is a training bot that does not fetch to cite. And <b>Google-Extended</b> governs Gemini/Vertex training only, not AI Overviews serving (that uses Googlebot).</div></div>
    </div></div>`;
 }
 function infogainView(){
