@@ -232,12 +232,13 @@ def _profile():
         os.makedirs(_tls.prof, exist_ok=True)
     return _tls.prof
 
-def fetch_raw(url, ua=UA, timeout=25):
+def fetch_raw(url, ua=UA, timeout=25, capture=None):
     t0 = time.time()
     try:
         req = urllib.request.Request(url, headers={"User-Agent": ua})
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = r.read(); enc = r.headers.get_content_charset() or "utf-8"
+            if capture is not None: capture["final_url"] = r.geturl()   # after redirects
             return r.status, dict(r.headers), data.decode(enc, "ignore"), int((time.time()-t0)*1000)
     except urllib.error.HTTPError as e:
         return e.code, {}, "", int((time.time()-t0)*1000)
@@ -299,26 +300,52 @@ def section_counts(root):
         out.append(len(words(" ".join(seg))))
     return out
 
-def find_date(soup, objs):
-    ds = []
-    def dig(n,key):
-        if isinstance(n,dict):
-            if isinstance(n.get(key),str): ds.append(n[key])
-            for v in n.values(): dig(v,key)
-        elif isinstance(n,list):
-            for v in n: dig(v,key)
-    for o in objs:
-        dig(o,"dateModified"); dig(o,"datePublished")
-    for t in soup.find_all("time"):
-        d = t.get("datetime") or t.get_text(strip=True)
-        if d: ds.append(d)
-    p = []
-    for d in ds:
-        m = re.search(r"(\d{4})-(\d{2})-(\d{2})", d)
-        if m:
-            try: p.append(datetime.date(int(m[1]),int(m[2]),int(m[3])))
+_MONTHS = {m: i for i, m in enumerate(
+    ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"], 1)}
+def _parse_dates(s):
+    out = []
+    for m in re.finditer(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", s or ""):          # 2026-08-07 / 2026/08/07
+        try: out.append(datetime.date(int(m[1]), int(m[2]), int(m[3])))
+        except Exception: pass
+    for m in re.finditer(r"\b(\d{1,2})\s+([A-Za-z]{3,9})\.?\s+(\d{4})\b", s or ""): # 7 August 2026
+        mo = _MONTHS.get(m[2][:3].lower())
+        if mo:
+            try: out.append(datetime.date(int(m[3]), mo, int(m[1])))
             except Exception: pass
-    return max(p) if p else None
+    for m in re.finditer(r"\b([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})\b", s or ""): # August 7, 2026
+        mo = _MONTHS.get(m[1][:3].lower())
+        if mo:
+            try: out.append(datetime.date(int(m[3]), mo, int(m[2])))
+            except Exception: pass
+    return [d for d in out if 2000 <= d.year <= datetime.date.today().year + 1]
+
+def find_date(soup, objs):
+    """Freshest date from, in priority order, schema (dateModified/datePublished), visible <time>,
+    and Open Graph / meta date tags. Falls back to a visible text date next to an Updated/Published cue
+    only when no machine-readable date exists, so a stray in-content date cannot fake freshness."""
+    machine = []
+    def dig(n, key):
+        if isinstance(n, dict):
+            if isinstance(n.get(key), str): machine.append(n[key])
+            for v in n.values(): dig(v, key)
+        elif isinstance(n, list):
+            for v in n: dig(v, key)
+    for o in objs:
+        dig(o, "dateModified"); dig(o, "datePublished")                          # schema
+    for t in soup.find_all("time"):                                              # visible <time>
+        d = t.get("datetime") or t.get_text(strip=True)
+        if d: machine.append(d)
+    for attrs in ({"property": "article:modified_time"}, {"property": "article:published_time"},
+                  {"itemprop": "dateModified"}, {"itemprop": "datePublished"},
+                  {"name": "date"}, {"name": "last-modified"}, {"name": "revised"}):  # OG / meta dates
+        for tag in soup.find_all("meta", attrs=attrs):
+            if tag.get("content"): machine.append(tag["content"])
+    dates = [d for s in machine for d in _parse_dates(s)]
+    if not dates:                                                                # last resort: visible text date by a cue
+        txt = soup.get_text(" ", strip=True)
+        for m in re.finditer(r"(?:last\s+updated|updated|published|posted|modified|reviewed)\b[:\s]*([^.\n|]{0,34})", txt, re.I):
+            dates.extend(_parse_dates(m.group(1)))
+    return max(dates) if dates else None
 
 def classify(path, types):
     if path in ("", "/"): return "home"
@@ -338,6 +365,39 @@ NA_BY_TYPE = {
     "listing":  {"answerfirst","qheadings","sections","faq","freshness","schema","statdensity","citations","wordcount","schemacomplete","author","sourced","video","entity","readability","entitydensity","definitional","answerthird","h2answer","reviewschema"},
     "article":  {"reviewschema"},
 }
+
+# --- Website-type scoring profiles: a re-weighting LAYER on the calibrated 0-100 (NOT a separate score).
+# A profile is a {check_id: weight_multiplier} map (>1 up-weights, <1 down-weights, missing = 1.0). Per-page
+# NA_BY_TYPE still governs applicability; "general" has no profile so a general site scores exactly as before.
+# Directional defaults from the deep-research report; to be calibration-tuned, never treat as final weights.
+PROFILES = {
+    "ecommerce": {"schema":1.6,"schemacomplete":1.6,"entity":1.4,"reviewschema":1.6,"freshness":1.4,"faq":1.3,"liststables":1.3,
+                  "wordcount":0.4,"statdensity":0.4,"sourced":0.4,"citations":0.5,"author":0.5,"definitional":0.5},
+    "blog":      {"statdensity":1.5,"sourced":1.5,"citations":1.5,"freshness":1.4,"answerfirst":1.4,"answerthird":1.3,"h2answer":1.3,
+                  "author":1.4,"entity":1.3,"qheadings":1.3,"definitional":1.2,"schema":0.6,"faq":0.5,"reviewschema":0.4},
+    "b2b_saas":  {"entity":1.5,"comparison":1.5,"author":1.3,"citations":1.3,"reviewschema":0.5,"wordcount":0.5,"schema":0.9},
+}
+SITE_PROFILE_LABEL = {"ecommerce":"E-commerce","blog":"Blog / publisher","b2b_saas":"B2B SaaS","general":"General"}
+
+def classify_site(pages):
+    """Aggregate per-page signals into a dominant SITE type, to pick a scoring profile. Deliberately
+    conservative; the chosen type is exposed in the report and is meant to be overridable."""
+    n=len(pages) or 1
+    ECOM_PATH=re.compile(r"/(products?|shop|store|collections?|cart|checkout|basket)(/|$|\?)",re.I)
+    SAAS_PATH=re.compile(r"/(pricing|features?|integrations?|solutions?|demo|sign-?up|api|docs)(/|$|\?)",re.I)
+    ECOM_SCHEMA={"Product","AggregateOffer"}; SAAS_SCHEMA={"SoftwareApplication","WebApplication"}   # bare "Offer" excluded: services/pricing pages use it too
+    prod=ecom=saas=article=0
+    for p in pages:
+        path=(p.get("path") or "").lower(); tset=set((p.get("metrics") or {}).get("schema_types") or [])
+        if ECOM_SCHEMA & tset: prod+=1
+        if ECOM_PATH.search(path) or (ECOM_SCHEMA & tset): ecom+=1
+        if SAAS_PATH.search(path) or (SAAS_SCHEMA & tset): saas+=1
+        if p.get("type")=="article": article+=1
+    if prod>=3 or ecom/n>=0.20: return "ecommerce"          # Product schema (not bare Offer) is the strongest signal
+    if article/n>=0.55 and article>=3: return "blog"         # blog-dominant, with a minimum-evidence guard
+    if saas/n>=0.08 and prod==0: return "b2b_saas"           # SaaS markers, not a shop (shallow crawls surface few, so no count floor)
+    # mixed / thin-evidence sites fall through to general (auto-guess is overridable in the app)
+    return "general"
 
 def chk(cid, status, detail):
     m = CHECK_META[cid]
@@ -590,7 +650,134 @@ def analyze(url, status, raw, rendered, domain, hdrs=None, fetch_ms=0):
              "readability":fk,"entity_density":pnd,"definitional":defn,
              "ext_links":ext,"internal_links":il,"schema_types":sorted(tset),"images":len(imgs),"alt_pct":apct}
     return {"path":path,"type":ptype,"title":title,"meta":mdc,"checks":C,"metrics":metrics,"rendered":rendered is not None,
-            "links":sorted(il_targets),"outlinks":sorted(outlinks),"simhash":simhash,"chash":chash,"sameas":sameas,"agent":agent,"infogain":infogain}
+            "links":sorted(il_targets),"outlinks":sorted(outlinks),"simhash":simhash,"chash":chash,"sameas":sameas,"agent":agent,"infogain":infogain,
+            "search_forms":find_search_forms(soup, url)}
+
+SEARCH_PARAM_NAMES={"q","s","query","search","keyword","kw","term","search_query","searchword","wc-search","field-keywords"}
+def find_search_forms(soup, base_url):
+    """Detect on-site search forms from a rendered page. GET forms only (results carried in the URL, so we
+    can probe them). Conservative: needs a type=search input, a known search param, or a role=search /
+    search-labelled form with a text input. Returns a deduped [{action, param}]."""
+    out=[]
+    for f in soup.find_all("form"):
+        method=(f.get("method") or "get").strip().lower()
+        if method and method!="get": continue                       # POST search can't be URL-probed
+        role=(f.get("role") or "").lower()
+        idcls=(" ".join([f.get("id") or ""]+(f.get("class") or []))).lower()
+        searchish = role=="search" or "search" in idcls
+        param=None
+        for inp in f.find_all(("input","textarea")):
+            itype=(inp.get("type") or "text").strip().lower()
+            nm=(inp.get("name") or "").strip()
+            if not nm or itype in ("hidden","submit","button","reset","checkbox","radio","image","file"): continue
+            if itype=="search" or nm.lower() in SEARCH_PARAM_NAMES:
+                param=nm; searchish=True; break
+            if searchish and param is None and itype in ("text","search",""):
+                param=nm                                            # first text field of an already-search-labelled form
+        if not (searchish and param): continue
+        action=urllib.parse.urljoin(base_url,(f.get("action") or base_url)).split("#")[0]
+        out.append({"action":action,"param":param})
+    seen=set(); uniq=[]
+    for sf in out:
+        k=(sf["action"],sf["param"])
+        if k not in seen: seen.add(k); uniq.append(sf)
+    return uniq
+
+_SEARCH_STOP=set("the a an and or but of for to in on at by with from is are was were be been am your you our we us it its this that these those how what why when where who which best top guide guides vs review reviews home page pages welcome new get more all about contact blog news read learn help".split())
+def audit_internal_search(pages, origin, timeout=10):
+    """Citation-to-landing (b): probe the site's OWN internal search with a term taken from its own page
+    titles (so a working search MUST return results), then report FACTUALLY. Never claims 'broken' on a guess:
+    outcome is works / empty / unclear / unreachable / no_term, and 'empty' needs an explicit no-results signal."""
+    cand=Counter()
+    for p in pages:
+        for sf in (p.get("search_forms") or []): cand[(sf["action"],sf["param"])]+=1
+    if not cand: return {"detected":False}
+    (action,param),_=cand.most_common(1)[0]
+    wc=Counter()
+    for p in pages:
+        for w in re.findall(r"[A-Za-z][A-Za-z0-9'-]{2,}", (p.get("title") or "").lower()):
+            if len(w)<4 or w in _SEARCH_STOP: continue
+            wc[w]+=1
+    term=next((w for w,c in wc.most_common() if c>=2), None) or (wc.most_common(1)[0][0] if wc else None)
+    base={"detected":True,"action":action,"param":param}
+    if not term: return {**base,"probed":False,"outcome":"no_term"}
+    sep="&" if urllib.parse.urlparse(action).query else "?"
+    probe=f"{action}{sep}{urllib.parse.quote(param)}={urllib.parse.quote(term)}"
+    cap={}
+    try: st,hdrs,body,ms=fetch_raw(probe, capture=cap, timeout=timeout)
+    except Exception: st,body=None,""
+    if st!=200 or not body: return {**base,"term":term,"probed":True,"outcome":"unreachable","status":st}
+    try: rend,_=render(probe, timeout=20)        # most search results are client-side, so JS-render the probe
+    except Exception: rend=None
+    doc=rend or body
+    soup=BeautifulSoup(doc,"lxml")
+    low=soup.get_text(" ",strip=True).lower()
+    nores=bool(re.search(r"(no results|nothing found|no matches|0 results|no products found|couldn'?t find|did not match|no results found|sorry[, ].{0,20}\bno\b)", low))
+    dom=urllib.parse.urlparse(origin).netloc.replace("www.","")
+    root=main_content(BeautifulSoup(doc,"lxml"))
+    links=0
+    for a in root.find_all("a",href=True):
+        pu=urllib.parse.urlparse(urllib.parse.urljoin(probe,a["href"]))
+        if pu.netloc.replace("www.","")==dom and (pu.path or "").rstrip("/"): links+=1
+    mr=soup.find("meta",attrs={"name":re.compile(r"^robots$",re.I)})
+    noindex=bool(mr and "noindex" in (mr.get("content") or "").lower())
+    outcome="empty" if (nores and links<3) else ("works" if links>=3 else "unclear")
+    return {**base,"term":term,"probed":True,"outcome":outcome,"result_links":links,"noindex":noindex,"status":200}
+
+_QSTOP={"the","a","an","and","or","of","for","to","in","on","at","with","from","is","are","how","what","why","your","you","vs"}
+def _qtok(s):
+    return {w for w in re.findall(r"[a-z0-9]{2,}", (s or "").lower()) if w not in _QSTOP}
+
+def load_queries(path):
+    """Parse a grounding-query CSV (Bing AI Performance 'AI Search Queries' export:
+    Grounding Query, Intent, Topic, Citations, Citation Share). Tolerant of header casing."""
+    out=[]
+    with open(path, encoding="utf-8-sig") as f:
+        for r in csv.DictReader(f):
+            q=(r.get("Grounding Query") or r.get("Query") or r.get("query") or "").strip()
+            if not q: continue
+            try: c=int(float(r.get("Citations") or r.get("citations") or 0))
+            except Exception: c=0
+            sh=(r.get("Citation Share") or r.get("citation_share") or "").replace("%","").strip()
+            try: shv=float(sh)/100 if sh else None
+            except Exception: shv=None
+            out.append({"query":q,"citations":c,"share":shv,
+                        "intent":(r.get("Intent") or "").strip(),"topic":(r.get("Topic") or "").strip()})
+    return out
+
+def query_coverage(pages, queries, max_q=50):
+    """The query-match layer: does the site have a page targeting the queries AI actually cites?
+    Gap = a high-citation query no page targets (the opportunity). Orphan = a well-scored page that
+    targets no cited query (effort not aimed at demand). Matching is idf-weighted title/meta/URL overlap
+    so distinctive terms (heatmap, ab) dominate common ones (best, 2026). Directional, not exact."""
+    def toks_for(p):
+        slug=re.findall(r"[a-z0-9]{2,}", urllib.parse.urlparse(p.get("url") or p.get("path") or "").path.lower())
+        return _qtok((p.get("title") or "")+" "+(p.get("meta") or "")+" "+" ".join(slug))
+    ptoks=[toks_for(p) for p in pages]
+    df=Counter(t for toks in ptoks for t in toks); N=len(pages) or 1
+    w=lambda t: 1.0/(1+df.get(t,0))                                   # rare terms weigh more
+    qs=sorted([q for q in queries if q["citations"]>0], key=lambda q:-q["citations"])[:max_q]
+    covered=[]; gaps=[]; strong_page=set()
+    for q in qs:
+        qt=_qtok(q["query"])
+        if not qt: continue
+        wsum=sum(w(t) for t in qt) or 1.0
+        best_i,best_s=-1,0.0
+        for i,toks in enumerate(ptoks):
+            s=sum(w(t) for t in qt if t in toks)/wsum
+            if s>best_s: best_i,best_s=i,s
+        rec={"query":q["query"],"citations":q["citations"],"share":q.get("share"),
+             "best_score":round(best_s,2),"best_page":(pages[best_i].get("path") or pages[best_i].get("url")) if best_i>=0 else None}
+        if best_s>=0.6:
+            covered.append(rec); strong_page.add(best_i)
+        else:
+            gaps.append(rec)
+    orphans=sorted([{"path":p.get("path") or p.get("url"),"score":p.get("score")}
+                    for i,p in enumerate(pages) if (p.get("score") or 0)>=75 and i not in strong_page],
+                   key=lambda x:-(x["score"] or 0))
+    gaps.sort(key=lambda x:-x["citations"])
+    return {"n_queries":len(qs),"covered":len(covered),"n_gaps":len(gaps),"gaps":gaps[:12],
+            "n_orphans":len(orphans),"orphans":orphans[:12]}
 
 def site_checks(origin, domain):
     out=[]
@@ -679,13 +866,30 @@ def all_urls(origin, domain, cap, start=None):
     sitemap_paths={(urllib.parse.urlparse(u).path.rstrip("/") or "/") for u in sm_urls}
     return seen, sitemap_paths
 
+def _redirect_home(url, final_url):
+    """Citation-to-landing flag: a deep URL that silently redirects to the site homepage
+    wastes any AI citation of it. Returns final_url when that happened, else None.
+    Deliberately ignores http->https, www, trailing-slash and deep->deep moves (all legitimate)."""
+    try:
+        rp=urllib.parse.urlparse(url); fp=urllib.parse.urlparse(final_url)
+        req_path=(rp.path or "/").rstrip("/") or "/"; fin_path=(fp.path or "/").rstrip("/") or "/"
+        same_host=fp.netloc.replace("www.","")==rp.netloc.replace("www.","")
+        if same_host and req_path!="/" and fin_path=="/" and not fp.query:
+            return final_url
+    except Exception: pass
+    return None
+
 def process(url, domain):
-    st,hdrs,raw,fms=fetch_raw(url)
+    _cap={}
+    st,hdrs,raw,fms=fetch_raw(url, capture=_cap)
+    final_url=_cap.get("final_url") or url
     rend,rms=(render(url) if st==200 else (None,0))
     page=analyze(url,st,raw,rend,domain,hdrs,fms)
     page.update({"url":url,"status":st,"fetch_ms":fms,"render_ms":rms,
                  "depth":len([x for x in urllib.parse.urlparse(url).path.strip("/").split("/") if x]),
                  "server":hdrs.get("Server","")})
+    rh=_redirect_home(url, final_url)
+    if rh: page["redirect_home"]=rh
     return page
 
 # ------------------------------------------------------------------ phase-3: near-dup + broken links
@@ -835,28 +1039,32 @@ def ai_crawler_matrix(origin):
     return {"has_robots":bool(st==200 and robots),"bots":bots}
 
 # ------------------------------------------------------------------ scoring
-def _score(statuses, weights):
+def _score(statuses, weights, mult=None):
     tot=got=0.0
     for cid,w in weights.items():
         s=statuses.get(cid)
         if not s or s in ("na","info"): continue
-        tot+=w; got+=w*STAT[s]
+        m=mult.get(cid,1.0) if mult else 1.0          # website-type profile re-weight (1.0 = default)
+        tot+=w*m; got+=w*m*STAT[s]
     return round(100*got/tot) if tot else None
 
-def page_scores(statuses):
-    """statuses: {id: good/warn/bad/na/info} incl site ids. -> overall, pillars, engines."""
-    overall = _score(statuses, {c:1 for c in statuses if c not in SITE_IDS})
+def page_scores(statuses, mult=None):
+    """statuses: {id: good/warn/bad/na/info} incl site ids. -> overall, pillars, engines.
+    mult (optional): website-type profile weight multipliers {check_id: factor}; None = default rubric."""
+    overall = _score(statuses, {c:1 for c in statuses if c not in SITE_IDS}, mult)
     pill={}
     for p in PILLARS:
         w={cid:1 for cid,m in CHECK_META.items() if m["pillar"]==p and cid in statuses}
-        pill[p]=_score(statuses,w)
-    eng={e:_score(statuses,w) for e,w in ENGINE_WEIGHTS.items()}
+        pill[p]=_score(statuses,w,mult)
+    eng={e:_score(statuses,w,mult) for e,w in ENGINE_WEIGHTS.items()}
     return (overall if overall is not None else 0,
             {k:(v if v is not None else 0) for k,v in pill.items()},
             {k:(v if v is not None else 0) for k,v in eng.items()})
 
-def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, client=None, intro=None, protocols=None, aicrawler=None):
+def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, client=None, intro=None, protocols=None, aicrawler=None, site_type_override=None):
     ok200=[p for p in pages if p.get("status")==200]
+    site_type=(site_type_override if site_type_override in SITE_PROFILE_LABEL else classify_site(pages)); prof=PROFILES.get(site_type)   # override or auto-detect; None profile = general / no-op
+    site_type_source="override" if site_type_override in SITE_PROFILE_LABEL else "auto"
     def _np(x): return (x or "/").rstrip("/") or "/"
     # site-level: does the site publish comparison / best-of content (a top AI-cited format)?
     CMP_RE=re.compile(r"(vs\.?|versus|comparison|compare|best[- ]|top[- ]?\d+|alternativ|which[- ])",re.I)
@@ -919,7 +1127,7 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
             elif len(_nb)<=2: p["checks"].append(chk("brokenlinks","warn",str(len(_nb))+" broken: "+", ".join(u.split("://")[-1][:38] for u in _nb[:2])))
             else: p["checks"].append(chk("brokenlinks","bad",str(len(_nb))+" broken outbound links"))
         st={c["id"]:c["status"] for c in p["checks"]}; st.update(scx)
-        o,pl,en=page_scores(st)
+        o,pl,en=page_scores(st, prof)
         p["cs"]=st; p["score"]=o; p["pillars"]=pl; p["engines"]=en
     broken_links=[{"url":u,"status":(linkstatus or {}).get(u),"sources":srcs} for u,srcs in _brokenmap.items()]
     broken_links.sort(key=lambda x:-len(x["sources"]))
@@ -1001,7 +1209,7 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
             st=dict(p["cs"])
             if site_fix: st[cid]="good"
             elif p["url"] in affected: st[cid]="good"
-            o,_,en2=page_scores(st); sim.append((o,en2))
+            o,_,en2=page_scores(st, prof); sim.append((o,en2))
         it["gain_overall"]=round(sum(s[0] for s in sim)/len(sim))-base if sim else 0
         eg={}
         for e in ENGINE_WEIGHTS:
@@ -1012,7 +1220,7 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
     # true combined ceiling for the Action Plan headline: fix every flagged warn/bad to good and
     # re-score the whole site once. The independent per-fix gains undercount this, because fixing
     # multiple signals on a page compounds, so summing standalone gains understates the real total.
-    _pa=[page_scores({k:('good' if v in ('warn','bad') else v) for k,v in p["cs"].items()})[0] for p in ok]
+    _pa=[page_scores({k:('good' if v in ('warn','bad') else v) for k,v in p["cs"].items()}, prof)[0] for p in ok]
     proj_all = round(sum(_pa)/len(_pa)) if _pa else overall
     # rank: projected overall gain, then severity, then pages
     issues.sort(key=lambda x:(-x["gain_overall"],x["severity"]!="bad",-x["count"]))
@@ -1033,6 +1241,10 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
             "totals":dict(tot),"issues":issues,"site_checks":sitecx,"broken_links":broken_links,"offpage":offpage,"agentready":agentready,"infogain":infogain,"aicrawler":aicrawler or {},"proj_all":proj_all,
             "client":client,"intro":intro,"access_blocked":access_blocked,
             "types":dict(Counter(p["type"] for p in pages)),
+            "site_type":site_type,"site_type_label":SITE_PROFILE_LABEL.get(site_type,site_type),"site_type_source":site_type_source,
+            "profile":(prof or {}),"profile_up":sorted([c for c,m in (prof or {}).items() if m>1]),
+            "profile_down":sorted([c for c,m in (prof or {}).items() if m<1]),
+            "redirect_home":[{"url":p["url"],"to":p.get("redirect_home")} for p in pages if p.get("redirect_home")],
             "plan_phases":plan_phases,"pages":pages}
 
 # ------------------------------------------------------------------ re-crawl diff
@@ -1144,13 +1356,13 @@ try:
     FAVICON = "data:image/png;base64," + FAVICON_PNG_B64
 except Exception:                                     # fallback: dark app icon (crescent-C + node) as SVG
     FAVICON = "data:image/svg+xml;base64," + base64.b64encode(
-        b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><rect width='200' height='200' rx='34' fill='#111112'/><path d='M161.3,48.6 A80,80 0 1 0 161.3,151.4 L147.4,139.8 A56,56 0 1 1 147.4,60.2 Z' fill='#F5F1EA'/><circle cx='100' cy='100' r='19' fill='#FF5C1A'/></svg>").decode()
+        b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><rect width='200' height='200' rx='34' fill='#0F1410'/><path d='M148.3,50.1 A72,72 0 1 0 158.7,127' fill='none' stroke='#EDF0EB' stroke-width='17' stroke-linecap='square'/><path d='M70,101 L92,123 L135.7,67.5' fill='none' stroke='#42D848' stroke-width='17' stroke-linecap='square'/></svg>").decode()
 
 def write_html(d, path):
     payload=json.dumps(d,ensure_ascii=False).replace("</","<\\/")
     css=r"""
-:root{--bg:#171310;--panel:#1F1A15;--panel2:#241C15;--line:#2E2823;--muted:#8A867F;--txt:#F5F1EA;
- --grn:#FF5C1A;--grn2:#ff7a3d;--deep:#d1470f;--amber:#F0B429;--red:#F16A5F;--chip:#D63B2F;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace}
+:root{--bg:#0F1410;--panel:#161D18;--panel2:#141B12;--line:#26302A;--muted:#6E7A6F;--txt:#EDF0EB;
+ --grn:#42D848;--grn2:#74E67A;--deep:#2AA836;--amber:#F0B429;--red:#E0533D;--chip:#D63B2F;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 'Archivo',-apple-system,Segoe UI,Arial,sans-serif}
 a{color:var(--txt);text-decoration:none}a:hover{color:var(--grn)}
@@ -1183,7 +1395,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 th{color:var(--muted);font-weight:600;cursor:pointer;user-select:none;position:sticky;top:42px;background:#120F0C}
 tr:hover td{background:#201A14}.sc{font-weight:800;border-radius:6px;padding:2px 8px;color:#08110a;display:inline-block;min-width:30px;text-align:center}
 .badge{font-size:10px;padding:1px 6px;border-radius:20px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
-.badge.Known{border-color:#3aa0ff55;color:#7bbcff}.badge.Findable{border-color:#FF5C1A55;color:var(--grn2)}.badge.Trusted{border-color:#f5a62355;color:var(--amber)}
+.badge.Known{border-color:#3aa0ff55;color:#7bbcff}.badge.Findable{border-color:#42D84855;color:var(--grn2)}.badge.Trusted{border-color:#F0B42955;color:var(--amber)}
 .dot{font-weight:800}.dot.good{color:var(--grn)}.dot.warn{color:var(--amber)}.dot.bad{color:var(--red)}
 .issue{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
 .issue h4{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -1200,7 +1412,7 @@ tr:hover td{background:#201A14}.sc{font-weight:800;border-radius:6px;padding:2px
 input.search{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font-size:13px;width:260px;margin-bottom:12px}
 .foot{color:var(--muted);font-size:12px;padding:20px 26px;border-top:1px solid var(--line);max-width:1000px}
 .diffline{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:13px}
-:root{--display:'Archivo',sans-serif;--ok:#3DD68C;--warn2:#F0B429;--err2:#ff4d3d}
+:root{--display:'Archivo',sans-serif;--ok:#3DD68C;--warn2:#F0B429;--err2:#E0533D}
 .ov{display:grid;grid-template-columns:1fr 336px;gap:22px;align-items:start}
 @media(max-width:1080px){.ov{grid-template-columns:1fr}}
 .ov2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
@@ -1268,7 +1480,7 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .aptierh .sq{width:9px;height:9px;border-radius:2px;flex:none}
 .aptierh .meta{font-size:12px;color:var(--muted)}
 .apbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:2px 22px 6px}
-.apbox.hot{border-color:#FF5C1A47}
+.apbox.hot{border-color:#42D84847}
 .apissue{border-bottom:1px solid #ffffff10}
 .apissue:last-child{border-bottom:0}
 .aprow{display:grid;gap:18px;align-items:center;padding:15px 0}
@@ -1277,8 +1489,8 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .ebs{display:inline-flex;gap:2px;margin-right:6px;vertical-align:middle}
 .apchip{display:inline-block;font-size:11px;color:#c9c2bd;background:#ffffff10;padding:2px 7px;border-radius:4px;margin:0 6px 2px 0}
 .apgain{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.02em;line-height:1}
-.pbtn{font:inherit;font-size:12px;font-weight:600;color:var(--grn);background:transparent;border:1px solid #FF5C1A66;border-radius:5px;padding:5px 10px;cursor:pointer}
-.pbtn:hover{background:#FF5C1A1f}
+.pbtn{font:inherit;font-size:12px;font-weight:600;color:var(--grn);background:transparent;border:1px solid #42D84866;border-radius:5px;padding:5px 10px;cursor:pointer}
+.pbtn:hover{background:#42D8481f}
 .pbtn.g{color:#c9c2bd;border-color:#ffffff28}.pbtn.g:hover{color:#fff;border-color:#ffffff5c}
 .apurls{display:none;font-size:12px;padding:2px 0 12px;columns:2;column-gap:24px}
 .apurls a{color:var(--muted)}.apurls a:hover{color:var(--txt)}
@@ -1332,7 +1544,7 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .pgpill{font:inherit;font-size:12px;font-weight:600;color:#c9c2bd;background:transparent;border:1px solid #ffffff28;border-radius:999px;padding:7px 13px;cursor:pointer}
 .pgpill:hover{color:#fff}
 .pgpill.on{color:#140b06;background:var(--grn);border-color:var(--grn)}
-.pgpill.bel.on{color:#ff9c88;background:transparent;border-color:#ff4d3d}
+.pgpill.bel.on{color:#ff9c88;background:transparent;border-color:#E0533D}
 .pgleg{display:flex;align-items:center;gap:22px;padding:13px 20px;background:#0f0d0c;border-top:1px solid var(--line);font-size:11px;color:#6f6864;flex-wrap:wrap}
 .pgsearch{display:flex;align-items:center;gap:9px;background:var(--panel2);border:1px solid #ffffff24;border-radius:8px;padding:0 14px;width:280px}
 .pgsearch input{flex:1;background:transparent;border:none;outline:none;font:inherit;font-size:13px;color:#fff;padding:10px 0}
@@ -1355,7 +1567,7 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .engwrow{padding:12px 20px;border-bottom:1px solid #ffffff0d}
 .engwrow:last-child{border-bottom:0}
 .engwhead{padding:12px 20px;background:#171412;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted)}
-.card2.hot{border-color:#FF5C1A4d}
+.card2.hot{border-color:#42D8484d}
 .numbadge{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:800;flex:none}
 .stbar{position:relative;height:8px;border-radius:5px;background:#221d1a;overflow:hidden;flex:1}
 .stbar i{display:block;height:100%;border-radius:5px}
@@ -1369,7 +1581,7 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .stp a:hover{color:var(--txt)}.stp .qd{font-size:12px}
 .stcks{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
 .stck{font-size:10px;padding:2px 8px;border-radius:20px;border:1px solid var(--line);white-space:nowrap}
-.stck.bad{color:#ff9c88;border-color:#ff4d3d44}.stck.warn{color:#f2c574;border-color:#F0B42944}
+.stck.bad{color:#ff9c88;border-color:#E0533D44}.stck.warn{color:#f2c574;border-color:#F0B42944}
 .strow{display:grid;grid-template-columns:170px 70px 1fr 52px;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid #ffffff0f}
 .strow:last-child{border-bottom:0}
 .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
@@ -1388,8 +1600,8 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 """
     js=r"""
 const D=window.__DATA__;
-const col=s=>s>=75?'#FF5C1A':s>=50?'#F5A623':'#F16A5F';
-const bcol=v=>v>=70?'#FF5C1A':v>=50?'#F0B429':'#ff4d3d';
+const col=s=>s>=75?'#42D848':s>=50?'#F0B429':'#E0533D';
+const bcol=v=>v>=70?'#42D848':v>=50?'#F0B429':'#E0533D';
 const dlt=(now,was)=>{if(was==null)return'';const d=now-was,c=d>0?'up':d<0?'dn':'z',s=(d>0?'+':'')+d;return ` <span class="d ${c}">${s}</span>`};
 const dot=s=>`<span class="dot ${s}">●</span>`;
 const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1440,10 +1652,10 @@ function ovw2(){
  const P=D.pages.length, parityBad=D.pages.filter(p=>p.cs&&p.cs.parity=='bad').length, reach=((D.site_checks||[]).find(s=>s.id=='reachability')||{}).status||'good';
  const rr=(name,st,txt)=>`<div class="rch"><span>${name}</span><span class="rst ${st=='good'?'ok':st=='warn'?'wn':'er'}">${txt}</span></div>`;
  const reachH=rr('GPTBot',reach,reach=='good'?`allowed · ${P}/${P} pages`:reach=='warn'?'partial':'blocked')+rr('PerplexityBot',reach,reach=='good'?`allowed · ${P}/${P} pages`:reach=='warn'?'partial':'blocked')+rr('Google-Extended',reach=='bad'?'bad':'warn',reach=='bad'?'blocked':'partial')+rr('Server-rendered schema',parityBad?'bad':'good',parityBad?`${parityBad} pages JS-injected only`:`all ${P} pages server-rendered`);
- return `${D.access_blocked?'<div style="background:rgba(255,77,61,.14);border:1px solid rgba(255,77,61,.4);border-radius:12px;padding:14px 18px;margin-bottom:16px;color:#ff9c88;font-size:14px"><b>AI crawlers are blocked.</b> robots.txt or your WAF is blocking GPTBot / PerplexityBot / Bingbot, so nothing on this site can be cited by AI until it is fixed. The overall score is capped to reflect that - see the robots / reachability checks.</div>':''}<div class="ov"><div>
+ return `${D.access_blocked?'<div style="background:rgba(255,77,61,.14);border:1px solid rgba(255,77,61,.4);border-radius:12px;padding:14px 18px;margin-bottom:16px;color:#ff9c88;font-size:14px"><b>AI crawlers are blocked.</b> robots.txt or your WAF is blocking GPTBot / PerplexityBot / Bingbot, so nothing on this site can be cited by AI until it is fixed. The overall score is capped to reflect that - see the robots / reachability checks.</div>':''}${(D.redirect_home||[]).length?`<div style="background:rgba(240,180,41,.12);border:1px solid rgba(240,180,41,.4);border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:14px"><div style="color:#f0c674;font-weight:700;margin-bottom:6px">${(D.redirect_home||[]).length} page${(D.redirect_home||[]).length==1?'':'s'} silently redirect to your homepage</div><div class="qd" style="line-height:1.6">If an AI engine cites one of these deep URLs, the reader is bounced to your homepage instead of the answer they were promised, so the citation is wasted and its authority is diluted. Restore the real page at each address, or 301 to the closest matching content, not the homepage.</div><div style="margin-top:9px;display:flex;flex-direction:column;gap:3px">${(D.redirect_home||[]).slice(0,5).map(r=>`<div style="font-size:13px"><span style="word-break:break-all">${rel(r.url)}</span> <span class="qd">&rarr; homepage</span></div>`).join('')}${(D.redirect_home||[]).length>5?`<div class="qd">+${(D.redirect_home||[]).length-5} more</div>`:''}</div></div>`:''}<div class="ov"><div>
    <div class="panel"><div class="hero">
      <div class="sring" style="--p:${D.overall};--c:var(--grn)"><i><span class="v">${D.overall}</span><span class="o">OF 100</span></i></div>
-     <div style="flex:1;min-width:190px"><div class="htitle">CITED Score</div><div class="hsub">Weighted across six engines. Pages score as <b>quotable</b> at 70.</div>${odtxt}</div>
+     <div style="flex:1;min-width:190px"><div class="htitle">CITED Score</div><div class="hsub">Weighted across six engines. Pages score as <b>quotable</b> at 70.</div>${odtxt}${(D.site_type&&D.site_type!=='general')?`<div style="margin-top:9px"><span style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.4px;color:#42D848;background:rgba(66,216,72,.12);border:1px solid rgba(66,216,72,.35);padding:3px 11px;border-radius:999px">SCORED AS ${esc((D.site_type_label||'').toUpperCase())}</span></div>`:''}</div>
      <div class="hc"><div style="display:flex;justify-content:space-between;align-items:baseline"><div class="hclabel">Check health · ${tc} checks</div><span class="qd">${pass}% passing</span></div>
        <div class="chbar"><div class="chseg" style="flex:${g||1};background:var(--ok)"></div><div class="chseg" style="flex:${w||0.01};background:var(--warn2)"></div><div class="chseg" style="flex:${b||0.01};background:var(--err2)"></div></div>
        <div class="chstat"><div><div class="n" style="color:var(--err2)">${b}</div><div class="l">Errors — blocking</div></div><div><div class="n" style="color:var(--warn2)">${w}</div><div class="l">Warnings — weakening</div></div><div><div class="n" style="color:var(--ok)">${g}</div><div class="l">Passed</div></div></div></div>
@@ -1453,10 +1665,24 @@ function ovw2(){
    <div class="sech">Readiness by engine <span class="s">Ch6-7 · ranked worst first</span></div>
    <div class="panel">${engs.map(erow).join('')}<div class="qd" style="margin-top:10px">| quotable threshold, 70</div>
      <div onclick="go('Grok')" style="display:flex;gap:9px;align-items:center;cursor:pointer;border-top:1px solid var(--line);margin-top:12px;padding-top:12px"><span style="font-size:11px;font-weight:700;color:#c9c2bd;background:rgba(139,132,128,.14);border:1px solid rgba(139,132,128,.3);padding:2px 8px;border-radius:999px;flex:none">Grok</span><span class="qd">Not scored. Grok reads the same web signals as Perplexity and ChatGPT, so those cover it. See the advisory &rarr;</span></div></div>
+   ${(D.site_type&&D.site_type!=='general')?`<div class="sech">Website-type profile <span class="s">detected ${esc(D.site_type_label)} &middot; weighting tuned to how AI judges this type</span></div><div class="panel"><div class="qd" style="margin-bottom:12px">This site was ${D.site_type_source==='override'?'set by you as':'detected as'} <b>${esc(D.site_type_label)}</b>, so the checks that decide AI citation for this page type are weighted higher and the less relevant ones lower. Same 0-100 scale, every page's applicable checks unchanged - only the emphasis shifts. ${D.site_type_source==='override'?'Set manually':'Auto-detected'}; weights are directional and never remove a page's checks.</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:18px"><div><div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--ok);text-transform:uppercase;margin-bottom:8px">Weighted up</div><div style="display:flex;flex-wrap:wrap;gap:6px">${(D.profile_up||[]).map(cid=>`<span style="font-size:12px;padding:3px 9px;border-radius:999px;background:rgba(61,214,140,.12);border:1px solid rgba(61,214,140,.3);color:#8fe6b6">${esc((((D.check_meta||{})[cid])||{}).label||cid)}</span>`).join('')||'<span class="qd">none</span>'}</div></div><div><div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Weighted down</div><div style="display:flex;flex-wrap:wrap;gap:6px">${(D.profile_down||[]).map(cid=>`<span style="font-size:12px;padding:3px 9px;border-radius:999px;background:rgba(139,132,128,.12);border:1px solid var(--line);color:#b7afaa">${esc((((D.check_meta||{})[cid])||{}).label||cid)}</span>`).join('')||'<span class="qd">none</span>'}</div></div></div></div>`:''}
    <div class="ov2">
      <div><div class="sech">Pages by type</div><div class="panel">${typesH}</div></div>
      <div><div class="sech">Crawler reachability</div><div class="panel">${reachH}</div></div>
    </div>
+   ${(()=>{const s=D.internal_search;if(!s||!s.detected)return '';
+     const ep=(esc((s.action||'').replace(/^https?:\/\/[^/]+/,''))||'/')+'?'+esc(s.param||'q')+'=';
+     const map={works:['var(--ok)','Working'],empty:['#E0533D','Returned no results'],unclear:['#F0B429','Could not read the results'],unreachable:['#F0B429','Results page unreachable'],no_term:['#6E7A6F','Detected, not probed']};
+     const m=map[s.outcome]||['#6E7A6F','Detected'];
+     let msg='';
+     if(s.outcome=='works') msg=`We searched <b>&ldquo;${esc(s.term)}&rdquo;</b> (a term from your own page titles) and your internal search returned <b>${s.result_links}</b> result link${s.result_links==1?'':'s'}. A large share of AI-referred visitors land here, so keep the results relevant and well-formatted.`;
+     else if(s.outcome=='empty') msg=`We searched <b>&ldquo;${esc(s.term)}&rdquo;</b>, a term taken from your own page titles, and the results page reported no results. If your own search cannot surface your own content, AI-referred visitors who land here reach a dead end.`;
+     else if(s.outcome=='unclear') msg=`We detected internal search and searched <b>&ldquo;${esc(s.term)}&rdquo;</b>, but could not confidently read the results page. Check by hand that it surfaces relevant content for a landing visitor.`;
+     else if(s.outcome=='unreachable') msg=`We detected an internal search form, but the results page for <b>&ldquo;${esc(s.term)}&rdquo;</b> returned ${s.status?('HTTP '+s.status):'no response'}. Confirm the search endpoint still works.`;
+     else msg=`We detected an internal search form but had no clean on-site term to probe it with.`;
+     const nx=(s.noindex&&s.outcome!='empty')?`<div class="qd" style="margin-top:8px">The results page is <code>noindex</code>, which is normal and fine. AI-referred visitors still land there through links, so it is a real destination even though search engines skip it.</div>`:'';
+     return `<div class="sech">Internal search <span class="s">~28.8% of AI-referred visitors land on internal site search (Previsible, 6.77M sessions)</span></div><div class="panel"><div style="display:flex;align-items:center;gap:9px"><span style="width:9px;height:9px;border-radius:50%;background:${m[0]};flex:none"></span><b>${m[1]}</b><span class="qd" style="margin-left:auto;font-family:var(--mono);font-size:12px;word-break:break-all">${ep}</span></div><div class="qd" style="line-height:1.6;margin-top:8px">${msg}</div>${nx}</div>`;
+   })()}
  </div>
  <div class="ovside">
    <div class="df"><div class="dfh"><div class="t">Do these first</div><span class="qd">${Math.min(3,D.issues.length)} of ${D.issues.length} fixes</span></div><div class="qd" style="margin-bottom:2px">Ranked by score movement per hour of work.</div>${D.issues.slice(0,3).map((i,x)=>dcard(i,x)).join('')}</div>
@@ -1494,7 +1720,7 @@ const PDOT={Known:'#6f9dff',Findable:'#F0B429',Trusted:'#3DD68C'};
 const TTYPE={schema:'template',parity:'template',faq:'template',canonical:'template',robots:'template',sitemap:'template',reachability:'template',freshness:'template',internal:'template',http:'template',entity:'template',schemacomplete:'template',noindex:'template',speed:'template',schemavalidity:'template',orphans:'template',brokenlinks:'template',reviewschema:'template',
  answerfirst:'copy',definitional:'copy',readability:'copy',entitydensity:'copy',qheadings:'copy',sections:'copy',liststables:'copy',wordcount:'copy',statdensity:'copy',h1:'copy',author:'copy',sourced:'copy',video:'copy',comparison:'copy',rankedlist:'copy',answerthird:'copy',h2answer:'copy',nearduplicate:'copy',
  meta:'meta',title:'meta',alt:'meta',citations:'meta',duplicate:'meta'};
-const EBARS=e=>{const n=(e=='High')?3:(e=='Med')?2:1,c=n==1?'#3DD68C':n==2?'#F0B429':'#FF5C1A',lab=n==1?'low':n==2?'medium':'high';
+const EBARS=e=>{const n=(e=='High')?3:(e=='Med')?2:1,c=n==1?'#3DD68C':n==2?'#F0B429':'#42D848',lab=n==1?'low':n==2?'medium':'high';
  let b='';for(let k=0;k<3;k++)b+=`<span class="eb" style="background:${k<n?c:'#2C231C'}"></span>`;
  return `<span class="ebs">${b}</span><span style="color:${c}">${lab}</span>`};
 const ACT=()=>D.issues.filter(i=>i.pillar!='Info'&&(i.gain_overall>0||i.severity=='bad'));
@@ -1502,10 +1728,10 @@ const AFFPAGES=()=>D.pages.filter(p=>p.checks.some(c=>c.status=='bad'||c.status=
 const gpos=i=>i.gain_overall>0?i.gain_overall:0;
 function tgl(id){const e=document.getElementById(id);if(e)e.style.display=e.style.display=='block'?'none':'block'}
 function bull(u,c){return `<span class="b"><span class="dotb" style="background:${c}"></span><a href="${esc(u)}" target="_blank">${rel(u)}</a></span>`}
-function urlList(id,i){return `<div id="${id}" class="apurls">${[...i.bad.map(u=>bull(u,'#ff4d3d')),...i.warn.map(u=>bull(u,'#F0B429'))].join('')||'<span class="qd">No affected pages.</span>'}</div>`}
+function urlList(id,i){return `<div id="${id}" class="apurls">${[...i.bad.map(u=>bull(u,'#E0533D')),...i.warn.map(u=>bull(u,'#F0B429'))].join('')||'<span class="qd">No affected pages.</span>'}</div>`}
 function pdet(id){
  if(SITEIDS.has(id)){const sc=(D.site_checks||[]).find(c=>c.id==id)||{};const cl=sc.status=='good'?'ok':sc.status=='warn'?'wn':'er';const _u=sc.urls||[];const _l=_u.length?'<div class="egh" style="margin-top:8px">Pages ('+_u.length+')</div>'+_u.map(u=>'<span class="egp"><span class="dotb" style="background:#3DD68C"></span><a href="'+esc(u)+'" target="_blank">'+rel(u)+'</a></span>').join(''):'';return `<div id="pd_${id}" class="engdet"><span class="rst ${cl}">Site-wide check: ${sc.status||'n/a'}</span> <span class="qd">${esc(sc.detail||'')}</span>${_l}</div>`;}
- const ok=D.pages.filter(p=>p.status==200), dcx=s=>s=='good'?'#3DD68C':s=='warn'?'#F0B429':'#ff4d3d';
+ const ok=D.pages.filter(p=>p.status==200), dcx=s=>s=='good'?'#3DD68C':s=='warn'?'#F0B429':'#E0533D';
  const rr=ok.map(p=>[p,p.cs[id]]).filter(x=>x[1]&&x[1]!='na'&&x[1]!='info');
  if(!rr.length)return `<div id="pd_${id}" class="engdet"><span class="qd">No applicable pages for this check.</span></div>`;
  const fl=rr.filter(x=>x[1]!='good'),ps=rr.filter(x=>x[1]=='good');
@@ -1536,15 +1762,15 @@ function plan(){
    <div style="border-left:1px solid var(--line);padding-left:30px;display:flex;flex-direction:column;gap:11px">
      <div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)"><span style="font-weight:600;letter-spacing:.08em">RANKED BY STANDALONE IMPACT</span><span>${edits} page edits across ${affp} pages</span></div>
      <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:#221d1a">
-       <div style="width:${Math.round(100*bG/TG)}%;background:#FF5C1A"></div>
-       <div style="width:${Math.round(100*wG/TG)}%;background:#ff8a3d"></div>
+       <div style="width:${Math.round(100*bG/TG)}%;background:#42D848"></div>
+       <div style="width:${Math.round(100*wG/TG)}%;background:#74E67A"></div>
        <div style="width:${Math.round(100*pG/TG)}%;background:#5a4034"></div></div>
      <div style="display:flex;gap:22px;font-size:12px;color:#9d9691;flex-wrap:wrap">
-       ${[['#FF5C1A','Biggest movers',biggest.length,bG],['#ff8a3d','Worth doing',worth.length,wG],['#5a4034','Polish',polish.length,pG]].map(a=>`<span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:2px;background:${a[0]}"></span>${a[1]}, ${a[2]} fixes <b style="color:#fff">+${a[3]}</b></span>`).join('')}</div>
+       ${[['#42D848','Biggest movers',biggest.length,bG],['#74E67A','Worth doing',worth.length,wG],['#5a4034','Polish',polish.length,pG]].map(a=>`<span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:2px;background:${a[0]}"></span>${a[1]}, ${a[2]} fixes <b style="color:#fff">+${a[3]}</b></span>`).join('')}</div>
    </div></div>`;
  h+=`<div class="apintro">Each fix shows its <b>standalone</b> CITED Score gain if applied to every affected page. Fixes compound across a page, so applying them all reaches <b>${proj}/100</b>, higher than the standalone gains add up to on their own.</div>`;
- const tiers=[['#FF5C1A','BIGGEST MOVERS',biggest,bG,'do these this month','apbox hot','big'],
-              ['#ff8a3d','WORTH DOING',worth,wG,'structure for retrieval','apbox','mid'],
+ const tiers=[['#42D848','BIGGEST MOVERS',biggest,bG,'do these this month','apbox hot','big'],
+              ['#74E67A','WORTH DOING',worth,wG,'structure for retrieval','apbox','mid'],
               ['#5a4034','POLISH',polish,pG,'low effort','apbox','sm']];
  tiers.forEach(t=>{const arr=t[2];if(!arr.length)return;
    h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="background:${t[0]}"></span><h3>${t[1]}</h3><span class="meta">${arr.length} fix${arr.length==1?'':'es'} &middot; +${t[3]} points &middot; ${t[4]}</span></div><div class="${t[5]}">`;
@@ -1582,7 +1808,7 @@ function planFix(i,size,accent){
  </div>${urls}</div>`}
 function roadmapCard(){
  const info={1:['Days 0–30 &middot; foundation','Quick technical wins, mostly template-level'],2:['Days 30–60 &middot; structure','Rewrite for retrieval, page by page'],3:['Days 60–90 &middot; polish','Small edits, then re-crawl and compare']};
- const acc={1:['#140b06','#FF5C1A'],2:['#ff8a3d','#FF5C1A29'],3:['#b7afaa','#ffffff14']};
+ const acc={1:['#140b06','#42D848'],2:['#74E67A','#42D84829'],3:['#b7afaa','#ffffff14']};
  let cum=D.overall,out='';
  [1,2,3].forEach(ph=>{const ids=(D.plan_phases&&D.plan_phases[ph])||[];if(!ids.length)return;
    const items=ids.map(id=>D.issues.find(y=>y.id==id)).filter(Boolean);
@@ -1646,7 +1872,7 @@ function issuesView(){
  h+=`</div><div class="apside">`+worstPagesCard()+oneChangeCard(errs,iss)+`<div class="dashnote"><span class="dotb" style="background:var(--ok)"></span>${passed} checks passed on every page &mdash; not listed here.</div></div></div>`;
  return h}
 function issueRow(i,P){
- const bad=i.severity=='bad', dc=bad?'#ff4d3d':'#F0B429';
+ const bad=i.severity=='bad', dc=bad?'#E0533D':'#F0B429';
  const w=Math.min(100,Math.round(100*i.count/(P||1)));
  const gv=i.gain_overall>0?('+'+i.gain_overall):'—', gc=i.gain_overall>0?'var(--ok)':'var(--muted)';
  let body;
@@ -1687,9 +1913,9 @@ function pageRow(p){
  const[sbg,sfg]=PBAND(p.score);
  const fails=p.checks.filter(c=>c.status=='bad'||c.status=='warn');
  const nb=p.checks.filter(c=>c.status=='bad').length;
- const cc=nb?['#ff4d3d','rgba(255,77,61,.14)']:fails.length?['#F0B429','rgba(242,181,60,.14)']:['#3DD68C','rgba(62,207,142,.14)'];
+ const cc=nb?['#E0533D','rgba(255,77,61,.14)']:fails.length?['#F0B429','rgba(242,181,60,.14)']:['#3DD68C','rgba(62,207,142,.14)'];
  const labels=[...fails.filter(c=>c.status=='bad'),...fails.filter(c=>c.status=='warn')].map(c=>esc(c.label)).join(', ');
- const pill=v=>`<span style="font-size:12px;text-align:center;color:${v?'#b7afaa':'#ff8f6b'}">${v}</span>`;
+ const pill=v=>`<span style="font-size:12px;text-align:center;color:${v?'#b7afaa':'#74E67A'}">${v}</span>`;
  const ecell=v=>{const[b,f]=PBAND(v);return `<span class="ecell" style="background:${b};color:${f}">${v}</span>`};
  return `<div class="pgcols pgrow">
   <span class="schip" style="background:${sbg};color:${p.score<70?'#ffb3a1':sfg}">${p.score}</span>
@@ -1716,9 +1942,9 @@ function pagesView(){
  const median=n?(n%2?scores[(n-1)/2]:Math.round((scores[n/2-1]+scores[n/2])/2)):0;
  const dist=[0,0,0,0];D.pages.forEach(p=>{const s=p.score;dist[s<70?0:s<80?1:s<90?2:3]++});
  const clear=D.pages.filter(p=>p.score>=70).length,maxd=Math.max(...dist,1);
- const dcol=['#ff4d3d','#F0B429','#3DD68C','#2f9c6c'],dnum=['#ff8f6b','#f2c574','#7fdcae','#7fdcae'],dlab=['under 70','70–79','80–89','90+'];
+ const dcol=['#E0533D','#F0B429','#3DD68C','#2f9c6c'],dnum=['#74E67A','#f2c574','#7fdcae','#7fdcae'],dlab=['under 70','70–79','80–89','90+'];
  const wt={};ECOLS.forEach(e=>wt[e]=0);D.pages.forEach(p=>{let mn=1e9,me=null;ECOLS.forEach(e=>{if(p.engines[e]<mn){mn=p.engines[e];me=e}});if(me)wt[me]++});
- const ws=Object.entries(wt).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,4),wmax=Math.max(...ws.map(x=>x[1]),1),wc=['#ff5b2e','#ff8a3d','#F0B429','#c98f2e'];
+ const ws=Object.entries(wt).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,4),wmax=Math.max(...ws.map(x=>x[1]),1),wc=['#ff5b2e','#74E67A','#F0B429','#c98f2e'];
  if(!sortk)sortk='score';
  let h=`<div style="display:flex;flex-direction:column;gap:18px">`;
  // summary
@@ -1779,16 +2005,16 @@ function engine(e){
  const topFix=high[0]||low[0];
  const hint=gap>0?(topFix?(TTYPE[topFix.id]=='template'?'One template fix clears most of the gap.':`The top fix adds +${topFix.lift}.`):''):'Already past the quotable threshold.';
  const WD=(w,c)=>`<span class="wdots" style="color:${c}">${'●'.repeat(w)}<span style="color:#3a3227">${'●'.repeat(Math.max(0,3-w))}</span></span>`;
- const barC=pr=>pr>=90?'#3DD68C':pr>=40?'#F0B429':'#ff4d3d';
+ const barC=pr=>pr>=90?'#3DD68C':pr>=40?'#F0B429':'#E0533D';
  const engDetail=id=>{
    if(SITEIDS.has(id)){const sc=(D.site_checks||[]).find(c=>c.id==id)||{};const cl=sc.status=='good'?'ok':sc.status=='warn'?'wn':'er';const _u=sc.urls||[];const _l=_u.length?'<div class="egh" style="margin-top:8px">Pages ('+_u.length+')</div>'+_u.map(u=>'<span class="egp"><span class="dotb" style="background:#3DD68C"></span><a href="'+esc(u)+'" target="_blank">'+rel(u)+'</a></span>').join(''):'';return `<div id="eg_${id}" class="engdet"><span class="rst ${cl}">Site-wide check: ${sc.status||'n/a'}</span> <span class="qd">${esc(sc.detail||'')}</span>${_l}</div>`;}
-   const dcx=s=>s=='good'?'#3DD68C':s=='warn'?'#F0B429':'#ff4d3d';
+   const dcx=s=>s=='good'?'#3DD68C':s=='warn'?'#F0B429':'#E0533D';
    const rr=ok.map(p=>[p,p.cs[id]]).filter(x=>x[1]&&x[1]!='na'&&x[1]!='info');
    if(!rr.length)return `<div id="eg_${id}" class="engdet"><span class="qd">No applicable pages for this signal.</span></div>`;
    const fl=rr.filter(x=>x[1]!='good'),ps=rr.filter(x=>x[1]=='good');
    const ln=x=>`<span class="egp"><span class="dotb" style="background:${dcx(x[1])}"></span><a href="${esc(x[0].url)}" target="_blank">${rel(x[0].url)}</a></span>`;
    return `<div id="eg_${id}" class="engdet">${fl.length?'<div class="egh">Failing here ('+fl.length+')</div>'+fl.map(ln).join(''):''}${ps.length?'<div class="egh"'+(fl.length?' style="margin-top:10px"':'')+'>Passing ('+ps.length+')</div>'+ps.map(ln).join(''):''}</div>`;};
- const esig=(s,hi)=>{const dcol=s.w>=3?'#FF4D00':s.w==2?'#ff8a3d':'#8b8480';const lc=hi?(s.lift>=5?'#FF4D00':'#ff8a3d'):'#b7afaa';
+ const esig=(s,hi)=>{const dcol=s.w>=3?'#42D848':s.w==2?'#74E67A':'#8b8480';const lc=hi?(s.lift>=5?'#42D848':'#74E67A'):'#b7afaa';
    const bar=`<div style="display:flex;flex-direction:column;gap:5px"><div class="engbar"><i style="width:${Math.max(s.pr,2)}%;background:${barC(s.pr)}"></i></div><span style="font-size:11px;color:${s.pr==0?'#ff9c88':'#9d9691'}">${s.pr}% pass · ${s.good} of ${s.total} pages</span></div>`;
    const lift=`<span style="font-size:${hi?'20px':'16px'};font-weight:${hi?'800':'700'};color:${lc};text-align:right">${s.lift>0?'+'+s.lift:'—'}</span>`;
    const lab=hi?`<div style="display:flex;flex-direction:column;gap:4px;min-width:0"><span style="font-size:15px;font-weight:700">${esc(s.lab)} <span class="egcar">▾</span></span><span class="qd" style="line-height:1.5">${esc(s.ev)}</span></div>`
@@ -1815,7 +2041,7 @@ function engine(e){
        <div><div style="font-size:22px;font-weight:800">${pagesBelow}</div><div class="qd">pages below the threshold</div></div>
      </div>
    </div></div>`;
- if(high.length)h+=`<section class="aptier">${secH('#FF5C1A','HIGH WEIGHT, LOW PASS RATE','where '+e+' is costing you the most — fix in this order')}<div class="apbox hot" style="padding:0 24px"><div class="engcols enghead"><span>SIGNAL</span><span>WEIGHT</span><span>SITE PASS RATE</span><span style="text-align:right">LIFT</span></div>${high.map(s=>esig(s,1)).join('')}</div></section>`;
+ if(high.length)h+=`<section class="aptier">${secH('#42D848','HIGH WEIGHT, LOW PASS RATE','where '+e+' is costing you the most — fix in this order')}<div class="apbox hot" style="padding:0 24px"><div class="engcols enghead"><span>SIGNAL</span><span>WEIGHT</span><span>SITE PASS RATE</span><span style="text-align:right">LIFT</span></div>${high.map(s=>esig(s,1)).join('')}</div></section>`;
  if(low.length)h+=`<section class="aptier">${secH('#F0B429','LOWER WEIGHT, WORTH TIDYING',low.length+' signal'+(low.length>1?'s':'')+' · +'+low.reduce((a,s)=>a+(s.lift>0?s.lift:0),0)+' between them')}<div class="apbox" style="padding:2px 24px 6px">${low.map(s=>esig(s,0)).join('')}</div></section>`;
  if(strong.length)h+=`<section class="aptier">${secH('#3DD68C','ALREADY STRONG',strong.length+' signal'+(strong.length>1?'s':'')+' · protect these when you edit')}<div class="apbox" style="padding:16px 24px;display:flex;flex-direction:column;gap:12px">${strong.map(estrong).join('')}</div></section>`;
  const worst=[...ok].sort((a,b)=>a.engines[e]-b.engines[e]),w8=worst.slice(0,8);
@@ -1827,10 +2053,10 @@ function engine(e){
  h+=`</div>`;
  // sidebar
  const eranked=Object.entries(D.engines).sort((a,b)=>b[1]-a[1]);
- const acr=eranked.map(x=>`<div style="display:flex;align-items:center;gap:10px"><span style="width:82px;color:${x[0]==e?'#fff':'#b7afaa'};font-weight:${x[0]==e?'700':'400'}">${x[0]}</span><span style="flex:1;height:8px;border-radius:4px;background:#221d1a;overflow:hidden"><span style="display:block;width:${x[1]}%;height:100%;background:${x[0]==e?'#FF4D00':'#3a3227'}"></span></span><span style="width:24px;text-align:right;color:${x[0]==e?'#fff':'#b7afaa'};font-weight:${x[0]==e?'700':'400'}">${x[1]}</span></div>`).join('');
+ const acr=eranked.map(x=>`<div style="display:flex;align-items:center;gap:10px"><span style="width:82px;color:${x[0]==e?'#fff':'#b7afaa'};font-weight:${x[0]==e?'700':'400'}">${x[0]}</span><span style="flex:1;height:8px;border-radius:4px;background:#221d1a;overflow:hidden"><span style="display:block;width:${x[1]}%;height:100%;background:${x[0]==e?'#42D848':'#3a3227'}"></span></span><span style="width:24px;text-align:right;color:${x[0]==e?'#fff':'#b7afaa'};font-weight:${x[0]==e?'700':'400'}">${x[1]}</span></div>`).join('');
  const bnote=e==best[0]?`Same pages, different weightings. ${e} is your strongest surface — protect it as you edit.`:`Same pages, different weightings. ${e} runs ${best[1]-score} point${best[1]-score==1?'':'s'} behind ${best[0]}, your strongest.`;
  const fixes=high.concat(low).filter(s=>s.lift>0).slice(0,3);
- const doHtml=fixes.length?fixes.map((s,i)=>{const iss=IM[s.id]||{},title=(iss.fix||s.lab).split(' - ')[0].split('. ')[0].trim(),cnt=iss.count||(s.total-s.good),nb=i==0?'color:#140b06;background:#FF4D00':'color:#ff8f6b;background:rgba(255,92,26,.2)';
+ const doHtml=fixes.length?fixes.map((s,i)=>{const iss=IM[s.id]||{},title=(iss.fix||s.lab).split(' - ')[0].split('. ')[0].trim(),cnt=iss.count||(s.total-s.good),nb=i==0?'color:#140b06;background:#42D848':'color:#74E67A;background:rgba(66,216,72,.2)';
    return `<div style="display:flex;align-items:flex-start;gap:12px"><span class="numbadge" style="${nb}">${i+1}</span><div style="display:flex;flex-direction:column;gap:3px"><span style="font-size:13px;font-weight:600">${esc(title)}</span><span class="qd" style="line-height:1.5">${cnt} page${cnt==1?'':'s'} · +${s.lift} ${e}</span></div></div>`}).join(''):`<div class="qd">No fixes needed — ${e} passes every weighted signal.</div>`;
  const reach=(D.site_checks.find(c=>c.id=='reachability')||{}).status||'good';
  const rT=reach=='good'?['#3DD68C','● allowed · '+P+'/'+P]:reach=='warn'?['#F0B429','● partial']:['#ff9c88','● blocked'];
@@ -1857,12 +2083,12 @@ function structure(){
    const chips=[...bad.map(c=>`<span class="stck bad">${esc(c.label)}</span>`),...warn.map(c=>`<span class="stck warn">${esc(c.label)}</span>`)].join('');
    return `<div class="stp"><span class="schip" style="background:${b[0]};color:${b[1]}">${p.score}</span><div style="flex:1;min-width:0"><div style="display:flex;gap:10px;align-items:baseline"><a href="${esc(p.url)}" target="_blank">${rel(p.url)}</a><span class="qd" style="flex:none;color:${bad.length?'#ff9c88':warn.length?'#f2c574':'var(--ok)'}">${sum}</span></div>${chips?`<div class="stcks">${chips}</div>`:''}</div></div>`};
  const rows=(list,lab)=>list.map((x,i)=>{const a=avg(x[1]),b=PBAND(a),id='st_'+lab+i;return `<div class="strow" onclick="tgl('${id}')" style="cursor:pointer"><span style="font-weight:600">${esc(x[0])} <span class="egcar">▾</span></span><span class="qd">${x[1].length} page${x[1].length>1?'s':''}</span><div class="stbar" title="avg score ${a}/100"><span class="stthr"></span><i style="width:${a}%;background:var(--grn)"></i></div><span class="schip" style="background:${b[0]};color:${b[1]}">${a}</span></div><div id="${id}" class="stdet">${[...x[1]].sort((p,q)=>p.score-q.score).map(stpage).join('')}</div>`}).join('');
- h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF5C1A"></span><h3>BY TOP-LEVEL SECTION</h3><span class="meta">${secs.length} section${secs.length>1?'s':''}</span></div><div class="apbox" style="padding:6px 22px">${rows(secs.map(s=>['/'+s[0],s[1]]),'sec')}</div></section>`;
+ h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>BY TOP-LEVEL SECTION</h3><span class="meta">${secs.length} section${secs.length>1?'s':''}</span></div><div class="apbox" style="padding:6px 22px">${rows(secs.map(s=>['/'+s[0],s[1]]),'sec')}</div></section>`;
  const depths=Object.keys(byDepth).map(Number).sort((a,b)=>a-b),maxd=Math.max(...depths.map(d=>byDepth[d].length),1);
  h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#F0B429"></span><h3>BY CRAWL DEPTH</h3><span class="meta">clicks from the homepage</span></div><div class="apbox" style="padding:6px 22px">${rows(depths.map(d=>['Depth '+d,byDepth[d]]),'dep')}</div></section>`;
  h+=`</div>`;return h}
 function speed(){
- const sc2=ms=>ms<=800?'#3DD68C':ms<=1800?'#F0B429':'#ff4d3d',sl=ms=>ms<=800?'Fast':ms<=1800?'OK':'Slow';
+ const sc2=ms=>ms<=800?'#3DD68C':ms<=1800?'#F0B429':'#E0533D',sl=ms=>ms<=800?'Fast':ms<=1800?'OK':'Slow';
  const ps=[...D.pages].sort((a,b)=>b.fetch_ms-a.fetch_ms);
  const avgf=Math.round(ps.reduce((a,p)=>a+p.fetch_ms,0)/ps.length),avgr=Math.round(ps.reduce((a,p)=>a+p.render_ms,0)/ps.length);
  const fast=ps.filter(p=>p.fetch_ms<=800).length,okc=ps.filter(p=>p.fetch_ms>800&&p.fetch_ms<=1800).length,slow=ps.filter(p=>p.fetch_ms>1800).length;
@@ -1871,11 +2097,11 @@ function speed(){
    <div class="statcard"><div class="n" style="color:${sc2(avgf)}">${avgf}<span style="font-size:14px;color:var(--muted)"> ms</span></div><div class="l">Avg server response · <b style="color:${sc2(avgf)}">${sl(avgf)}</b></div></div>
    <div class="statcard"><div class="n" style="color:#3DD68C">${fast}</div><div class="l">Fast ≤ 0.8s</div></div>
    <div class="statcard"><div class="n" style="color:#F0B429">${okc}</div><div class="l">OK ≤ 1.8s</div></div>
-   <div class="statcard"><div class="n" style="color:#ff4d3d">${slow}</div><div class="l">Slow &gt; 1.8s</div></div>
+   <div class="statcard"><div class="n" style="color:#E0533D">${slow}</div><div class="l">Slow &gt; 1.8s</div></div>
    <div class="statcard"><div class="n">${avgr}<span style="font-size:14px;color:var(--muted)"> ms</span></div><div class="l">Avg render (tool overhead)</div></div></div>`;
  h+=`<div class="qd" style="line-height:1.6;max-width:900px">Server response graded on Google's TTFB thresholds: Fast ≤ 0.8s, OK ≤ 1.8s, Slow &gt; 1.8s. Render time is the tool's headless-Chrome overhead, not your site's speed.</div>`;
  h+=`<div class="qd" style="line-height:1.6;max-width:900px;border-top:1px solid var(--line);padding-top:12px"><b style="color:var(--txt)">This is a scored check</b> (the <b>Fast server response</b> signal, Findable pillar): <b style="color:${sc2(avgf)}">${fast} of ${ps.length}</b> pages pass. It feeds the live-retrieval engines - <b>ChatGPT, Perplexity, Copilot, AI Overviews</b> - which abandon slow pages before they can cite them, so a Slow page is a citation risk, not just a UX one.</div>`;
- h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF5C1A"></span><h3>SLOWEST PAGES</h3><span class="meta">by server response time</span></div>
+ h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>SLOWEST PAGES</h3><span class="meta">by server response time</span></div>
    <div style="background:var(--panel2);border:1px solid var(--line);border-radius:14px;overflow:hidden">
    <div style="display:grid;grid-template-columns:140px 1fr 90px;gap:16px;padding:12px 20px;background:#171412;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted)"><span>SERVER RESPONSE</span><span>URL</span><span style="text-align:right">RENDER MS</span></div>
    ${ps.slice(0,40).map(p=>`<div style="display:grid;grid-template-columns:140px 1fr 90px;gap:16px;align-items:center;padding:11px 20px;border-bottom:1px solid #ffffff0d"><span><span style="font-size:11px;font-weight:700;color:${sc2(p.fetch_ms)};background:${sc2(p.fetch_ms)}22;padding:3px 8px;border-radius:4px">${p.fetch_ms} ms</span> <span class="qd">${sl(p.fetch_ms)}</span></span><a href="${esc(p.url)}" target="_blank" style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rel(p.url)}</a><span class="qd" style="text-align:right">${p.render_ms}</span></div>`).join('')}
@@ -1907,7 +2133,7 @@ function grokView(){const G=D.grok_advisory||{};
    </div></div>`;
  if(px.length)h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#3DD68C"></span><h3>GROK'S WEB SIDE, VIA YOUR EXISTING SCORES</h3><span class="meta">it reads the same open-web signals as these two engines</span></div>
    <div class="apbox" style="padding:18px 24px;display:flex;flex-direction:column;gap:12px">${proxyH}<div class="qd" style="line-height:1.55;border-top:1px solid var(--line);padding-top:12px">${px.join(' and ')} are your Grok web-side proxy${proxyAvg!=null?' (about '+proxyAvg+'/100 today)':''}. Improve those and Grok's open-web retrieval improves with them. ${esc(G.why||'')}</div></div></section>`;
- h+=block('#FF4D00','THE ONE GROK-SPECIFIC LEVER','off-page, so outside this audit',G.lever||'');
+ h+=block('#42D848','THE ONE GROK-SPECIFIC LEVER','off-page, so outside this audit',G.lever||'');
  h+=block('#F0B429','ACCURACY CAVEAT','least reliable attributions of any engine here',G.caveat||'');
  h+=block('#8b8480','WHAT WOULD MAKE IT A SCORED ENGINE','the honest trigger',G.trigger||'');
  h+=`</div><div class="apside">
@@ -1933,7 +2159,7 @@ function agentView(){
    var s=sig[k]||{has:[],missing_money:[]};var miss=(s.missing_money||[]).length;var hn=(s.has||[]).length;
    var det='<div id="ag_'+k+'" class="engdet">'
      +'<div class="egh">Present on ('+hn+')</div>'+(hn?(s.has||[]).map(function(u){return ln(u,'#3DD68C')}).join(''):'<span class="egp qd">none</span>')
-     +'<div class="egh" style="margin-top:10px">Missing on '+miss+' commercial page'+(miss==1?'':'s')+' (should add)</div>'+(miss?(s.missing_money||[]).map(function(u){return ln(u,'#ff4d3d')}).join(''):'<span class="egp qd">none</span>')
+     +'<div class="egh" style="margin-top:10px">Missing on '+miss+' commercial page'+(miss==1?'':'s')+' (should add)</div>'+(miss?(s.missing_money||[]).map(function(u){return ln(u,'#E0533D')}).join(''):'<span class="egp qd">none</span>')
      +'<div class="qd" style="column-span:all;margin-top:10px;line-height:1.5">Only commercial / transactable pages are flagged as missing - editorial and blog pages do not need to be actionable.</div></div>';
    return '<div class="apissue"><div class="aprow" onclick="tgl(\'ag_'+k+'\')" style="grid-template-columns:1fr;gap:5px;cursor:pointer;padding:13px 0">'
      +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-weight:700;font-size:14px">'+label+' <span class="egcar">▾</span></span><span style="color:'+col+';font-weight:700;font-size:13px;white-space:nowrap">'+n+' / '+tot+' pages</span></div>'
@@ -1949,8 +2175,8 @@ function agentView(){
      <div class="apk">AGENT-READINESS &middot; ADVISORY (NOT SCORED YET)</div>
      <div style="font-size:14px;line-height:1.65;color:#c9c2bd;max-width:730px;margin-top:10px">The next shift is answers &rarr; <b>agents</b>: AI that browses, compares and <b>transacts</b> on the user's behalf. An agent doesn't just read your page, it needs to <b>act</b> - read a price, check availability, book, contact. Actions need machine-readable precision prose can't give. This tab reads whether AI can <b>act</b> on you, not just cite you. Forward-looking and directional, not part of the CITED Score yet.</div>
    </div>
-   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>ACTIONABLE SIGNALS ON YOUR SITE</h3><span class="meta">${a.any_n||0} of ${tot} pages expose at least one &middot; ${a.money_n||0} commercial &middot; click a signal to see which pages</span></div><div class="apbox" style="padding:6px 22px 16px">${matrix}</div></section>
-   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>PROTOCOL &amp; DISCOVERY FILES</h3><span class="meta">${protoFound} of ${pk.length} present &middot; how an agent connects programmatically</span></div><div class="apbox" style="padding:6px 22px 14px">${protoH}<div class="qd" style="line-height:1.55;border-top:1px solid var(--line);padding-top:11px;margin-top:6px">These are emerging and nascent - most sites have none yet - so this is forward guidance, not a mark against you. The one to watch is the <b>MCP server card</b> (<code>/.well-known/mcp.json</code>): as agents standardise on MCP, it becomes how they discover your tools and actions.</div></div></section>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>ACTIONABLE SIGNALS ON YOUR SITE</h3><span class="meta">${a.any_n||0} of ${tot} pages expose at least one &middot; ${a.money_n||0} commercial &middot; click a signal to see which pages</span></div><div class="apbox" style="padding:6px 22px 16px">${matrix}</div></section>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>PROTOCOL &amp; DISCOVERY FILES</h3><span class="meta">${protoFound} of ${pk.length} present &middot; how an agent connects programmatically</span></div><div class="apbox" style="padding:6px 22px 14px">${protoH}<div class="qd" style="line-height:1.55;border-top:1px solid var(--line);padding-top:11px;margin-top:6px">These are emerging and nascent - most sites have none yet - so this is forward guidance, not a mark against you. The one to watch is the <b>MCP server card</b> (<code>/.well-known/mcp.json</code>): as agents standardise on MCP, it becomes how they discover your tools and actions.</div></div></section>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#F0B429"></span><h3>ACTIONABLE, NOT DESCRIPTIVE, SCHEMA</h3><span class="meta">the distinction that matters</span></div><div class="apbox" style="padding:16px 22px"><div style="font-size:14px;line-height:1.65;color:#c9c2bd">Agentic does not make <b>all</b> schema matter - it splits it. <b>Descriptive</b> schema (Article, breadcrumbs, FAQ) stays a minor entity signal. <b>Actionable</b> schema (Offer + price + availability, potentialAction, ContactPoint) is the structured path an agent transacts through. Add the actionable subset to your commercial pages, and <b>server-render it</b> - an agent that doesn't run JS can't see JS-injected schema, exactly like today's crawlers.</div></div></section>
    </div>
    <div class="apside">
@@ -1962,14 +2188,14 @@ function aicrawlerView(){
  var ac=D.aicrawler||{bots:[],has_robots:false};
  var bots=ac.bots||[];
  var reach=(D.site_checks||[]).find(function(c){return c.id=='reachability'})||{};
- var col={allowed:'#3DD68C',partial:'#F0B429',blocked:'#ff4d3d'};
+ var col={allowed:'#3DD68C',partial:'#F0B429',blocked:'#E0533D'};
  var isBlk=function(r){return r===0||r==401||r==403||r==429;};       // reach status meaning blocked; >0 non-blocking = ok; null = not probed
  var fwBlocked=function(b){return b.reach!=null&&isBlk(b.reach);};    // robots may allow, but the firewall 403s
  var effCol=function(b){return (b.status=='blocked'||fwBlocked(b))?col.blocked:(b.status=='partial'?col.partial:col.allowed);};
  var reachLabel=function(b){
    if(b.reach==null) return '<span style="width:104px;flex:none"></span>';
    var blk=isBlk(b.reach);
-   return '<span style="color:'+(blk?'#ff4d3d':'#3DD68C')+';font-weight:700;font-size:11px;flex:none;width:104px;text-align:right">'+(blk?('firewall '+(b.reach||'x')):'reachable')+'</span>';
+   return '<span style="color:'+(blk?'#E0533D':'#3DD68C')+';font-weight:700;font-size:11px;flex:none;width:104px;text-align:right">'+(blk?('firewall '+(b.reach||'x')):'reachable')+'</span>';
  };
  var serving=bots.filter(function(b){return b.role=='serving'});
  var servingBlocked=serving.filter(function(b){return b.status=='blocked'||b.status=='partial'||fwBlocked(b);});
@@ -1977,7 +2203,7 @@ function aicrawlerView(){
  var ops=[],seen={};
  bots.forEach(function(b){if(!seen[b.op]){seen[b.op]=[];ops.push(b.op);}seen[b.op].push(b);});
  var roleBadge=function(r){return r=='serving'
-   ?'<span style="font-size:9px;font-weight:800;color:#ff8a3d;letter-spacing:.05em">CITATION</span>'
+   ?'<span style="font-size:9px;font-weight:800;color:#74E67A;letter-spacing:.05em">CITATION</span>'
    :'<span style="font-size:9px;font-weight:800;color:#8b8480;letter-spacing:.05em">TRAINING</span>';};
  var grid=ops.map(function(op){
    return '<div style="margin-top:15px"><div class="egh" style="margin-bottom:2px">'+esc(op)+'</div>'+seen[op].map(function(b){
@@ -2013,7 +2239,7 @@ function aicrawlerView(){
      <div style="font-size:14px;line-height:1.65;color:#c9c2bd;max-width:740px;margin-top:10px">Crawler access is the on/off switch for AI citation, and it is becoming a battleground (Cloudflare AI-blocking, pay-per-crawl, page-level controls). A blocked <b>citation</b> bot means that engine literally cannot quote you; a blocked <b>training</b> bot is a legitimate content-protection choice that does not stop live-search citation. This matrix pairs your robots.txt rules with a <b>live firewall probe</b> of the citation-serving bots (the ones that fetch at answer time), because a robots.txt "allow" means nothing if the firewall 403s the bot.</div>
      <div style="margin-top:14px;font-size:14px;line-height:1.55">${headline}${reachNote}${noidxNote}</div>
    </div>
-   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>AI-BOT ACCESS MATRIX</h3><span class="meta">${allowedN} of ${bots.length} allowed &middot; from robots.txt</span></div><div class="apbox" style="padding:2px 22px 16px">${grid}</div></section>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>AI-BOT ACCESS MATRIX</h3><span class="meta">${allowedN} of ${bots.length} allowed &middot; from robots.txt</span></div><div class="apbox" style="padding:2px 22px 16px">${grid}</div></section>
    ${chH}
    </div>
    <div class="apside">
@@ -2048,7 +2274,7 @@ function infogainView(){
      <div style="font-size:14px;line-height:1.65;color:#c9c2bd;max-width:740px;margin-top:10px">Original data is the one moat AI cannot route around - pages that state their own numbers, first-hand research and named frameworks get cited where derivative rehash does not (Indig: 15+ distinct figures = information-gain 62.1 vs 40.2 for &le;1). A local crawler <b>cannot prove true originality</b> (no web-corpus to diff against), so this is a labelled <b>proxy</b>: distinct-figure density, first-hand-research language, a named proprietary asset, and real data tables - minus near-duplication.</div>
      <div style="display:flex;gap:12px;margin-top:18px">${tile('original / high',b.high||0,'#3DD68C')}${tile('some / medium',b.medium||0,'#F0B429')}${tile('thin / low',b.low||0,'#ff9c88')}</div>
    </div>
-   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>PAGES BY INFORMATION-GAIN PROXY</h3><span class="meta">${tot} pages &middot; ranked most original first</span></div>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>PAGES BY INFORMATION-GAIN PROXY</h3><span class="meta">${tot} pages &middot; ranked most original first</span></div>
      <div class="apbox" style="padding:0"><table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left"><th style="${th}">Page</th><th style="${th};text-align:center">Band</th><th style="${th};text-align:center">Figures</th><th style="${th}">Original-data signals</th></tr></thead><tbody>${rows||'<tr><td colspan="4" style="padding:14px">no pages</td></tr>'}</tbody></table></div></section>
    </div>
    <div class="apside">
@@ -2068,19 +2294,29 @@ function offpageView(){
    ['Publish original research for digital PR','Houzz\'s trends study earned 180+ backlinks from 81 domains and was cited in 188+ AI prompts (Semrush).'],
    ['Get into "best of" roundups','~90% of third-party AI mentions come from listicles / comparison / review roundups, and being in the top 3 of that page matters most (AirOps).']
  ];
- var playsH=plays.map(function(p,i){return '<div style="display:flex;gap:12px;padding:12px 0;'+(i?'border-top:1px solid var(--line)':'')+'"><span style="flex:none;width:22px;height:22px;border-radius:50%;background:#FF4D00;color:#140b06;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center">'+(i+1)+'</span><div><div style="font-weight:700;font-size:14px">'+p[0]+'</div><div class="qd" style="line-height:1.55;margin-top:2px">'+p[1]+'</div></div></div>';}).join('');
+ var playsH=plays.map(function(p,i){return '<div style="display:flex;gap:12px;padding:12px 0;'+(i?'border-top:1px solid var(--line)':'')+'"><span style="flex:none;width:22px;height:22px;border-radius:50%;background:#42D848;color:#140b06;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center">'+(i+1)+'</span><div><div style="font-weight:700;font-size:14px">'+p[0]+'</div><div class="qd" style="line-height:1.55;margin-top:2px">'+p[1]+'</div></div></div>';}).join('');
  return `<div class="ap2"><div class="apmain">
    <div class="apsum" style="padding:24px 28px">
      <div class="apk">OFF-PAGE PRESENCE &middot; ADVISORY (NOT SCORED)</div>
      <div style="font-size:14px;line-height:1.65;color:#c9c2bd;max-width:730px;margin-top:10px">CITED Score audits your pages, but AI citation is dominated by <b>off-page</b> signals this on-page crawl cannot measure. A brand's own site is cited in only <b>~16%</b> of AI responses; the other ~84% are third-party sources (Reddit, YouTube, review sites, roundups), and brand mentions correlate with citation far more than backlinks (0.664 vs 0.218). This tab is directional guidance, not a score.</div>
    </div>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#3DD68C"></span><h3>PROFILES YOU DECLARE</h3><span class="meta">from your schema sameAs (${o.sameas_count} links)</span></div><div class="apbox" style="padding:14px 20px">${declared}</div></section>
-   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF5C1A"></span><h3>HIGH-VALUE SURFACES TO SECURE</h3><span class="meta">AI-cited surfaces not in your declared set</span></div><div class="apbox" style="padding:14px 20px">${missing}<div class="qd" style="margin-top:10px;line-height:1.5">"Declared" only means present in your schema - it does not confirm an active, well-reviewed profile. Verify each, because these are where AI looks.</div></div></section>
-   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#FF4D00"></span><h3>DO THIS OFF-PAGE (data-backed)</h3><span class="meta">ranked by evidence</span></div><div class="apbox" style="padding:4px 20px 14px">${playsH}</div></section>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>MENTION DIVERSITY</h3><span class="meta">${(o.declared||[]).length} distinct declared domain${(o.declared||[]).length===1?'':'s'} &middot; parametric-authority proxy</span></div><div class="apbox" style="padding:14px 20px"><div class="qd" style="line-height:1.65">What an AI model already <b>knows</b> about you, before it retrieves anything, is <b>parametric authority</b>. Research shows that only becomes reliable when your name appears in <b>varied phrasing across many independent sources</b>, not from self-publishing (a fact seen in too few, too-similar sources can sit in a model at near-zero recall). You currently declare <b>${(o.declared||[]).length}</b> distinct third-party domain${(o.declared||[]).length===1?'':'s'} in your schema. Treat that as a floor, not a measurement: real mention diversity, how many independent sites describe you, needs a backlink / mention tool. The more independent domains describe you, and the more varied the wording, the more reliably AI names you by default. This is slow and third-party-built, years not campaigns.</div></div></section>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>HIGH-VALUE SURFACES TO SECURE</h3><span class="meta">AI-cited surfaces not in your declared set</span></div><div class="apbox" style="padding:14px 20px">${missing}<div class="qd" style="margin-top:10px;line-height:1.5">"Declared" only means present in your schema - it does not confirm an active, well-reviewed profile. Verify each, because these are where AI looks.</div></div></section>
+   <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>DO THIS OFF-PAGE (data-backed)</h3><span class="meta">ranked by evidence</span></div><div class="apbox" style="padding:4px 20px 14px">${playsH}</div></section>
+   ${(function(){var q=D.query_coverage;if(!q)return '';
+     var gaps=(q.gaps||[]).map(function(g){return '<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)"><span style="font-size:13px">'+esc(g.query)+'</span><span class="qd" style="white-space:nowrap;font-family:var(--mono);font-size:11px">'+g.citations+' cit &middot; match '+Math.round((g.best_score||0)*100)+'%</span></div>';}).join('');
+     var orph=(q.orphans||[]).map(function(o){return '<span style="font-size:12px;padding:3px 9px;border-radius:999px;background:rgba(139,132,128,.12);border:1px solid var(--line)">'+esc(o.path)+' <b>'+o.score+'</b></span>';}).join('');
+     return '<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>CITATION-QUERY COVERAGE</h3><span class="meta">'+q.covered+'/'+q.n_queries+' cited queries have a page targeting them</span></div><div class="apbox" style="padding:14px 20px"><div class="qd" style="line-height:1.6;margin-bottom:12px">These are the grounding queries actually driving your AI citations, from your Bing AI Performance export. A <b>gap</b> is a query AI cites heavily where no page of yours targets it, the clearest opportunity. An <b>orphan</b> is a well-scored page that targets no cited query, effort not aimed at demand. Matching is title, meta and URL term overlap, so treat it as directional.</div>'
+       +(q.n_gaps?'<div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:#f0c674;text-transform:uppercase;margin:6px 0 8px">Coverage gaps ('+q.n_gaps+')</div>'+gaps:'<div class="qd">Every high-citation query has a page targeting it. Strong.</div>')
+       +(q.n_orphans?'<div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;margin:16px 0 8px">Orphaned pages ('+q.n_orphans+'), well-scored but targeting no cited query</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+orph+'</div>':'')
+       +'</div></section>';
+   })()}
    </div>
    <div class="apside">
      <div class="card2"><h3>Why this isn't scored</h3><div class="qd" style="line-height:1.6">Off-page presence and brand mentions live outside your site, so an on-page crawler cannot measure them without a backlink / mention API. Rather than fake a number, this tab shows what you declare and where to build - the same honest treatment as the Grok and llms.txt advisories.</div></div>
      <div class="card2"><h3>Measure it properly</h3><div class="qd" style="line-height:1.6">To track real off-page presence use a backlink tool (Ahrefs / Semrush referring domains) plus an AI-visibility tracker for brand-mention share. First move with the biggest evidence: claim your Trustpilot profile (1% &rarr; 54% citation lift).</div></div>
+     <div class="card2"><h3>Grounding queries &amp; Citation Share</h3><div class="qd" style="line-height:1.6"><b>Grounding queries</b> are the retrieval searches an AI runs before it answers; <b>Citation Share</b> and <b>Share of Authority</b> are how often your domain is cited, and cited versus competitors. An on-page crawl cannot see these. <b>Microsoft Clarity's Topic Insights</b> (free, if Clarity is on your site) exposes all three - it groups AI citations by topic so you can find coverage gaps and compare grounding queries to your existing content.</div></div>
    </div></div>`;
 }
 function exportBroken(){var bl=D.broken_links||[];var rows=[['status','broken_url','source_count','source_pages']];bl.forEach(function(b){rows.push([b.status==null?'dead':b.status,b.url,b.sources.length,b.sources.join(' | ')]);});dl('cited-broken-links-'+(D.domain||'site')+'.csv',rows);}
@@ -2096,7 +2332,7 @@ function brokenView(){
    var srcs=b.sources.map(u=>`<a href="${esc(u)}" target="_blank" style="color:#b7afaa">${rel(u)}</a>`).join(', ');
    return `<tr style="border-top:1px solid var(--line)">
      <td style="padding:9px 10px;vertical-align:top"><span class="schip" style="background:rgba(255,77,61,.14);color:#ff9c88">${esc(String(b.status||'dead'))}</span></td>
-     <td style="padding:9px 10px;vertical-align:top;max-width:430px">${ii?'<span style="font-size:10px;font-weight:700;color:#140b06;background:#FF4D00;padding:1px 6px;border-radius:999px;margin-right:6px">INTERNAL</span>':''}<a href="${esc(b.url)}" target="_blank" style="word-break:break-all;font-size:13px">${esc(b.url)}</a></td>
+     <td style="padding:9px 10px;vertical-align:top;max-width:430px">${ii?'<span style="font-size:10px;font-weight:700;color:#140b06;background:#42D848;padding:1px 6px;border-radius:999px;margin-right:6px">INTERNAL</span>':''}<a href="${esc(b.url)}" target="_blank" style="word-break:break-all;font-size:13px">${esc(b.url)}</a></td>
      <td style="padding:9px 10px;vertical-align:top;text-align:center;color:#b7afaa">${b.sources.length}</td>
      <td style="padding:9px 10px;vertical-align:top;font-size:12px">${srcs}</td>
    </tr>`;
@@ -2125,10 +2361,10 @@ tabsbar();render();
          "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
          "<link href='https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap' rel='stylesheet'>"
          f"<style>{css}</style></head><body>"
-         f"<header><span class='logo'><svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M161.3,48.6 A80,80 0 1 0 161.3,151.4 L147.4,139.8 A56,56 0 1 1 147.4,60.2 Z' fill='#F5F1EA'/><circle cx='100' cy='100' r='19' fill='#FF5C1A'/></svg><span class='wm'><span class='lw'>CITED</span><span class='ls'>Score</span></span></span>"
+         f"<header><span class='logo'><svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M148.3,50.1 A72,72 0 1 0 158.7,127' fill='none' stroke='#EDF0EB' stroke-width='17' stroke-linecap='square'/><path d='M70,101 L92,123 L135.7,67.5' fill='none' stroke='#42D848' stroke-width='17' stroke-linecap='square'/></svg><span class='wm'><span class='lw'>CITED</span><span class='ls'>Score</span></span></span>"
          f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--txt);font-weight:600'>{H.escape(d['domain'])}</a> &middot; {d['pages_crawled']} pages &middot; {d['generated']}</span>"
          "<span class='btns'><button onclick='printReport()'>Print / PDF</button><button onclick='exportPages()'>Export CSV</button></span></header>"
-         + ((f"<div style='padding:14px 24px;background:linear-gradient(90deg,rgba(255,92,26,.10),transparent);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#8b8480'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#8b8480'>by GoGoChimp</span>" + (f"<div style='color:#c9c2bd;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
+         + ((f"<div style='padding:14px 24px;background:linear-gradient(90deg,rgba(66,216,72,.10),transparent);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#8b8480'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#8b8480'>by GoGoChimp</span>" + (f"<div style='color:#c9c2bd;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
        + "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view'></div>"
          "<div class='foot'>The CITED Score <b>estimates citability</b> from on-page, structural and technical signals. "
          "It does <b>not</b> measure citations. For measured citations, calibrate the model against your Bing Webmaster Tools AI Performance export "
@@ -2138,7 +2374,7 @@ tabsbar();render();
          f"<script>window.__DATA__={payload};</script><script>{js}</script></body></html>")
     with open(path,"w",encoding="utf-8") as f: f.write(doc)
 
-def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, client=None, intro=None, links=True):
+def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, client=None, intro=None, links=True, site_type=None, queries=None):
     """Crawl + score a whole site and write out.html/.json/.csv. progress(phase, done,
     total, msg) is called through the run so a UI can show live status. Returns the data."""
     if not url.startswith("http"): url="https://"+url
@@ -2163,8 +2399,14 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, cl
         linkstatus=check_links(pages, progress=lambda d,t,m: emit("links",d,t,m))
     protocols=agent_protocols(origin) if out else {}    # agent protocol/discovery probe (advisory)
     aicrawler=ai_crawler_matrix(origin) if out else {}  # AI-bot access matrix (advisory monitor)
-    data=build(domain,origin,pages,sitecx,sitemap_paths,linkstatus,client,intro,protocols,aicrawler)
-    if out: apply_diff(data,out); write_outputs(data,out)     # out=None -> crawl + score only, no files (used by benchmark)
+    data=build(domain,origin,pages,sitecx,sitemap_paths,linkstatus,client,intro,protocols,aicrawler,site_type_override=site_type)
+    if out:
+        try: data["internal_search"]=audit_internal_search(pages,origin)   # citation-to-landing (b): honest probe of the site's own search
+        except Exception: data["internal_search"]={"detected":False}
+        if queries:                                            # citation-query coverage: which cited queries a page targets
+            try: data["query_coverage"]=query_coverage(pages, load_queries(queries))
+            except Exception: pass
+        apply_diff(data,out); write_outputs(data,out)         # out=None -> crawl + score only, no files (used by benchmark)
     emit("done",total,total,f"{domain}: {data['overall']}/100, {data['pages_crawled']} pages")
     return data
 
@@ -2192,6 +2434,7 @@ def main():
     ap.add_argument("--client",help="white-label: client name shown in the report banner")
     ap.add_argument("--intro",help="white-label: optional intro line shown under the client banner")
     ap.add_argument("--no-links",action="store_true",help="skip the broken-link check (faster)")
+    ap.add_argument("--queries",help="grounding-query CSV (Bing AI Performance 'AI Search Queries' export) for citation-query coverage")
     a=ap.parse_args()
     if a.calibrate:
         calibrate(a.report or (a.out+".json"), a.calibrate); return
@@ -2199,7 +2442,7 @@ def main():
     print(f"Chrome: {CHROME or 'NONE (raw only)'}")
     def prog(phase,done,total,msg):
         print(f"  [{done}/{total}] {msg}" if phase=="crawl" else msg, flush=True)
-    data=run_audit(a.url,out=a.out,max_pages=a.max_pages,workers=a.workers,progress=prog,client=a.client,intro=a.intro,links=not a.no_links)
+    data=run_audit(a.url,out=a.out,max_pages=a.max_pages,workers=a.workers,progress=prog,client=a.client,intro=a.intro,links=not a.no_links,queries=a.queries)
     print(f"\n=== CITED Score: {data['domain']} === {data['overall']}/100 | {data['pages_crawled']} pages")
     print("Pillars: "+" | ".join(f"{k} {v}" for k,v in data['pillars'].items()))
     print("Engines: "+" | ".join(f"{e} {v}" for e,v in data['engines'].items()))

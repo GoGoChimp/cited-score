@@ -7,15 +7,15 @@ Enter any website, click Run, watch the crawl, open the report. No command line 
 Uses the same engine as aiseo_audit.py (your installed Chrome renders each page).
 Zero third-party web deps - Python standard library only, so it packages cleanly to an .exe.
 """
-import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.request, glob, tempfile
+import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.request, urllib.error, glob, tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.9.4"                 # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.12.3"                # semver; bump on every release + tag the GitHub release to match
 GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
 VERSION = f"v{APP_VERSION} - August 2026"
 
-_update = {"checked": False, "update": False, "latest": None, "url": None}
+_update = {"checked": False, "update": False, "latest": None, "url": None, "dl": None}
 def _ver_tuple(s):
     nums = re.findall(r"\d+", s or "")
     return tuple(int(n) for n in nums[:3]) if nums else ()
@@ -33,6 +33,7 @@ def check_update():
             d = json.load(r)
         _update["latest"] = d.get("tag_name") or ""
         _update["url"] = d.get("html_url") or f"https://github.com/{GITHUB_REPO}/releases/latest"
+        _update["dl"] = f"https://github.com/{GITHUB_REPO}/releases/latest/download/CITED-Score.exe"
         _update["update"] = _ver_tuple(_update["latest"]) > _ver_tuple(APP_VERSION)
     except Exception:
         pass  # no network / repo or release not published yet / rate-limited -> no banner
@@ -48,10 +49,47 @@ PORT = 5000
 
 def safe(d): return re.sub(r"[^a-z0-9._-]", "-", d.lower())[:80]
 
+# --- Activation (Phase A: hard-gate on launch, email capture) ------------------
+SB_FUNCTIONS = "https://xhalhtbsddaqmnqruljt.supabase.co/functions/v1"
+ACT_FILE = os.path.join(HERE, "activation.json")
+
+def load_activation():
+    """Return the cached activation dict (with a token) or None. Presence == activated."""
+    try:
+        with open(ACT_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if d.get("token") else None
+    except Exception:
+        return None
+
+def save_activation(d):
+    try:
+        with open(ACT_FILE, "w", encoding="utf-8") as f: json.dump(d, f)
+        return True
+    except Exception:
+        return False
+
+def is_activated(): return load_activation() is not None
+
+def sb_post(fn, payload, timeout=12):
+    """POST to a CITED Score Edge Function. Returns (status, dict). No secret ever ships here -
+    the functions are public; the secret + signing key live only in Supabase."""
+    req = urllib.request.Request(f"{SB_FUNCTIONS}/{fn}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return getattr(r, "status", 200), json.load(r)
+    except urllib.error.HTTPError as e:
+        try: return e.code, json.load(e)
+        except Exception: return e.code, {"error": "request failed"}
+    except Exception:
+        return 0, {"error": "Could not reach the activation server. Check your connection."}
+
 INDEX = r"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>CITED Score</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#171310;--panel:#1F1A15;--panel2:#0f0c0a;--line:#2E2823;--muted:#8A867F;--txt:#F5F1EA;--grn:#FF5C1A;--grn2:#ff7a3d;--ok:#3DD68C;--red:#F16A5F;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;--display:'Archivo',sans-serif}
+:root{--bg:#0F1410;--panel:#161D18;--panel2:#0A0F0B;--line:#26302A;--muted:#6E7A6F;--txt:#EDF0EB;--grn:#42D848;--grn2:#74E67A;--ok:#3DD68C;--red:#E0533D;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;--display:'Archivo',sans-serif}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 'Archivo',-apple-system,Segoe UI,Arial,sans-serif}
 .wrap{max-width:1180px;margin:0 auto;padding:26px 26px 60px}
 a{color:var(--grn);text-decoration:none}
@@ -59,7 +97,7 @@ a{color:var(--grn);text-decoration:none}
 .logo .wm{display:inline-flex;align-items:baseline;gap:8px}
 .logo .lw{font-family:'Archivo',sans-serif;font-weight:900;font-size:23px;letter-spacing:-.02em;color:var(--txt);line-height:1}
 .logo .ls{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.24em;color:var(--muted);text-transform:uppercase}
-.upd{display:flex;align-items:center;gap:16px;background:rgba(255,77,0,.07);border:1px solid rgba(255,77,0,.32);border-radius:14px;padding:14px 18px;margin-bottom:26px}
+.upd{display:flex;align-items:center;gap:16px;background:rgba(66,216,72,.07);border:1px solid rgba(66,216,72,.32);border-radius:14px;padding:14px 18px;margin-bottom:26px}
 .upd .uc{background:var(--grn);color:#0a0a0a;font-weight:800;font-size:11px;letter-spacing:.5px;padding:3px 8px;border-radius:5px}
 .upd .ut{font-weight:800}.upd .ud{color:var(--muted);font-size:13px}.upd .sp{flex:1}
 .updbtn{background:var(--grn);color:#0a0a0a;font-weight:800;padding:9px 16px;border-radius:9px;white-space:nowrap}
@@ -115,11 +153,11 @@ a{color:var(--grn);text-decoration:none}
 .tag{font-size:10px;padding:1px 7px;border-radius:20px;border:1px solid var(--line);color:var(--muted)}
 .tag.up{color:var(--ok);border-color:#3DD68C55}.tag.inv{color:#F0B429;border-color:#F0B42955}
 </style></head><body><div class="wrap">
-<div class="upd hide" id="upd"><span class="uc">Update</span><div><div class="ut" id="updmsg">Update available</div><div class="ud" id="upddesc"></div></div><div class="sp"></div><a class="updbtn" id="updlink" target="_blank">Update now</a><span class="later" onclick="dismissUpd()">Later</span></div>
+<div class="upd hide" id="upd"><span class="uc">Update</span><div><div class="ut" id="updmsg">Update available</div><div class="ud" id="upddesc"></div></div><div class="sp"></div><a class="updbtn" id="updlink" onclick="doUpdate()" style="cursor:pointer">Update now</a><span class="later" onclick="dismissUpd()">Later</span></div>
 
 <div class="cols">
  <div class="main">
-   <div class="logo"><svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M161.3,48.6 A80,80 0 1 0 161.3,151.4 L147.4,139.8 A56,56 0 1 1 147.4,60.2 Z' fill='#F5F1EA'/><circle cx='100' cy='100' r='19' fill='#FF5C1A'/></svg><span class="wm"><span class="lw">CITED</span><span class="ls">Score</span></span></div>
+   <div class="logo"><svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M148.3,50.1 A72,72 0 1 0 158.7,127' fill='none' stroke='#EDF0EB' stroke-width='17' stroke-linecap='square'/><path d='M70,101 L92,123 L135.7,67.5' fill='none' stroke='#42D848' stroke-width='17' stroke-linecap='square'/></svg><span class="wm"><span class="lw">CITED</span><span class="ls">Score</span></span></div>
    <h1 class="h1">Score every page the way an AI crawler would</h1>
    <div class="lede">Enter a website. CITED Score crawls every page and grades how citable it is for six engines, then tells you which fix moves the number fastest.</div>
    <div class="engrow"><span>ChatGPT</span><span>Perplexity</span><span>AI Overviews</span><span>Gemini</span><span>Copilot</span><span>Claude</span></div>
@@ -132,6 +170,7 @@ a{color:var(--grn);text-decoration:none}
      <div class="opts" id="opts">
        <div><label>Max pages (blank = entire site)</label><input id="maxp" type="number" placeholder="all" min="1"></div>
        <div><label>Parallel renderers</label><select id="workers"><option>4</option><option selected>6</option><option>8</option><option>10</option></select></div>
+       <div><label>Site type (scoring profile)</label><select id="stype"><option value="">Auto-detect</option><option value="ecommerce">E-commerce</option><option value="blog">Blog / publisher</option><option value="b2b_saas">B2B SaaS</option><option value="general">General</option></select></div>
        <div><label>Client name (white-label report, optional)</label><input id="client" type="text" placeholder="e.g. Acme Corp"></div>
        <div><label>Intro line (optional)</label><input id="intro" type="text" placeholder="Prepared as part of your Q3 review"></div>
        <div style="display:flex;align-items:center;gap:8px;grid-column:1/-1"><input id="dolinks" type="checkbox" checked style="width:auto"><label style="margin:0">Check for broken links (adds ~30-60s at the end)</label></div>
@@ -197,14 +236,14 @@ loadRecent();
 fetch('/update-check').then(r=>r.json()).then(d=>{
   if(d&&d.update){ $('updmsg').textContent='Version '+d.latest+' is available';
     $('upddesc').textContent='You are on v'+d.current+'. The update takes about a minute.';
-    $('updlink').href=d.url; $('upd').classList.remove('hide'); }
+    $('upd').classList.remove('hide'); }
 }).catch(()=>{});
 let poll=null;
 function run(){
   const url=$('url').value.trim(); if(!url)return;
   $('run').disabled=true; $('form').classList.add('hide'); $('progress').classList.remove('hide'); $('done').classList.add('hide');
   $('log').textContent=''; $('phase').textContent='Discovering URLs...'; $('fill').style.width='0';
-  fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,max_pages:$('maxp').value,workers:$('workers').value,client:$('client').value,intro:$('intro').value,links:$('dolinks').checked})})
+  fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,max_pages:$('maxp').value,workers:$('workers').value,client:$('client').value,intro:$('intro').value,links:$('dolinks').checked,site_type:$('stype').value})})
     .then(r=>r.json()).then(d=>{ if(d.error){$('phase').innerHTML='<span class=err>'+d.error+'</span>';return;} poll=setInterval(()=>check(d.job),1000); });
 }
 function check(job){fetch('/status/'+job).then(r=>r.json()).then(j=>{
@@ -227,6 +266,7 @@ function check(job){fetch('/status/'+job).then(r=>r.json()).then(j=>{
 function tile(n,l){return `<div class="tile"><div class="n">${n==null?'-':n}</div><div class="l">${l}</div></div>`}
 function reset(){$('progress').classList.add('hide'); $('form').classList.remove('hide'); $('run').disabled=false; $('url').value='';}
 function dismissUpd(){$('upd').classList.add('hide')}
+function doUpdate(){ fetch('/open-update').catch(()=>{}); $('upddesc').textContent='Downloading in your browser - run the file when it finishes to update.'; }
 function toggleOpts(){$('opts').classList.toggle('on')}
 function rhoSpan(v){const c=v>0.1?'up':v<0?'dn':'z';return '<span class="rho '+c+'">'+(v>0?'+':'')+v.toFixed(2)+'</span>';}
 function runCal(){
@@ -275,6 +315,80 @@ function checkBench(job){fetch('/status/'+job).then(r=>r.json()).then(j=>{
 }
 </script></body></html>"""
 
+ACTIVATE = r"""<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Activate CITED Score</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0F1410;--panel:#161D18;--panel2:#0A0F0B;--line:#26302A;--muted:#6E7A6F;--txt:#EDF0EB;--grn:#42D848;--grn2:#74E67A;--ok:#3DD68C;--red:#E0533D;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;--display:'Archivo',sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 'Archivo',-apple-system,Segoe UI,Arial,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.box{width:100%;max-width:440px}
+.logo{display:inline-flex;align-items:center;gap:11px;margin-bottom:24px}
+.logo .wm{display:inline-flex;align-items:baseline;gap:8px}
+.logo .lw{font-family:'Archivo',sans-serif;font-weight:900;font-size:23px;letter-spacing:-.02em;color:var(--txt);line-height:1}
+.logo .ls{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.24em;color:var(--muted);text-transform:uppercase}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px}
+h1{font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:-.4px;margin:0 0 8px}
+.sub{color:var(--muted);font-size:15px;margin:0 0 6px}
+label{display:block;font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.6px;font-size:11px;color:var(--muted);margin:18px 0 7px}
+input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:11px;padding:13px 14px;font-size:16px;outline:none}
+input:focus{border-color:var(--grn)}
+input#code{font-family:var(--mono);letter-spacing:.22em;text-transform:uppercase}
+.btn{width:100%;background:var(--grn);color:#0a0a0a;border:0;border-radius:11px;padding:15px;font-family:var(--display);font-weight:800;font-size:16px;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;margin-top:22px}
+.btn:hover:not(:disabled){background:var(--grn2)}.btn:disabled{opacity:.5;cursor:default}
+.msg{margin-top:16px;font-size:14px;min-height:20px}
+.msg.err{color:var(--red)}.msg.ok{color:var(--ok)}
+.alt{margin-top:20px;text-align:center;font-size:13px;color:var(--muted)}
+.alt a{color:var(--grn);cursor:pointer}
+.more{display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.more.on{display:block}
+.hint{color:var(--muted);font-size:12px;margin-top:7px}
+.foot{text-align:center;color:var(--muted);font-size:12px;margin-top:20px}
+</style></head><body><div class="box">
+<div class="logo"><svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M148.3,50.1 A72,72 0 1 0 158.7,127' fill='none' stroke='#EDF0EB' stroke-width='17' stroke-linecap='square'/><path d='M70,101 L92,123 L135.7,67.5' fill='none' stroke='#42D848' stroke-width='17' stroke-linecap='square'/></svg><span class="wm"><span class="lw">CITED</span><span class="ls">Score</span></span></div>
+<div class="card">
+  <h1>Activate your copy</h1>
+  <p class="sub">Enter the code from your download email. Free for life, up to 500 URLs.</p>
+  <label for="email">Email</label>
+  <input id="email" type="email" placeholder="you@company.com" autofocus>
+  <label for="code">Activation code</label>
+  <input id="code" placeholder="XXXXXX" maxlength="6">
+  <button class="btn" id="go" onclick="activate()">Activate</button>
+  <div class="msg" id="msg"></div>
+  <div class="alt">Don&#39;t have a code? <a onclick="toggleMore()">Email me one</a></div>
+  <div class="more" id="more">
+    <label for="book">Book code (optional)</label>
+    <input id="book" placeholder="From the back of the book">
+    <div class="hint">Have the book? Enter its code for a free year of everything.</div>
+    <button class="btn" id="send" onclick="sendCode()" style="margin-top:14px">Email me a code</button>
+  </div>
+</div>
+<div class="foot">One-time activation. Your email unlocks the app and nothing else.</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+function msg(t,c){const m=$('msg'); m.textContent=t; m.className='msg '+(c||'');}
+function toggleMore(){$('more').classList.toggle('on')}
+function activate(){
+  const email=$('email').value.trim(), code=$('code').value.trim();
+  if(!email||!code){msg('Enter your email and the code.','err');return;}
+  $('go').disabled=true; msg('Activating...','');
+  fetch('/activate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,code})})
+    .then(r=>r.json()).then(d=>{
+      if(d.ok){msg('Activated. Loading CITED Score...','ok'); setTimeout(()=>location.href='/',700);}
+      else{$('go').disabled=false; msg(d.error||'That code did not work.','err');}
+    }).catch(()=>{$('go').disabled=false; msg('Could not reach the server.','err');});
+}
+function sendCode(){
+  const email=$('email').value.trim(), book=$('book').value.trim();
+  if(!email){msg('Enter your email first.','err');return;}
+  $('send').disabled=true; msg('Sending...','');
+  fetch('/request-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,book_code:book})})
+    .then(r=>r.json()).then(d=>{$('send').disabled=false;
+      if(d.ok){msg('Sent. Check your inbox for the code.','ok');}
+      else{msg(d.error||'Could not send a code.','err');}
+    }).catch(()=>{$('send').disabled=false; msg('Could not reach the server.','err');});
+}
+</script></body></html>"""
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="text/html; charset=utf-8"):
         b = body.encode("utf-8") if isinstance(body, str) else body
@@ -286,9 +400,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
-        if u.path == "/": return self._send(200, INDEX.replace("__FAV__", A.FAVICON))
+        if u.path == "/":
+            page = INDEX if is_activated() else ACTIVATE
+            return self._send(200, page.replace("__FAV__", A.FAVICON))
         if u.path == "/chrome": return self._json(200, {"chrome": A.CHROME, "version": VERSION})
         if u.path == "/update-check": return self._json(200, {**check_update(), "current": APP_VERSION})
+        if u.path == "/open-update":
+            try: webbrowser.open(f"https://github.com/{GITHUB_REPO}/releases/latest/download/CITED-Score.exe")
+            except Exception: pass
+            return self._json(200, {"ok": True})
         if u.path == "/reports":
             files = [f for f in glob.glob(os.path.join(REPORTS, "*.html"))]
             files.sort(key=os.path.getmtime, reverse=True)
@@ -317,10 +437,41 @@ class Handler(BaseHTTPRequestHandler):
         ln = int(self.headers.get("Content-Length", 0))
         try: body = json.loads(self.rfile.read(ln) or "{}")
         except Exception: body = {}
+        if self.path == "/activate": return self._activate(body)
+        if self.path == "/request-code": return self._request_code(body)
+        if not is_activated(): return self._json(403, {"error": "Activate CITED Score to run audits."})
         if self.path == "/run": return self._run(body)
         if self.path == "/calibrate": return self._calibrate(body)
         if self.path == "/benchmark": return self._benchmark(body)
         return self._send(404, "not found")
+
+    def _activate(self, body):
+        email = (body.get("email") or "").strip()
+        code = (body.get("code") or "").strip()
+        if not email or not code:
+            return self._json(400, {"error": "Enter your email and the code."})
+        status, d = sb_post("verify-code", {"email": email, "code": code, "app_version": APP_VERSION})
+        if status == 200 and d.get("ok") and d.get("token"):
+            save_activation({"token": d["token"], "email": d.get("email") or email,
+                             "segment": d.get("segment"), "tier": d.get("tier"),
+                             "app_version": APP_VERSION, "activated_at": int(time.time())})
+            return self._json(200, {"ok": True, "segment": d.get("segment"), "tier": d.get("tier")})
+        return self._json(200, {"ok": False, "error": d.get("error") or "That code did not work."})
+
+    def _request_code(self, body):
+        email = (body.get("email") or "").strip()
+        book = (body.get("book_code") or "").strip()
+        if not email:
+            return self._json(400, {"error": "Enter your email first."})
+        payload = {"email": email, "source": "app", "send": True}
+        if book: payload["book_code"] = book
+        status, d = sb_post("request-code", payload)
+        if status == 200 and d.get("ok"):
+            return self._json(200, {"ok": True})
+        err = (d.get("error") or "Could not send a code.")
+        if "not configured" in err:
+            err = "Code email isn't switched on yet - use the code from your download email."
+        return self._json(200, {"ok": False, "error": err})
 
     def _calibrate(self, body):
         dom = safe((body.get("domain") or "").strip())
@@ -362,6 +513,7 @@ class Handler(BaseHTTPRequestHandler):
         dom = parsed.netloc.replace("www.", "")
         if not dom: return self._json(400, {"error": "That does not look like a URL."})
         client = (body.get("client") or "").strip() or None
+        stype = (body.get("site_type") or "").strip() or None
         intro = (body.get("intro") or "").strip() or None
         dolinks = body.get("links") is not False   # default True unless explicitly unchecked
         base = os.path.join(REPORTS, safe(dom))
@@ -373,7 +525,7 @@ class Handler(BaseHTTPRequestHandler):
             j["lines"] = (j["lines"] + [msg])[-14:]
         def worker():
             try:
-                data = A.run_audit(url, out=base, max_pages=maxp, workers=workers, progress=prog, client=client, intro=intro, links=dolinks)
+                data = A.run_audit(url, out=base, max_pages=maxp, workers=workers, progress=prog, client=client, intro=intro, links=dolinks, site_type=stype)
                 JOBS[job]["report"] = "/report/" + safe(dom)
                 JOBS[job]["summary"] = {"overall": data["overall"], "pages": data["pages_crawled"],
                                         "pillars": data["pillars"], "engines": data["engines"]}

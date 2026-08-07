@@ -72,7 +72,7 @@ pyinstaller CITED-Score.spec
 Ships `dist/CITED-Score.exe`. Attach it to a GitHub Release tagged with the app version (see `APP_VERSION` in `app.py`) so the in-app update check can find it. Mac builds must be done on a Mac.
 
 ## Brand
-Orange-on-black to match the CITED cover (`#0d0b0a` field, brand orange `#ff4d00`, `#f2ede9` type, red `[1]` citation chip). The report is built to be screenshotted into LinkedIn posts and client emails. The **CITED** wordmark is set in Impact; section and display headers in Figtree ExtraBold.
+Green-on-ink (CITED Score V2.0): ink `#0F1410` field, verdict green `#42D848` (deep green `#1E8A2C` for green type on light grounds), paper `#EDF0EB` type. The mark is a monoline **C** (the crawl) closing on a green **check** inside it (the verdict). Display and UI type is **Archivo**; metrics, labels and code are **IBM Plex Mono**. The report is built to be screenshotted into LinkedIn posts and client emails.
 
 ## Notes
 - The ruleset encodes CITED's playbook (answer-first, self-contained passages, evidence density, entity/schema clarity, AI-crawler access), sourced.
