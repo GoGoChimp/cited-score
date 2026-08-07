@@ -1060,6 +1060,44 @@ def ai_crawler_matrix(origin):
            "status":_bot_status(groups,ua),"reach":reachmap.get(n)} for n,ua,op,role,pur in AI_BOTS]
     return {"has_robots":bool(st==200 and robots),"bots":bots}
 
+# ------------------------------------------------------------------ log analysis (bring-your-own access log)
+_LOG_LINE=re.compile(r'"[A-Z]+\s+(\S+)\s+[^"]*"\s+(\d{3})\s+\S+\s+"[^"]*"\s+"([^"]*)"')  # Apache/Nginx combined
+_LOG_DAY=re.compile(r'\[(\d{2})/([A-Za-z]{3})/(\d{4})')
+def load_access_log(path, max_lines=3_000_000):
+    """Parse a server access log (Apache/Nginx combined format). Returns [(ua, url, status, 'YYYY-Mon-DD')]."""
+    out=[]
+    with open(path, encoding="utf-8", errors="ignore") as f:
+        for i,ln in enumerate(f):
+            if i>=max_lines: break
+            m=_LOG_LINE.search(ln)
+            if not m: continue
+            dm=_LOG_DAY.search(ln)
+            out.append((m.group(3), m.group(1), int(m.group(2)),
+                        f"{dm.group(3)}-{dm.group(2)}-{dm.group(1)}" if dm else ""))
+    return out
+
+def analyze_logs(path):
+    """Filter an access log to the AI bots and report what REALLY happened: which AI bots fetched, how
+    often, with what status, and where. This is ground truth the reachability probe only estimates:
+    citation-time bots (ChatGPT-User, Perplexity-User, Claude-User) fetching = live citation activity."""
+    rows=load_access_log(path)
+    if not rows: return {"parsed":0,"bots":{}}
+    CITE_TIME={"ChatGPT-User","Perplexity-User","Claude-User","OAI-SearchBot"}
+    bots={}
+    for name,ua_id,op,role,pur in AI_BOTS:
+        pat=re.compile(re.escape(ua_id), re.I)
+        hits=[r for r in rows if pat.search(r[0])]
+        if not hits: continue
+        st=Counter(r[2] for r in hits); urls=Counter(r[1] for r in hits)
+        bots[name]={"hits":len(hits),"role":role,"op":op,"purpose":pur,
+                    "citation_time":name in CITE_TIME,
+                    "statuses":dict(sorted(st.items())),
+                    "blocked":sum(v for s,v in st.items() if s in (401,403,429)),
+                    "top_urls":[[u,c] for u,c in urls.most_common(8)],
+                    "days_seen":len({r[3] for r in hits if r[3]})}
+    return {"parsed":len(rows),"total_bot_hits":sum(b["hits"] for b in bots.values()),
+            "bots":dict(sorted(bots.items(), key=lambda kv:-kv[1]["hits"]))}
+
 # ------------------------------------------------------------------ scoring
 def _score(statuses, weights, mult=None):
     tot=got=0.0
@@ -1083,7 +1121,7 @@ def page_scores(statuses, mult=None):
             {k:(v if v is not None else 0) for k,v in pill.items()},
             {k:(v if v is not None else 0) for k,v in eng.items()})
 
-def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, client=None, intro=None, protocols=None, aicrawler=None, site_type_override=None):
+def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, client=None, intro=None, protocols=None, aicrawler=None, site_type_override=None, agency=None, logo=None):
     ok200=[p for p in pages if p.get("status")==200]
     site_type=(site_type_override if site_type_override in SITE_PROFILE_LABEL else classify_site(pages)); prof=PROFILES.get(site_type)   # override or auto-detect; None profile = general / no-op
     site_type_source="override" if site_type_override in SITE_PROFILE_LABEL else "auto"
@@ -1261,7 +1299,7 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
             "engine_note":ENGINE_NOTE,"engine_weights":ENGINE_WEIGHTS,"check_meta":CHECK_META,
             "grok_advisory":GROK_ADVISORY,
             "totals":dict(tot),"issues":issues,"site_checks":sitecx,"broken_links":broken_links,"offpage":offpage,"agentready":agentready,"infogain":infogain,"aicrawler":aicrawler or {},"proj_all":proj_all,
-            "client":client,"intro":intro,"access_blocked":access_blocked,
+            "client":client,"intro":intro,"agency":(agency or "GoGoChimp"),"logo":logo,"access_blocked":access_blocked,
             "types":dict(Counter(p["type"] for p in pages)),
             "site_type":site_type,"site_type_label":SITE_PROFILE_LABEL.get(site_type,site_type),"site_type_source":site_type_source,
             "profile":(prof or {}),"profile_up":sorted([c for c,m in (prof or {}).items() if m>1]),
@@ -2265,6 +2303,17 @@ function aicrawlerView(){
      <div style="margin-top:14px;font-size:14px;line-height:1.55">${headline}${reachNote}${noidxNote}</div>
    </div>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>AI-BOT ACCESS MATRIX</h3><span class="meta">${allowedN} of ${bots.length} allowed &middot; from robots.txt</span></div><div class="apbox" style="padding:2px 22px 16px">${grid}</div></section>
+   ${(function(){var la=D.log_analysis;if(!la)return '';
+     var names=Object.keys(la.bots||{});
+     if(!names.length) return '<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#6E7A6F"></span><h3>REAL AI-BOT ACTIVITY (SERVER LOG)</h3><span class="meta">'+(la.parsed||0).toLocaleString()+' lines, no AI-bot hits</span></div><div class="apbox" style="padding:14px 20px"><div class="qd" style="line-height:1.6">Parsed '+(la.parsed||0).toLocaleString()+' log lines and found no AI-bot requests. Either the engines are not fetching you yet, or the log window is too short.</div></div></section>';
+     var rows=names.map(function(nm){var b=la.bots[nm];
+       var stH=Object.keys(b.statuses).map(function(s){var bad=(s=='401'||s=='403'||s=='429');return '<span style="font-family:var(--mono);font-size:11px;color:'+(bad?'#E0533D':(s=='200'?'#3DD68C':'#8b8480'))+'">'+s+':'+b.statuses[s]+'</span>';}).join(' ');
+       var badge=b.role=='serving'?'<span style="font-size:9px;font-weight:800;color:#74E67A;margin-left:5px">CITATION</span>':'<span style="font-size:9px;font-weight:800;color:#8b8480;margin-left:5px">TRAINING</span>';
+       var ct=b.citation_time?'<span title="fetches at citation time = live citation activity" style="font-size:9px;font-weight:800;color:#42D848;margin-left:4px">LIVE</span>':'';
+       return '<div style="padding:9px 0;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px"><span style="font-weight:600;font-size:13px;width:200px;flex:none">'+esc(nm)+badge+ct+'</span><span style="font-family:var(--mono);font-size:13px;font-weight:600;width:66px;flex:none">'+(b.hits||0).toLocaleString()+'</span><span class="qd" style="font-size:12px;flex:1;min-width:0">'+stH+(b.blocked?' &middot; <span style="color:#E0533D">'+b.blocked+' blocked</span>':'')+' &middot; '+b.days_seen+'d</span></div>';
+     }).join('');
+     return '<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>REAL AI-BOT ACTIVITY (SERVER LOG)</h3><span class="meta">'+(la.parsed||0).toLocaleString()+' lines &middot; '+(la.total_bot_hits||0).toLocaleString()+' AI-bot hits</span></div><div class="apbox" style="padding:14px 20px"><div class="qd" style="line-height:1.65;margin-bottom:12px">Ground truth, not the probe estimate: the real AI bots, from their real IPs, and what they fetched. A <b>CITATION</b> bot with 200s is actively crawling you; a <b>LIVE</b> bot (ChatGPT-User, Perplexity-User, Claude-User) fetching is a citation happening in real time. Blocks here are real firewall denials of the real bot, the answer the reachability probe can only estimate.</div><div style="display:flex;gap:10px;font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;padding-bottom:2px"><span style="width:200px">Bot</span><span style="width:66px">Hits</span><span>Status &middot; blocks &middot; days seen</span></div>'+rows+'</div></section>';
+   })()}
    ${chH}
    </div>
    <div class="apside">
@@ -2381,15 +2430,19 @@ function printReport(){const Q={Known:'Do they know you?',Findable:'Can they fin
  window.print()}
 tabsbar();render();
 """
+    _wl=bool(d.get('client'))                                    # white-label mode when a client is set
+    _mark="<svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M148.3,50.1 A72,72 0 1 0 158.7,127' fill='none' stroke='#EDF0EB' stroke-width='17' stroke-linecap='square'/><path d='M70,101 L92,123 L135.7,67.5' fill='none' stroke='#42D848' stroke-width='17' stroke-linecap='square'/></svg>"
+    _hdr_logo=(f"<img src=\"{d['logo']}\" alt='' style='height:30px;flex:none;max-width:220px'>" if d.get('logo') else _mark)
+    _hdr_wm=(f"<span class='wm'><span class='lw'>{H.escape(d.get('agency') or 'GoGoChimp')}</span></span>" if _wl else "<span class='wm'><span class='lw'>CITED</span><span class='ls'>Score</span></span>")
     doc=("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-         f"<title>CITED Score: {H.escape(d['domain'])}</title><link rel='icon' href=\"{FAVICON}\">"
+         f"<title>{'AI Search Audit' if _wl else 'CITED Score'}: {H.escape(d['domain'])}</title><link rel='icon' href=\"{FAVICON}\">"
          "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
          "<link href='https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap' rel='stylesheet'>"
          f"<style>{css}</style></head><body>"
-         f"<header><span class='logo'><svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M148.3,50.1 A72,72 0 1 0 158.7,127' fill='none' stroke='#EDF0EB' stroke-width='17' stroke-linecap='square'/><path d='M70,101 L92,123 L135.7,67.5' fill='none' stroke='#42D848' stroke-width='17' stroke-linecap='square'/></svg><span class='wm'><span class='lw'>CITED</span><span class='ls'>Score</span></span></span>"
+         f"<header><span class='logo'>{_hdr_logo}{_hdr_wm}</span>"
          f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--txt);font-weight:600'>{H.escape(d['domain'])}</a> &middot; {d['pages_crawled']} pages &middot; {d['generated']}</span>"
          "<span class='btns'><button onclick='printReport()'>Print / PDF</button><button onclick='exportPages()'>Export CSV</button></span></header>"
-         + ((f"<div style='padding:14px 24px;background:linear-gradient(90deg,rgba(66,216,72,.10),transparent);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#8b8480'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#8b8480'>by GoGoChimp</span>" + (f"<div style='color:#c9c2bd;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
+         + ((f"<div style='padding:14px 24px;background:linear-gradient(90deg,rgba(66,216,72,.10),transparent);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#8b8480'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#8b8480'>by {H.escape(d.get('agency') or 'GoGoChimp')}</span>" + (f"<div style='color:#c9c2bd;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
        + "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view'></div>"
          "<div class='foot'>The CITED Score <b>estimates citability</b> from on-page, structural and technical signals. "
          "It does <b>not</b> measure citations. For measured citations, calibrate the model against your Bing Webmaster Tools AI Performance export "
@@ -2399,10 +2452,17 @@ tabsbar();render();
          f"<script>window.__DATA__={payload};</script><script>{js}</script></body></html>")
     with open(path,"w",encoding="utf-8") as f: f.write(doc)
 
-def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, client=None, intro=None, links=True, site_type=None, queries=None):
+def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, client=None, intro=None, links=True, site_type=None, queries=None, logs=None, agency=None, logo=None):
     """Crawl + score a whole site and write out.html/.json/.csv. progress(phase, done,
     total, msg) is called through the run so a UI can show live status. Returns the data."""
     if not url.startswith("http"): url="https://"+url
+    _logo_uri=None
+    if logo:                                          # white-label: embed the agency/client logo as a data URI
+        try:
+            import base64, mimetypes
+            mt=mimetypes.guess_type(logo)[0] or "image/png"
+            with open(logo,"rb") as _lf: _logo_uri=f"data:{mt};base64,"+base64.b64encode(_lf.read()).decode()
+        except Exception: _logo_uri=None
     p=urllib.parse.urlparse(url); domain=p.netloc.replace("www.",""); origin=f"{p.scheme}://{p.netloc}"
     def emit(phase,done,total,msg):
         if progress: progress(phase,done,total,msg)
@@ -2434,7 +2494,7 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, cl
         linkstatus=check_links(pages, progress=lambda d,t,m: emit("links",d,t,m))
     protocols=agent_protocols(origin) if (out and not unreachable) else {}    # agent protocol/discovery probe (advisory)
     aicrawler=ai_crawler_matrix(origin) if (out and not unreachable) else {}  # AI-bot access matrix (advisory monitor)
-    data=build(domain,origin,pages,sitecx,sitemap_paths,linkstatus,client,intro,protocols,aicrawler,site_type_override=site_type)
+    data=build(domain,origin,pages,sitecx,sitemap_paths,linkstatus,client,intro,protocols,aicrawler,site_type_override=site_type,agency=agency,logo=_logo_uri)
     if sum(1 for pg in pages if pg.get("status")==200)==0:       # nothing crawlable -> flag it clearly, do not present a 0 as a citability score
         data["crawl_failed"]=True
         data["crawl_note"]=((f"{domain} did not respond (timeout or network-level bot protection)" if unreachable
@@ -2447,6 +2507,9 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, cl
             if queries:                                        # citation-query coverage: which cited queries a page targets
                 try: data["query_coverage"]=query_coverage(pages, load_queries(queries))
                 except Exception: pass
+        if logs:                                               # log analysis: real AI-bot behaviour from the server access log (independent of the crawl)
+            try: data["log_analysis"]=analyze_logs(logs)
+            except Exception: pass
         apply_diff(data,out); write_outputs(data,out)         # out=None -> crawl + score only, no files (used by benchmark)
     emit("done",total,total,f"{domain}: {data['overall']}/100, {data['pages_crawled']} pages")
     return data
@@ -2474,6 +2537,9 @@ def main():
     ap.add_argument("--report",help="existing report.json for --calibrate")
     ap.add_argument("--client",help="white-label: client name shown in the report banner")
     ap.add_argument("--intro",help="white-label: optional intro line shown under the client banner")
+    ap.add_argument("--agency",help="white-label: agency name delivering the report (replaces GoGoChimp)")
+    ap.add_argument("--logo",help="white-label: path to an agency/client logo image to embed in the report header")
+    ap.add_argument("--logs",help="server access log (Apache/Nginx combined) for real AI-bot log analysis")
     ap.add_argument("--no-links",action="store_true",help="skip the broken-link check (faster)")
     ap.add_argument("--queries",help="grounding-query CSV (Bing AI Performance 'AI Search Queries' export) for citation-query coverage")
     a=ap.parse_args()
@@ -2483,7 +2549,7 @@ def main():
     print(f"Chrome: {CHROME or 'NONE (raw only)'}")
     def prog(phase,done,total,msg):
         print(f"  [{done}/{total}] {msg}" if phase=="crawl" else msg, flush=True)
-    data=run_audit(a.url,out=a.out,max_pages=a.max_pages,workers=a.workers,progress=prog,client=a.client,intro=a.intro,links=not a.no_links,queries=a.queries)
+    data=run_audit(a.url,out=a.out,max_pages=a.max_pages,workers=a.workers,progress=prog,client=a.client,intro=a.intro,links=not a.no_links,queries=a.queries,logs=a.logs,agency=a.agency,logo=a.logo)
     print(f"\n=== CITED Score: {data['domain']} === {data['overall']}/100 | {data['pages_crawled']} pages")
     print("Pillars: "+" | ".join(f"{k} {v}" for k,v in data['pillars'].items()))
     print("Engines: "+" | ".join(f"{e} {v}" for e,v in data['engines'].items()))
