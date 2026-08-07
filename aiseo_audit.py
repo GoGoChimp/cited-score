@@ -394,19 +394,19 @@ def classify_site(pages):
     """Aggregate per-page signals into a dominant SITE type, to pick a scoring profile. Deliberately
     conservative; the chosen type is exposed in the report and is meant to be overridable."""
     n=len(pages) or 1
-    ECOM_PATH=re.compile(r"/(products?|shop|store|collections?|cart|checkout|basket)(/|$|\?)",re.I)
+    ECOM_PATH=re.compile(r"/(shop|store|collections?|cart|checkout|basket|bag)(/|$|\?)",re.I)   # shop-specific; bare /product(s)/ dropped (SaaS uses it, e.g. moz /products/api, notion /product)
     SAAS_PATH=re.compile(r"/(pricing|features?|integrations?|solutions?|demo|sign-?up|api|docs)(/|$|\?)",re.I)
     ECOM_SCHEMA={"Product","AggregateOffer"}; SAAS_SCHEMA={"SoftwareApplication","WebApplication"}   # bare "Offer" excluded: services/pricing pages use it too
-    CART_RE=re.compile(r"/(cart|checkout|basket|bag)(/|$|\?)",re.I)      # a persistent header cart link = a shop, present even on the homepage
-    prod=ecom=saas=article=cart=0
+    prod=ecom=saas=article=0
     for p in pages:
         path=(p.get("path") or "").lower(); tset=set((p.get("metrics") or {}).get("schema_types") or [])
-        if ECOM_SCHEMA & tset: prod+=1
-        if ECOM_PATH.search(path) or (ECOM_SCHEMA & tset): ecom+=1
+        is_article=p.get("type")=="article"
+        shop_schema=bool(ECOM_SCHEMA & tset) and not is_article     # Product schema on a news/blog article (affiliate/review widget) is NOT a shop signal (e.g. theguardian)
+        if shop_schema: prod+=1
+        if (ECOM_PATH.search(path) and not is_article) or shop_schema: ecom+=1
         if SAAS_PATH.search(path) or (SAAS_SCHEMA & tset): saas+=1
-        if p.get("type")=="article": article+=1
-        if CART_RE.search(path) or any(CART_RE.search(u) for u in (p.get("links") or [])): cart+=1
-    if prod>=3 or ecom/n>=0.20 or cart/n>=0.5: return "ecommerce"     # cart link on most pages catches big retailers before a product page is reached
+        if is_article: article+=1
+    if prod>=3 or ecom/n>=0.20: return "ecommerce"          # Product schema on non-article pages + shop paths; big retailers under-detect on shallow crawls (overridable) rather than risk SaaS/news false positives
     if article/n>=0.55 and article>=3: return "blog"         # blog-dominant, with a minimum-evidence guard
     if saas/n>=0.08 and prod==0: return "b2b_saas"           # SaaS markers, not a shop (shallow crawls surface few, so no count floor)
     # mixed / thin-evidence sites fall through to general (auto-guess is overridable in the app)
