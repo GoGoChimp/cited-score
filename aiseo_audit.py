@@ -128,7 +128,7 @@ CHECK_META = {
                 "ev":"AI recommends well-reviewed businesses (claiming a Trustpilot profile lifted citation 1%->54%); Review / AggregateRating schema exposes your ratings to Google rich results and AI in machine-readable form (Trustpilot/Seer + Uberall 2026, Ch4)."},
  # INFORMATIONAL - not scored
  "llms":       {"label":"llms.txt (informational, not scored)","pillar":"Info","ch":"Ch5","phase":0,"effort":"Low",
-                "ev":"SE Ranking found NO correlation between llms.txt and citations; their model got more accurate without it (Ch5). Shown for reference; harmless, not required."},
+                "ev":"No evidence llms.txt affects AI citation: SE Ranking found no correlation (Ch5); Google's John Mueller says no AI system currently uses it; Ahrefs found 97% of llms.txt files got zero bot requests; and Mark Williams-Cook's cats.txt experiment showed a fabricated 'standard' clears the same 'proofs' people cite (crawled, indexed, retrieved, endorsed), so those signals prove nothing. Shown for reference; harmless, not required."},
 }
 PILLARS = ["Known","Findable","Trusted"]
 FIX = {
