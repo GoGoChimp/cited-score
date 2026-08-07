@@ -353,6 +353,11 @@ def classify(path, types):
     if path.rstrip("/") in ("/blog","/case-studies","/blogs","/resources","/guides","/tools"): return "listing"
     if segs and segs[0] == "blog": return "article"
     if {"Article","BlogPosting","NewsArticle","TechArticle"} & set(types): return "article"
+    _t = set(types)                                                  # e-commerce page types (were falling into generic "page")
+    if {"Product","IndividualProduct","ProductGroup"} & _t: return "product"
+    if re.search(r"/(products?|product|p|item|sku|dp|buy)/[^/]", path, re.I): return "product"
+    if re.search(r"/(collections?|categor(?:y|ies)|shop|store|department|ranges?|brands?)(/|$)", path, re.I): return "category"
+    if "AggregateOffer" in _t: return "product"                     # priced page, no category path -> product
     if segs and segs[0] in ("services","service"): return "service"
     if len(segs) == 1: return "page"
     return "page"
@@ -364,6 +369,10 @@ NA_BY_TYPE = {
     "home":     {"answerfirst","qheadings","sections","faq","freshness","schema","schemacomplete","author","sourced","video","readability","entitydensity","definitional","answerthird","h2answer","reviewschema"},
     "listing":  {"answerfirst","qheadings","sections","faq","freshness","schema","statdensity","citations","wordcount","schemacomplete","author","sourced","video","entity","readability","entitydensity","definitional","answerthird","h2answer","reviewschema"},
     "article":  {"reviewschema"},
+    # e-commerce: a product/category page is not article/Q&A content, so the article-shaped checks do not apply
+    # (a product page has no human author and no "X is a..." opener; it owes schema, entity, reviews, freshness).
+    "product":  {"author","definitional","answerfirst","answerthird","qheadings","h2answer","sourced","citations"},
+    "category": {"author","definitional","answerfirst","answerthird","qheadings","h2answer","sourced","citations","wordcount","statdensity"},
 }
 
 # --- Website-type scoring profiles: a re-weighting LAYER on the calibrated 0-100 (NOT a separate score).
@@ -796,15 +805,19 @@ def site_checks(origin, domain):
     # bot). A WAF 403 here means the engine cannot fetch the page to cite it, even if robots "allows"
     # the bot. Googlebot/Bingbot blocked = a classic-search-indexing risk on top of the AI one.
     def _rprobe(item):
-        nm,ua=item; s,_,_,_=fetch_raw(origin+"/",ua=ua); return (nm,s)
-    with ThreadPoolExecutor(max_workers=6) as _ex:
+        nm,ua=item; s,_,_,_=fetch_raw(origin+"/",ua=ua)
+        if s==429: time.sleep(1.5); s,_,_,_=fetch_raw(origin+"/",ua=ua)   # 429 = rate limit, often our own burst -> retry once
+        return (nm,s)
+    with ThreadPoolExecutor(max_workers=3) as _ex:                        # gentler burst so we do not self-trigger the WAF
         reach=list(_ex.map(_rprobe, SERVING_UAS))
-    _blk=lambda s: s in (401,403,429) or s is None
-    bl=[b for b,s in reach if _blk(s)]
-    srch=[b for b,s in reach if _blk(s) and b in ("Googlebot","Bingbot")]
+    _hardblk=lambda s: s in (401,403) or s is None   # a real firewall deny
+    bl=[b for b,s in reach if _hardblk(s)]
+    rl=[b for b,s in reach if s==429]                # rate-limited: inconclusive, likely our own probe, NOT a policy block
+    srch=[b for b,s in reach if _hardblk(s) and b in ("Googlebot","Bingbot")]
     _det="; ".join(f"{b}:{s if s is not None else 'x'}" for b,s in reach)
     if srch: _det+=" | search crawler blocked ("+", ".join(srch)+"): Google/Bing indexing risk, not just AI"
-    out.append(chk("reachability","bad" if bl else "good",_det))
+    if rl and not bl: _det+=" | "+", ".join(rl)+" rate-limited (429) after retry, likely our probe burst not a block"
+    out.append(chk("reachability","bad" if bl else ("warn" if rl else "good"),_det))
     st2,_,llms,_=fetch_raw(origin+"/llms.txt")
     if st2==200 and llms:
         out.append(chk("llms","info","present"+("" if "](" in llms else " (no markdown links)")))
@@ -818,9 +831,11 @@ def all_urls(origin, domain, cap, start=None):
     the start page. Fixes two gaps: index sitemaps were read as if they were page lists, and
     only the homepage was link-crawled so entering a hub like /blog found nothing."""
     def same(u):
-        p=urllib.parse.urlparse(u)
+        p=urllib.parse.urlparse(u); pl=p.path.lower()
         return (p.scheme in ("http","https") and domain in p.netloc.replace("www.","")
-                and not ASSET_RE.search(p.path) and not p.path.lower().endswith((".xml",".xml.gz")))
+                and not ASSET_RE.search(p.path)
+                and not pl.endswith((".xml",".xml.gz",".md",".txt",".json",".yaml",".yml",".rss",".atom"))  # machine/agent files (agents.md, llms.txt, ...) are not scored pages
+                and "/.well-known/" not in pl)
     # 1. locate sitemaps: robots.txt Sitemap: directives first, then common defaults
     sm_seed=[]
     _,_,rob,_=fetch_raw(origin+"/robots.txt")
@@ -1030,9 +1045,12 @@ def ai_crawler_matrix(origin):
     groups=_parse_robots(robots)
     _uamap=dict(SERVING_UAS)
     def _probe(nm):
-        s,_,_,_=fetch_raw(origin+"/",ua=_uamap[nm]); return (nm, s if s is not None else 0)
+        s,_,_,_=fetch_raw(origin+"/",ua=_uamap[nm])
+        if s==429:                              # 429 = rate limit, usually our own concurrent burst -> back off + retry once
+            time.sleep(1.5); s,_,_,_=fetch_raw(origin+"/",ua=_uamap[nm])
+        return (nm, s if s is not None else 0)
     reachmap={}
-    with ThreadPoolExecutor(max_workers=6) as ex:
+    with ThreadPoolExecutor(max_workers=3) as ex:   # gentler burst so we do not self-trigger the WAF rate limit
         for nm,s in ex.map(_probe,[n for n,_ in SERVING_UAS]): reachmap[nm]=s
     bots=[{"name":n,"ua":ua,"op":op,"role":role,"purpose":pur,
            "status":_bot_status(groups,ua),"reach":reachmap.get(n)} for n,ua,op,role,pur in AI_BOTS]
@@ -2189,11 +2207,13 @@ function aicrawlerView(){
  var bots=ac.bots||[];
  var reach=(D.site_checks||[]).find(function(c){return c.id=='reachability'})||{};
  var col={allowed:'#3DD68C',partial:'#F0B429',blocked:'#E0533D'};
- var isBlk=function(r){return r===0||r==401||r==403||r==429;};       // reach status meaning blocked; >0 non-blocking = ok; null = not probed
+ var isBlk=function(r){return r===0||r==401||r==403;};               // HARD firewall deny (429 = rate limit, handled separately)
+ var isRL=function(r){return r==429;};                               // rate-limited: inconclusive, likely our own probe burst, NOT a block
  var fwBlocked=function(b){return b.reach!=null&&isBlk(b.reach);};    // robots may allow, but the firewall 403s
  var effCol=function(b){return (b.status=='blocked'||fwBlocked(b))?col.blocked:(b.status=='partial'?col.partial:col.allowed);};
  var reachLabel=function(b){
    if(b.reach==null) return '<span style="width:104px;flex:none"></span>';
+   if(isRL(b.reach)) return '<span title="429 rate-limit after retry, likely our probe burst, not a block" style="color:#F0B429;font-weight:700;font-size:11px;flex:none;width:104px;text-align:right">rate-limited</span>';
    var blk=isBlk(b.reach);
    return '<span style="color:'+(blk?'#E0533D':'#3DD68C')+';font-weight:700;font-size:11px;flex:none;width:104px;text-align:right">'+(blk?('firewall '+(b.reach||'x')):'reachable')+'</span>';
  };
