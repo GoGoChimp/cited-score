@@ -11,7 +11,7 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.13.0"                # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.13.1"                # semver; bump on every release + tag the GitHub release to match
 GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
 VERSION = f"v{APP_VERSION} - August 2026"
 
@@ -115,7 +115,7 @@ a{color:var(--grn);text-decoration:none}
 .runbtn:hover:not(:disabled){background:var(--grn2)}.runbtn:disabled{opacity:.5;cursor:default}
 .hint{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px;color:var(--muted);font-size:13px}
 .optbtn{background:none;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer}
-.opts{display:none;gap:14px;margin-top:14px}.opts.on{display:flex}.opts>div{flex:1}
+.opts{display:none;gap:14px;margin-top:14px}.opts.on{display:flex;align-items:end;flex-wrap:nowrap}.opts>div{flex:1;min-width:0}.opts label{min-height:32px}
 .opts label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
 .opts input,.opts select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:10px 12px;font-size:14px}
 .side{margin-top:58px}

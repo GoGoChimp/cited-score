@@ -1660,6 +1660,7 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 """
     js=r"""
 const D=window.__DATA__;
+const WL=!!D.client, SCORELABEL=WL?'AI Search Score':'CITED Score';   // white-label: de-brand the score name
 const col=s=>s>=75?'#42D848':s>=50?'#F0B429':'#E0533D';
 const bcol=v=>v>=70?'#42D848':v>=50?'#F0B429':'#E0533D';
 const dlt=(now,was)=>{if(was==null)return'';const d=now-was,c=d>0?'up':d<0?'dn':'z',s=(d>0?'+':'')+d;return ` <span class="d ${c}">${s}</span>`};
@@ -1715,7 +1716,7 @@ function ovw2(){
  return `${D.crawl_failed?`<div style="background:rgba(224,83,61,.18);border:1px solid rgba(224,83,61,.55);border-radius:12px;padding:16px 18px;margin-bottom:16px;color:#ff9c88;font-size:14px"><b>Couldn't crawl this site.</b> ${esc(D.crawl_note||'')}</div>`:''}${D.access_blocked?'<div style="background:rgba(255,77,61,.14);border:1px solid rgba(255,77,61,.4);border-radius:12px;padding:14px 18px;margin-bottom:16px;color:#ff9c88;font-size:14px"><b>AI crawlers are blocked.</b> robots.txt or your WAF is blocking GPTBot / PerplexityBot / Bingbot, so nothing on this site can be cited by AI until it is fixed. The overall score is capped to reflect that - see the robots / reachability checks.</div>':''}${(D.redirect_home||[]).length?`<div style="background:rgba(240,180,41,.12);border:1px solid rgba(240,180,41,.4);border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:14px"><div style="color:#f0c674;font-weight:700;margin-bottom:6px">${(D.redirect_home||[]).length} page${(D.redirect_home||[]).length==1?'':'s'} silently redirect to your homepage</div><div class="qd" style="line-height:1.6">If an AI engine cites one of these deep URLs, the reader is bounced to your homepage instead of the answer they were promised, so the citation is wasted and its authority is diluted. Restore the real page at each address, or 301 to the closest matching content, not the homepage.</div><div style="margin-top:9px;display:flex;flex-direction:column;gap:3px">${(D.redirect_home||[]).slice(0,5).map(r=>`<div style="font-size:13px"><span style="word-break:break-all">${rel(r.url)}</span> <span class="qd">&rarr; homepage</span></div>`).join('')}${(D.redirect_home||[]).length>5?`<div class="qd">+${(D.redirect_home||[]).length-5} more</div>`:''}</div></div>`:''}<div class="ov"><div>
    <div class="panel"><div class="hero">
      <div class="sring" style="--p:${D.overall};--c:var(--grn)"><i><span class="v">${D.overall}</span><span class="o">OF 100</span></i></div>
-     <div style="flex:1;min-width:190px"><div class="htitle">CITED Score</div><div class="hsub">Weighted across six engines. Pages score as <b>quotable</b> at 70.</div>${odtxt}${(D.site_type&&D.site_type!=='general')?`<div style="margin-top:9px"><span style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.4px;color:#42D848;background:rgba(66,216,72,.12);border:1px solid rgba(66,216,72,.35);padding:3px 11px;border-radius:999px">SCORED AS ${esc((D.site_type_label||'').toUpperCase())}</span></div>`:''}</div>
+     <div style="flex:1;min-width:190px"><div class="htitle">${SCORELABEL}</div><div class="hsub">Weighted across six engines. Pages score as <b>quotable</b> at 70.</div>${odtxt}${(D.site_type&&D.site_type!=='general')?`<div style="margin-top:9px"><span style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.4px;color:#42D848;background:rgba(66,216,72,.12);border:1px solid rgba(66,216,72,.35);padding:3px 11px;border-radius:999px">SCORED AS ${esc((D.site_type_label||'').toUpperCase())}</span></div>`:''}</div>
      <div class="hc"><div style="display:flex;justify-content:space-between;align-items:baseline"><div class="hclabel">Check health · ${tc} checks</div><span class="qd">${pass}% passing</span></div>
        <div class="chbar"><div class="chseg" style="flex:${g||1};background:var(--ok)"></div><div class="chseg" style="flex:${w||0.01};background:var(--warn2)"></div><div class="chseg" style="flex:${b||0.01};background:var(--err2)"></div></div>
        <div class="chstat"><div><div class="n" style="color:var(--err2)">${b}</div><div class="l">Errors — blocking</div></div><div><div class="n" style="color:var(--warn2)">${w}</div><div class="l">Warnings — weakening</div></div><div><div class="n" style="color:var(--ok)">${g}</div><div class="l">Passed</div></div></div></div>
@@ -1754,7 +1755,7 @@ function ovw(){const t=D.totals;const err=D.issues.filter(i=>i.severity=='bad').
  const Q={Known:'Do the engines know you exist?',Findable:'Can they find your answer?',Trusted:'Do they trust you enough to name you?'};
  return diffCard()+
  `<div class="grid">
-  <div class="card"><div class="n" style="color:${col(D.overall)}">${D.overall}</div><div class="l">CITED Score</div></div>
+  <div class="card"><div class="n" style="color:${col(D.overall)}">${D.overall}</div><div class="l">${SCORELABEL}</div></div>
   <div class="card"><div class="n">${D.pages_crawled}</div><div class="l">Pages crawled</div></div>
   <div class="card"><div class="n" style="color:var(--red)">${err}</div><div class="l">Errors</div></div>
   <div class="card"><div class="n" style="color:var(--amber)">${wr}</div><div class="l">Warnings</div></div>
@@ -2423,7 +2424,7 @@ function brokenView(){
  </div>`;
 }
 function printReport(){const Q={Known:'Do they know you?',Findable:'Can they find your answer?',Trusted:'Do they trust you?'};
- document.getElementById('printroot').innerHTML=`<h1>CITED Score — ${esc(D.domain)}</h1><p>${D.pages_crawled} pages · ${esc(D.generated)} · Overall ${D.overall}/100</p>`+
+ document.getElementById('printroot').innerHTML=`<h1>${SCORELABEL} — ${esc(D.domain)}</h1><p>${D.pages_crawled} pages · ${esc(D.generated)} · Overall ${D.overall}/100</p>`+
   `<h2>Action plan</h2>`+D.issues.map((i,x)=>`<p><b>${x+1}. ${esc(i.label)}</b> [${i.pillar}, ${i.ch}, ${i.effort}] ${i.gain_overall>0?'(+'+i.gain_overall+' overall)':''}<br>${esc(i.fix)} — ${i.count} pages</p>`).join('')+
   `<h2>All pages</h2><table><thead><tr><th>Score</th><th>URL</th><th>Kn</th><th>Fi</th><th>Tr</th></tr></thead><tbody>`+
   D.pages.map(p=>`<tr><td>${p.score}</td><td>${rel(p.url)}</td><td>${p.pillars.Known}</td><td>${p.pillars.Findable}</td><td>${p.pillars.Trusted}</td></tr>`).join('')+`</tbody></table>`;
@@ -2432,7 +2433,7 @@ tabsbar();render();
 """
     _wl=bool(d.get('client'))                                    # white-label mode when a client is set
     _mark="<svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M148.3,50.1 A72,72 0 1 0 158.7,127' fill='none' stroke='#EDF0EB' stroke-width='17' stroke-linecap='square'/><path d='M70,101 L92,123 L135.7,67.5' fill='none' stroke='#42D848' stroke-width='17' stroke-linecap='square'/></svg>"
-    _hdr_logo=(f"<img src=\"{d['logo']}\" alt='' style='height:30px;flex:none;max-width:220px'>" if d.get('logo') else _mark)
+    _hdr_logo=(f"<img src=\"{d['logo']}\" alt='' style='height:30px;flex:none;max-width:220px'>" if d.get('logo') else ("" if _wl else _mark))
     _hdr_wm=(f"<span class='wm'><span class='lw'>{H.escape(d.get('agency') or 'GoGoChimp')}</span></span>" if _wl else "<span class='wm'><span class='lw'>CITED</span><span class='ls'>Score</span></span>")
     doc=("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
          f"<title>{'AI Search Audit' if _wl else 'CITED Score'}: {H.escape(d['domain'])}</title><link rel='icon' href=\"{FAVICON}\">"
@@ -2444,11 +2445,9 @@ tabsbar();render();
          "<span class='btns'><button onclick='printReport()'>Print / PDF</button><button onclick='exportPages()'>Export CSV</button></span></header>"
          + ((f"<div style='padding:14px 24px;background:linear-gradient(90deg,rgba(66,216,72,.10),transparent);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#8b8480'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#8b8480'>by {H.escape(d.get('agency') or 'GoGoChimp')}</span>" + (f"<div style='color:#c9c2bd;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
        + "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view'></div>"
-         "<div class='foot'>The CITED Score <b>estimates citability</b> from on-page, structural and technical signals. "
-         "It does <b>not</b> measure citations. For measured citations, calibrate the model against your Bing Webmaster Tools AI Performance export "
-         "(<code>--calibrate citations.csv</code>). Every check carries a source (engine documentation, first-party citation data, or a CITED chapter). "
-         "llms.txt and Grok are shown for reference only and are not scored (Ch5): llms.txt shows no citation correlation, and Grok has no citation export to calibrate against.</div></div>"
-         "<div id='printroot'></div>"
+       + ("<div class='foot'>This report <b>estimates citability</b> for AI search from on-page, structural and technical signals. It does <b>not</b> measure citations. llms.txt and Grok are shown for reference only and are not scored.</div></div>" if _wl
+          else "<div class='foot'>The CITED Score <b>estimates citability</b> from on-page, structural and technical signals. It does <b>not</b> measure citations. For measured citations, calibrate the model against your Bing Webmaster Tools AI Performance export (<code>--calibrate citations.csv</code>). Every check carries a source (engine documentation, first-party citation data, or a CITED chapter). llms.txt and Grok are shown for reference only and are not scored (Ch5): llms.txt shows no citation correlation, and Grok has no citation export to calibrate against.</div></div>")
+       + "<div id='printroot'></div>"
          f"<script>window.__DATA__={payload};</script><script>{js}</script></body></html>")
     with open(path,"w",encoding="utf-8") as f: f.write(doc)
 
