@@ -232,7 +232,7 @@ def _profile():
         os.makedirs(_tls.prof, exist_ok=True)
     return _tls.prof
 
-def fetch_raw(url, ua=UA, timeout=25, capture=None):
+def fetch_raw(url, ua=UA, timeout=25, capture=None, _retry=True):
     t0 = time.time()
     try:
         req = urllib.request.Request(url, headers={"User-Agent": ua})
@@ -241,6 +241,8 @@ def fetch_raw(url, ua=UA, timeout=25, capture=None):
             if capture is not None: capture["final_url"] = r.geturl()   # after redirects
             return r.status, dict(r.headers), data.decode(enc, "ignore"), int((time.time()-t0)*1000)
     except urllib.error.HTTPError as e:
+        if _retry and e.code in (429, 503):                             # transient rate-limit / overload -> back off once
+            time.sleep(2.0); return fetch_raw(url, ua, timeout, capture, _retry=False)
         return e.code, {}, "", int((time.time()-t0)*1000)
     except Exception:
         return None, {}, "", int((time.time()-t0)*1000)
@@ -395,14 +397,16 @@ def classify_site(pages):
     ECOM_PATH=re.compile(r"/(products?|shop|store|collections?|cart|checkout|basket)(/|$|\?)",re.I)
     SAAS_PATH=re.compile(r"/(pricing|features?|integrations?|solutions?|demo|sign-?up|api|docs)(/|$|\?)",re.I)
     ECOM_SCHEMA={"Product","AggregateOffer"}; SAAS_SCHEMA={"SoftwareApplication","WebApplication"}   # bare "Offer" excluded: services/pricing pages use it too
-    prod=ecom=saas=article=0
+    CART_RE=re.compile(r"/(cart|checkout|basket|bag)(/|$|\?)",re.I)      # a persistent header cart link = a shop, present even on the homepage
+    prod=ecom=saas=article=cart=0
     for p in pages:
         path=(p.get("path") or "").lower(); tset=set((p.get("metrics") or {}).get("schema_types") or [])
         if ECOM_SCHEMA & tset: prod+=1
         if ECOM_PATH.search(path) or (ECOM_SCHEMA & tset): ecom+=1
         if SAAS_PATH.search(path) or (SAAS_SCHEMA & tset): saas+=1
         if p.get("type")=="article": article+=1
-    if prod>=3 or ecom/n>=0.20: return "ecommerce"          # Product schema (not bare Offer) is the strongest signal
+        if CART_RE.search(path) or any(CART_RE.search(u) for u in (p.get("links") or [])): cart+=1
+    if prod>=3 or ecom/n>=0.20 or cart/n>=0.5: return "ecommerce"     # cart link on most pages catches big retailers before a product page is reached
     if article/n>=0.55 and article>=3: return "blog"         # blog-dominant, with a minimum-evidence guard
     if saas/n>=0.08 and prod==0: return "b2b_saas"           # SaaS markers, not a shop (shallow crawls surface few, so no count floor)
     # mixed / thin-evidence sites fall through to general (auto-guess is overridable in the app)
@@ -1670,7 +1674,7 @@ function ovw2(){
  const P=D.pages.length, parityBad=D.pages.filter(p=>p.cs&&p.cs.parity=='bad').length, reach=((D.site_checks||[]).find(s=>s.id=='reachability')||{}).status||'good';
  const rr=(name,st,txt)=>`<div class="rch"><span>${name}</span><span class="rst ${st=='good'?'ok':st=='warn'?'wn':'er'}">${txt}</span></div>`;
  const reachH=rr('GPTBot',reach,reach=='good'?`allowed · ${P}/${P} pages`:reach=='warn'?'partial':'blocked')+rr('PerplexityBot',reach,reach=='good'?`allowed · ${P}/${P} pages`:reach=='warn'?'partial':'blocked')+rr('Google-Extended',reach=='bad'?'bad':'warn',reach=='bad'?'blocked':'partial')+rr('Server-rendered schema',parityBad?'bad':'good',parityBad?`${parityBad} pages JS-injected only`:`all ${P} pages server-rendered`);
- return `${D.access_blocked?'<div style="background:rgba(255,77,61,.14);border:1px solid rgba(255,77,61,.4);border-radius:12px;padding:14px 18px;margin-bottom:16px;color:#ff9c88;font-size:14px"><b>AI crawlers are blocked.</b> robots.txt or your WAF is blocking GPTBot / PerplexityBot / Bingbot, so nothing on this site can be cited by AI until it is fixed. The overall score is capped to reflect that - see the robots / reachability checks.</div>':''}${(D.redirect_home||[]).length?`<div style="background:rgba(240,180,41,.12);border:1px solid rgba(240,180,41,.4);border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:14px"><div style="color:#f0c674;font-weight:700;margin-bottom:6px">${(D.redirect_home||[]).length} page${(D.redirect_home||[]).length==1?'':'s'} silently redirect to your homepage</div><div class="qd" style="line-height:1.6">If an AI engine cites one of these deep URLs, the reader is bounced to your homepage instead of the answer they were promised, so the citation is wasted and its authority is diluted. Restore the real page at each address, or 301 to the closest matching content, not the homepage.</div><div style="margin-top:9px;display:flex;flex-direction:column;gap:3px">${(D.redirect_home||[]).slice(0,5).map(r=>`<div style="font-size:13px"><span style="word-break:break-all">${rel(r.url)}</span> <span class="qd">&rarr; homepage</span></div>`).join('')}${(D.redirect_home||[]).length>5?`<div class="qd">+${(D.redirect_home||[]).length-5} more</div>`:''}</div></div>`:''}<div class="ov"><div>
+ return `${D.crawl_failed?`<div style="background:rgba(224,83,61,.18);border:1px solid rgba(224,83,61,.55);border-radius:12px;padding:16px 18px;margin-bottom:16px;color:#ff9c88;font-size:14px"><b>Couldn't crawl this site.</b> ${esc(D.crawl_note||'')}</div>`:''}${D.access_blocked?'<div style="background:rgba(255,77,61,.14);border:1px solid rgba(255,77,61,.4);border-radius:12px;padding:14px 18px;margin-bottom:16px;color:#ff9c88;font-size:14px"><b>AI crawlers are blocked.</b> robots.txt or your WAF is blocking GPTBot / PerplexityBot / Bingbot, so nothing on this site can be cited by AI until it is fixed. The overall score is capped to reflect that - see the robots / reachability checks.</div>':''}${(D.redirect_home||[]).length?`<div style="background:rgba(240,180,41,.12);border:1px solid rgba(240,180,41,.4);border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:14px"><div style="color:#f0c674;font-weight:700;margin-bottom:6px">${(D.redirect_home||[]).length} page${(D.redirect_home||[]).length==1?'':'s'} silently redirect to your homepage</div><div class="qd" style="line-height:1.6">If an AI engine cites one of these deep URLs, the reader is bounced to your homepage instead of the answer they were promised, so the citation is wasted and its authority is diluted. Restore the real page at each address, or 301 to the closest matching content, not the homepage.</div><div style="margin-top:9px;display:flex;flex-direction:column;gap:3px">${(D.redirect_home||[]).slice(0,5).map(r=>`<div style="font-size:13px"><span style="word-break:break-all">${rel(r.url)}</span> <span class="qd">&rarr; homepage</span></div>`).join('')}${(D.redirect_home||[]).length>5?`<div class="qd">+${(D.redirect_home||[]).length-5} more</div>`:''}</div></div>`:''}<div class="ov"><div>
    <div class="panel"><div class="hero">
      <div class="sring" style="--p:${D.overall};--c:var(--grn)"><i><span class="v">${D.overall}</span><span class="o">OF 100</span></i></div>
      <div style="flex:1;min-width:190px"><div class="htitle">CITED Score</div><div class="hsub">Weighted across six engines. Pages score as <b>quotable</b> at 70.</div>${odtxt}${(D.site_type&&D.site_type!=='general')?`<div style="margin-top:9px"><span style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.4px;color:#42D848;background:rgba(66,216,72,.12);border:1px solid rgba(66,216,72,.35);padding:3px 11px;border-radius:999px">SCORED AS ${esc((D.site_type_label||'').toUpperCase())}</span></div>`:''}</div>
@@ -2244,10 +2248,11 @@ function aicrawlerView(){
  else if(servingBlocked.length)headline='<span style="color:#ff9c88"><b>'+servingBlocked.length+' citation bot'+(servingBlocked.length==1?'':'s')+' restricted</b> ('+servingBlocked.map(function(b){return esc(b.name)}).join(', ')+') - those engines cannot fully cite you.</span>';
  else headline='<span style="color:#3DD68C"><b>All citation bots allowed.</b> '+allowedN+' of '+bots.length+' AI bots allowed overall.</span>';
  var searchRisk=bots.filter(function(b){return (b.name=='Googlebot'||b.name=='Bingbot')&&fwBlocked(b);});
+ var probeCaveat='<div class="qd" style="margin-top:6px;font-style:italic">Caveat: we probe from a generic client, not the bot&#39;s real IP, so a WAF that verifies bots by IP may be blocking our impersonation while the real bot gets through. Treat a firewall block as a strong flag, then confirm in robots.txt and your server logs.</div>';
  var reachNote=searchRisk.length
-   ?'<div class="qd" style="margin-top:8px;color:#ff9c88"><b>Search crawler blocked.</b> '+searchRisk.map(function(b){return esc(b.name)+' ('+b.reach+')'}).join(', ')+' is firewall-blocked, a Google/Bing <b>indexing</b> risk, not just an AI one. A WAF "block AI training" rule can 403 the search crawlers too (Cloudflare formalises this on 15 Sep 2026).</div>'
+   ?'<div class="qd" style="margin-top:8px;color:#ff9c88"><b>Search crawler blocked.</b> '+searchRisk.map(function(b){return esc(b.name)+' ('+b.reach+')'}).join(', ')+' is firewall-blocked, a Google/Bing <b>indexing</b> risk, not just an AI one. A WAF "block AI training" rule can 403 the search crawlers too (Cloudflare formalises this on 15 Sep 2026).</div>'+probeCaveat
    :(reach.status=='bad'
-     ?'<div class="qd" style="margin-top:8px;color:#ff9c88">Live WAF test: '+esc(reach.detail||'')+'. A bot that robots.txt "allows" can still be blocked at the firewall.</div>'
+     ?'<div class="qd" style="margin-top:8px;color:#ff9c88">Live WAF test: '+esc(reach.detail||'')+'. A bot that robots.txt "allows" can still be blocked at the firewall.</div>'+probeCaveat
      :'<div class="qd" style="margin-top:8px">Live WAF test (citation-serving bots): '+esc(reach.detail||'reachable')+'.</div>');
  var noidx=(D.pages||[]).filter(function(p){return p.cs&&p.cs.noindex=='bad'});
  var noidxNote=noidx.length
@@ -2402,7 +2407,17 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, cl
     def emit(phase,done,total,msg):
         if progress: progress(phase,done,total,msg)
     emit("discover",0,0,f"Discovering URLs for {domain}...")
-    urls,sitemap_paths=all_urls(origin,domain,max_pages,url)
+    def _reach(u):                                   # fail-fast: don't grind sitemap discovery on a dead/blocked site
+        for _ in range(2):
+            s,_,_,_=fetch_raw(u, timeout=8)
+            if s is not None: return s
+        return None
+    _start_st=_reach(url); unreachable = _start_st is None or _start_st in (401,403)
+    if unreachable:
+        emit("discover",0,1,f"{domain} did not respond (timeout or bot-block); auditing only what we can reach")
+        urls,sitemap_paths=[url],set()
+    else:
+        urls,sitemap_paths=all_urls(origin,domain,max_pages,url)
     total=len(urls); done=[0]
     emit("discover",0,total,f"{total} URLs to crawl")
     def work(u):
@@ -2412,20 +2427,26 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, cl
     with ThreadPoolExecutor(max_workers=workers) as ex:
         pages=list(ex.map(work,urls))
     emit("site",total,total,"Site-wide checks...")
-    sitecx=site_checks(origin,domain)
+    sitecx=site_checks(origin,domain) if not unreachable else []   # skip site-wide network probes on an unreachable site
     linkstatus={}
-    if out and links:                          # full audit (not the capped benchmark path) -> check outbound links
+    if out and links and not unreachable:      # skip on an unreachable site (nothing to check + avoids more timeouts)
         emit("links",0,0,"Checking outbound links...")
         linkstatus=check_links(pages, progress=lambda d,t,m: emit("links",d,t,m))
-    protocols=agent_protocols(origin) if out else {}    # agent protocol/discovery probe (advisory)
-    aicrawler=ai_crawler_matrix(origin) if out else {}  # AI-bot access matrix (advisory monitor)
+    protocols=agent_protocols(origin) if (out and not unreachable) else {}    # agent protocol/discovery probe (advisory)
+    aicrawler=ai_crawler_matrix(origin) if (out and not unreachable) else {}  # AI-bot access matrix (advisory monitor)
     data=build(domain,origin,pages,sitecx,sitemap_paths,linkstatus,client,intro,protocols,aicrawler,site_type_override=site_type)
+    if sum(1 for pg in pages if pg.get("status")==200)==0:       # nothing crawlable -> flag it clearly, do not present a 0 as a citability score
+        data["crawl_failed"]=True
+        data["crawl_note"]=((f"{domain} did not respond (timeout or network-level bot protection)" if unreachable
+                             else f"0 of {len(pages)} crawled page(s) returned 200; the site firewall is likely rate-limiting or blocking the crawler")
+                            +". This is a reachability problem, not a citability score. Try again shortly, lower the worker count, or the site may hard-block bots.")
     if out:
-        try: data["internal_search"]=audit_internal_search(pages,origin)   # citation-to-landing (b): honest probe of the site's own search
-        except Exception: data["internal_search"]={"detected":False}
-        if queries:                                            # citation-query coverage: which cited queries a page targets
-            try: data["query_coverage"]=query_coverage(pages, load_queries(queries))
-            except Exception: pass
+        if not unreachable:                                    # skip the extra probes on a site we could not reach
+            try: data["internal_search"]=audit_internal_search(pages,origin)   # citation-to-landing (b): honest probe of the site's own search
+            except Exception: data["internal_search"]={"detected":False}
+            if queries:                                        # citation-query coverage: which cited queries a page targets
+                try: data["query_coverage"]=query_coverage(pages, load_queries(queries))
+                except Exception: pass
         apply_diff(data,out); write_outputs(data,out)         # out=None -> crawl + score only, no files (used by benchmark)
     emit("done",total,total,f"{domain}: {data['overall']}/100, {data['pages_crawled']} pages")
     return data
