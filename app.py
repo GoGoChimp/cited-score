@@ -11,7 +11,7 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.15.1"                # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.15.2"                # semver; bump on every release + tag the GitHub release to match
 GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
 VERSION = f"v{APP_VERSION} - August 2026"
 
@@ -133,6 +133,24 @@ def connect_mcp():
         cfg.setdefault("mcpServers", {})["cited-score"] = {"command": cmd, "args": args}
         with open(path, "w", encoding="utf-8") as f: json.dump(cfg, f, indent=2)
         return {"ok": True, "path": path, "note": "Restart Claude Desktop to load CITED Score."}
+    except Exception as e:
+        return {"ok": False, "path": path, "error": str(e)[:200]}
+
+def disconnect_mcp():
+    """Remove the cited-score server from Claude Desktop's config (backs up first; leaves other servers)."""
+    path = _claude_desktop_config_path()
+    try:
+        if not os.path.exists(path):
+            return {"ok": True, "note": "Nothing to remove."}
+        with open(path, encoding="utf-8") as f: cfg = json.load(f)
+        servers = (cfg.get("mcpServers") or {}) if isinstance(cfg, dict) else {}
+        if "cited-score" in servers:
+            try:
+                import shutil; shutil.copy(path, path + ".cited-backup")
+            except Exception: pass
+            del servers["cited-score"]; cfg["mcpServers"] = servers
+            with open(path, "w", encoding="utf-8") as f: json.dump(cfg, f, indent=2)
+        return {"ok": True, "path": path, "note": "Removed. Restart Claude Desktop to unload it."}
     except Exception as e:
         return {"ok": False, "path": path, "error": str(e)[:200]}
 
@@ -331,7 +349,7 @@ a{color:var(--grn);text-decoration:none}
    </div>
    <div class="card" id="mcpcard"><div class="ph"><div class="t">Use inside Claude</div><span class="m" id="mcpdot">checking&hellip;</span></div>
      <div class="note2">Add CITED Score to Claude Desktop as an MCP tool, then just ask Claude to audit a site or check a draft.</div>
-     <button class="mini" id="mcpbtn" onclick="connectMcp()">Connect to Claude Desktop</button>
+     <button class="mini" id="mcpbtn" onclick="mcpToggle()">Connect to Claude Desktop</button>
      <div class="note2" id="mcpnote" style="margin-top:8px"></div>
      <div class="note2" style="margin-top:6px"><a href="#" onclick="copyMcp();return false" style="color:var(--muted)">Copy config for Cursor / Claude Code</a></div>
      <label class="note2" style="margin-top:8px;display:flex;gap:6px;align-items:flex-start;cursor:pointer;line-height:1.4"><input type="checkbox" id="tel" style="width:auto;margin-top:2px" onchange="setTel()"><span>Share anonymous usage (tool call counts only, never the sites you audit) to help improve CITED Score</span></label>
@@ -364,13 +382,20 @@ const $=id=>document.getElementById(id);
 fetch('/chrome').then(r=>r.json()).then(d=>{
   $('ver').textContent='CITED Score '+d.version+' · free for life with the book';
   $('chrome').innerHTML = d.chrome ? '' : '<b class="err">CITED Score needs Chrome or Edge to read pages.</b> Install one, then reopen.';});
+var _mcpConn=false;
 function mcpRender(s){var dot=$('mcpdot'),btn=$('mcpbtn');if(!dot)return;
-  if(s&&s.connected){dot.innerHTML='<span style="color:var(--grn)">&#9679;</span> Connected';btn.textContent='Reconnect';}
+  _mcpConn=!!(s&&s.connected);
+  if(_mcpConn){dot.innerHTML='<span style="color:var(--grn)">&#9679;</span> Connected';btn.textContent='Disconnect';}
   else{dot.innerHTML='<span style="color:var(--muted)">&#9675;</span> Not connected';btn.textContent='Connect to Claude Desktop';}}
 function loadMcp(){fetch('/mcp-status').then(r=>r.json()).then(mcpRender).catch(()=>{});}
-function connectMcp(){var btn=$('mcpbtn');btn.disabled=true;btn.textContent='Connecting&hellip;';
+function mcpToggle(){ if(_mcpConn){disconnectMcp();} else {connectMcp();} }
+function connectMcp(){var btn=$('mcpbtn');btn.disabled=true;btn.textContent='Connecting...';
   fetch('/connect-mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(d=>{btn.disabled=false;
     $('mcpnote').innerHTML = d.ok ? '<b style="color:var(--ok)">Added.</b> Restart Claude Desktop to load CITED Score.' : '<b class="err">Could not write config.</b> '+((d&&d.error)||'');
+    loadMcp();}).catch(()=>{btn.disabled=false;});}
+function disconnectMcp(){var btn=$('mcpbtn');btn.disabled=true;btn.textContent='Disconnecting...';
+  fetch('/disconnect-mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(d=>{btn.disabled=false;
+    $('mcpnote').innerHTML = d.ok ? '<b style="color:var(--ok)">Removed.</b> Restart Claude Desktop to unload it.' : '<b class="err">Could not update config.</b> '+((d&&d.error)||'');
     loadMcp();}).catch(()=>{btn.disabled=false;});}
 function copyMcp(){fetch('/mcp-config').then(r=>r.json()).then(d=>{navigator.clipboard.writeText(d.snippet);$('mcpnote').textContent='Config copied to clipboard.';});}
 function loadTel(){fetch('/telemetry-status').then(r=>r.json()).then(d=>{if($('tel'))$('tel').checked=!!d.consent;}).catch(()=>{});}
@@ -568,6 +593,11 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/reports":
             files = [f for f in glob.glob(os.path.join(REPORTS, "*.html"))]
             files.sort(key=os.path.getmtime, reverse=True)
+            for _old in files[5:]:                               # keep only the 5 most recent: delete older report files (the -history.jsonl trend is kept)
+                for _ext in (".html", ".json", ".csv"):
+                    try: os.remove(_old[:-5] + _ext)
+                    except Exception: pass
+            files = files[:5]
             items = []
             for f in files:
                 it = {"name": os.path.basename(f)[:-5],
@@ -596,6 +626,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/activate": return self._activate(body)
         if self.path == "/request-code": return self._request_code(body)
         if self.path == "/connect-mcp": return self._json(200, connect_mcp())
+        if self.path == "/disconnect-mcp": return self._json(200, disconnect_mcp())
         if self.path == "/schedule": return self._json(200, schedule_crawl((body.get("url") or "").strip()))
         if self.path == "/telemetry-consent": return self._json(200, {"ok": set_telemetry_consent(body.get("consent"))})
         if self.path == "/self-update": return self._json(200, self_update())   # BETA/gated; banner still uses /open-update
