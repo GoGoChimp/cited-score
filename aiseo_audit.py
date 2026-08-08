@@ -397,7 +397,7 @@ def classify_site(pages):
     ECOM_PATH=re.compile(r"/(shop|store|collections?|cart|checkout|basket|bag)(/|$|\?)",re.I)   # shop-specific; bare /product(s)/ dropped (SaaS uses it, e.g. moz /products/api, notion /product)
     SAAS_PATH=re.compile(r"/(pricing|features?|integrations?|solutions?|demo|sign-?up|api|docs)(/|$|\?)",re.I)
     ECOM_SCHEMA={"Product","AggregateOffer"}; SAAS_SCHEMA={"SoftwareApplication","WebApplication"}   # bare "Offer" excluded: services/pricing pages use it too
-    prod=ecom=saas=article=0
+    prod=ecom=saas=article=service=0
     for p in pages:
         path=(p.get("path") or "").lower(); tset=set((p.get("metrics") or {}).get("schema_types") or [])
         is_article=p.get("type")=="article"
@@ -406,8 +406,9 @@ def classify_site(pages):
         if (ECOM_PATH.search(path) and not is_article) or shop_schema: ecom+=1
         if SAAS_PATH.search(path) or (SAAS_SCHEMA & tset): saas+=1
         if is_article: article+=1
+        if p.get("type")=="service" or ("Service" in tset): service+=1   # a service BUSINESS (agency/consultancy) signal - a publisher has none
     if prod>=3 or ecom/n>=0.20: return "ecommerce"          # Product schema on non-article pages + shop paths; big retailers under-detect on shallow crawls (overridable) rather than risk SaaS/news false positives
-    if article/n>=0.55 and article>=3: return "blog"         # blog-dominant, with a minimum-evidence guard
+    if article/n>=0.55 and article>=3 and service<2: return "blog"   # blog-dominant, min-evidence guard, AND not a service business with a content blog (agencies/consultancies -> general, not "publisher")
     if saas/n>=0.08 and prod==0: return "b2b_saas"           # SaaS markers, not a shop (shallow crawls surface few, so no count floor)
     # mixed / thin-evidence sites fall through to general (auto-guess is overridable in the app)
     return "general"
