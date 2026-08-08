@@ -1270,11 +1270,14 @@ def correlate_data(pages, cites=None, logrows=None):
                     if name in CITE_TIME: h["cite"]+=1
                     break
     rows=[]
+    have_cites=bool(cites)
     for p in pages:
         if p.get("status")!=200: continue
         k=p["url"].rstrip("/"); lh=log_hits.get(k) or {}
+        cval=cites.get(k)
+        if cval is None and have_cites: cval=0   # a citation export lists every page that earned citations; absent => 0 reported (not "unknown")
         rows.append({"url":p["url"],"type":p.get("type"),"score":p.get("score"),
-                     "citations":cites.get(k),"ai_fetches":lh.get("ai"),"citation_time_fetches":lh.get("cite")})
+                     "citations":cval,"ai_fetches":lh.get("ai"),"citation_time_fetches":lh.get("cite")})
     def _avg(xs): xs=[x for x in xs if x is not None]; return round(sum(xs)/len(xs),1) if xs else None
     insights=[]
     cited=[r for r in rows if (r["citations"] or 0)>0]

@@ -118,10 +118,13 @@ def monitor_log(log_path: str, history_path: str = "") -> dict:
 
 
 @mcp.tool()
-def citation_coverage(url: str, queries_csv: str, max_pages: int = 25) -> dict:
+def citation_coverage(url: str, queries_csv: str, max_pages: int = 0) -> dict:
     """Which cited queries each page targets. Crawls the site and maps it against a grounding-query CSV
     (e.g. a Bing AI Performance 'AI Search Queries' export the user provides), so the user can see which
-    citation-driving queries have a page and which are uncovered gaps. queries_csv is a local file path."""
+    citation-driving queries have a page and which are uncovered gaps. queries_csv is a local file path.
+    max_pages defaults to 0 (whole site): gap analysis needs full coverage, or a page that DOES target a
+    query but sits deep in the sitemap gets dropped by a low cap and reported as a FALSE gap. Pass a
+    number only to cap a large site for speed."""
     _telemetry("citation_coverage")
     d = A.run_audit(url, out=None, max_pages=max_pages, links=False)
     return A.query_coverage(d.get("pages") or [], A.load_queries(queries_csv))
@@ -140,12 +143,13 @@ def click_resilience(url: str) -> dict:
 
 
 @mcp.tool()
-def correlate(url: str, citations_csv: str = "", log_path: str = "", max_pages: int = 25) -> dict:
+def correlate(url: str, citations_csv: str = "", log_path: str = "", max_pages: int = 0) -> dict:
     """Deterministically JOIN a crawl with citation counts and server-log AI-bot activity, per URL - so the
     analysis is reliable instead of hoping the model stitches three sources together. citations_csv is a
     local 'url,citations' file (Bing WMT export); log_path is a local access log. Returns joined rows +
     plain-language insights (cited vs uncited score gap, well-scored pages earning zero citations, pages AI
-    fetched but did not cite)."""
+    fetched but did not cite). max_pages defaults to 0 (whole site): a cap that misses cited pages makes them
+    look uncited and buries the real gaps. Pass a number only to cap a large site for speed."""
     _telemetry("correlate")
     d = A.run_audit(url, out=None, max_pages=max_pages, links=False)
     cites = {}

@@ -11,7 +11,7 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.15.2"                # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.15.3"                # semver; bump on every release + tag the GitHub release to match
 GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
 VERSION = f"v{APP_VERSION} - August 2026"
 
