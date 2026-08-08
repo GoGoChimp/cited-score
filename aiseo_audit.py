@@ -1987,7 +1987,21 @@ const ECOLS=['ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude'];
 const TABS=['Overview','Action Plan','Issues','Pages','Off-page','Agent-ready','Info gain','|','ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude','Grok','|','Site structure','Response times','Broken links','AI crawlers'];
 let cur='Overview',sortk='score',sortd=1,pageFilter='';
 function tabsbar(){document.getElementById('tabs').innerHTML=TABS.map(t=>t=='|'?`<div class="tab sep">|</div>`:`<div class="tab ${t==cur?'on':''}" onclick="go('${t}')">${t}${t=='Grok'?'<sup style="color:#8b8480;font-weight:700;font-size:9px;margin-left:2px">adv</sup>':''}</div>`).join('')}
-function go(t){cur=t;pageFilter='';tabsbar();render()}
+function go(t){cur=t;pageFilter='';tabsbar();render();updExp()}
+// ---- context-aware CSV export: the header button exports the CURRENT tab's data + labels itself for it ----
+var EXPORTS={'Pages':{label:'Export pages',fn:function(){exportPages()}},
+ 'Action Plan':{label:'Export action plan',fn:function(){exportPlan()}},
+ 'Broken links':{label:'Export broken links',fn:function(){exportBroken()}},
+ 'Site structure':{label:'Export sitemap issues',fn:function(){exportSitemap()}}};
+function expInfo(){return EXPORTS[cur]||{label:'Export pages',fn:function(){exportPages()}};}
+function exportCurrent(){expInfo().fn();}
+function updExp(){var b=document.getElementById('expbtn');if(b)b.textContent=expInfo().label+' (CSV)';}
+function exportSitemap(){var s=D.sitemap||{},rows=[['issue','path']];
+ (s.missing_from_sitemap||[]).forEach(function(u){rows.push(['missing from sitemap',u]);});
+ (s.orphan_no_internal_links||[]).forEach(function(u){rows.push(['orphan - no internal links',u]);});
+ (s.noindex_in_sitemap||[]).forEach(function(u){rows.push(['noindexed in sitemap',u]);});
+ if(rows.length===1)rows.push(['no sitemap issues found','']);
+ dl('cited-sitemap-issues-'+(D.domain||'site')+'.csv',rows);}
 function render(){const w=document.getElementById('view');
  if(cur=='Overview')return w.innerHTML=ovw2();
  if(cur=='Action Plan')return w.innerHTML=plan();
@@ -2794,7 +2808,7 @@ function printReport(){const Q={Known:'Do they know you?',Findable:'Can they fin
   `<h2>All pages</h2><table><thead><tr><th>Score</th><th>URL</th><th>Kn</th><th>Fi</th><th>Tr</th></tr></thead><tbody>`+
   D.pages.map(p=>`<tr><td>${p.score}</td><td>${rel(p.url)}</td><td>${p.pillars.Known}</td><td>${p.pillars.Findable}</td><td>${p.pillars.Trusted}</td></tr>`).join('')+`</tbody></table>`;
  window.print()}
-tabsbar();render();
+tabsbar();render();updExp();
 """
     _wl=bool(d.get('client'))                                    # white-label mode when a client is set
     _mark="<svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M148.3,50.1 A72,72 0 1 0 158.7,127' fill='none' stroke='#EDF0EB' stroke-width='17' stroke-linecap='square'/><path d='M70,101 L92,123 L135.7,67.5' fill='none' stroke='#42D848' stroke-width='17' stroke-linecap='square'/></svg>"
@@ -2807,7 +2821,7 @@ tabsbar();render();
          f"<style>{css}</style></head><body>"
          f"<header><span class='logo'>{_hdr_logo}{_hdr_wm}</span>"
          f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--txt);font-weight:600'>{H.escape(d['domain'])}</a> &middot; {d['pages_crawled']} pages &middot; {d['generated']}</span>"
-         "<span class='btns'><button onclick='printReport()'>Print / PDF</button><button onclick='exportPages()'>Export CSV</button></span></header>"
+         "<span class='btns'><button onclick='printReport()'>Print / PDF</button><button id='expbtn' onclick='exportCurrent()'>Export CSV</button></span></header>"
          + ((f"<div style='padding:14px 24px;background:linear-gradient(90deg,rgba(66,216,72,.10),transparent);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#8b8480'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#8b8480'>by {H.escape(d.get('agency') or 'GoGoChimp')}</span>" + (f"<div style='color:#c9c2bd;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
        + "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view'></div>"
        + ("<div class='foot'>This report <b>estimates citability</b> for AI search from on-page, structural and technical signals. It does <b>not</b> measure citations. llms.txt and Grok are shown for reference only and are not scored.</div></div>" if _wl
