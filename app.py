@@ -11,7 +11,7 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.14.1"                # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.15.0"                # semver; bump on every release + tag the GitHub release to match
 GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
 VERSION = f"v{APP_VERSION} - August 2026"
 
@@ -195,6 +195,25 @@ def self_update():
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
+def schedule_crawl(url, cadence="WEEKLY"):
+    """Register a Windows scheduled task to re-crawl a URL on a cadence, so the Score-over-time trend +
+    AI-bot log activity fill in automatically. Frozen exe only (the task runs `CITED-Score.exe --crawl`).
+    Returns {ok}. A Python run is a no-op with guidance (use the CLI + your own scheduler)."""
+    if not getattr(sys, "frozen", False):
+        return {"ok": False, "note": "Scheduling needs the packaged exe. From Python, point your own scheduler at: python aiseo_audit.py --url <url> --out reports/<name>"}
+    try:
+        import subprocess, urllib.parse
+        dom = urllib.parse.urlparse(url if url.startswith("http") else "https://"+url).netloc.replace("www.", "") or "site"
+        name = "CITED Score - " + dom
+        tr = f'"{sys.executable}" --crawl {url}'
+        r = subprocess.run(["schtasks","/create","/tn",name,"/tr",tr,"/sc",cadence,"/d","MON","/st","09:00","/f"],
+                           capture_output=True, text=True, creationflags=0x08000000)
+        if r.returncode == 0:
+            return {"ok": True, "task": name, "note": "Weekly re-crawl scheduled (Mon 09:00). Manage or remove it in Windows Task Scheduler."}
+        return {"ok": False, "error": (r.stderr or r.stdout or "schtasks failed").strip()[:200]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
 INDEX = r"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>CITED Score</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -283,6 +302,7 @@ a{color:var(--grn);text-decoration:none}
        <div><label>Client name (white-label report, optional)</label><input id="client" type="text" placeholder="e.g. Acme Corp"></div>
        <div><label>Intro line (optional)</label><input id="intro" type="text" placeholder="Prepared as part of your Q3 review"></div>
        <div style="display:flex;align-items:center;gap:8px;grid-column:1/-1"><input id="dolinks" type="checkbox" checked style="width:auto"><label style="margin:0">Check for broken links (adds ~30-60s at the end)</label></div>
+       <div style="grid-column:1/-1;display:flex;align-items:center;gap:10px"><button class="optbtn" type="button" onclick="scheduleCrawl()">Schedule weekly re-crawl</button><span class="note2" id="schednote">Re-crawls the URL above every Monday, building the Score-over-time trend automatically.</span></div>
      </div>
      <div id="chrome" class="note2"></div>
    </div>
@@ -356,6 +376,11 @@ function copyMcp(){fetch('/mcp-config').then(r=>r.json()).then(d=>{navigator.cli
 function loadTel(){fetch('/telemetry-status').then(r=>r.json()).then(d=>{if($('tel'))$('tel').checked=!!d.consent;}).catch(()=>{});}
 function setTel(){fetch('/telemetry-consent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({consent:$('tel').checked})}).catch(()=>{});}
 loadMcp();loadTel();
+function scheduleCrawl(){var u=$('url').value.trim();if(!u){$('schednote').textContent='Enter a URL above first.';return;}
+  $('schednote').textContent='Scheduling...';
+  fetch('/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})}).then(r=>r.json()).then(d=>{
+    $('schednote').textContent = d.ok ? 'Scheduled - re-crawls weekly (Mon 9am). Manage it in Windows Task Scheduler.' : (d.note||d.error||'Could not schedule.');
+  }).catch(()=>{$('schednote').textContent='Could not schedule.';});}
 function loadRecent(){fetch('/reports').then(r=>r.json()).then(list=>{
   $('recent').innerHTML = list.length ? list.map(r=>{const d=r.delta;const dl=(d==null)?'<span class="dl z">first run</span>':`<span class="dl ${d>0?'up':d<0?'dn':'z'}">${d>0?'▲':d<0?'▼':'▬'} ${Math.abs(d)}</span>`;const sc=r.score==null?'':`<div class="sc">${r.score}</div>`;const mt=(r.pages!=null?r.pages+' pages · ':'')+r.when;return `<a href="/report/${r.name}" target="_blank" class="rep">${sc}<div style="flex:1"><div class="nm">${r.name}</div><div class="mt">${mt}</div></div>${dl}</a>`}).join('') : '<div class="note2">No reports yet. Run your first audit.</div>';
   var cs=$('calsite'); if(cs){var cur=cs.value; cs.innerHTML='<option value="">— pick a crawled site —</option>'+list.map(r=>'<option value="'+r.name+'">'+r.name+'</option>').join(''); cs.value=cur;}
@@ -571,6 +596,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/activate": return self._activate(body)
         if self.path == "/request-code": return self._request_code(body)
         if self.path == "/connect-mcp": return self._json(200, connect_mcp())
+        if self.path == "/schedule": return self._json(200, schedule_crawl((body.get("url") or "").strip()))
         if self.path == "/telemetry-consent": return self._json(200, {"ok": set_telemetry_consent(body.get("consent"))})
         if self.path == "/self-update": return self._json(200, self_update())   # BETA/gated; banner still uses /open-update
         if not is_activated(): return self._json(403, {"error": "Activate CITED Score to run audits."})

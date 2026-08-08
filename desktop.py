@@ -25,6 +25,22 @@ def _run_mcp():
     mcp_server.mcp.run()                          # stdio JSON-RPC loop; blocks until the host disconnects
 
 
+def _run_crawl():
+    """`--crawl <url>` -> run ONE headless audit, write the report to reports/, then exit. No GUI.
+    This is what a scheduled task runs, so re-crawls accumulate history (the Score-over-time trend)."""
+    import urllib.parse
+    args = sys.argv
+    url = args[args.index("--crawl") + 1] if "--crawl" in args and args.index("--crawl") + 1 < len(args) else None
+    if not url:
+        sys.stderr.write("usage: CITED-Score.exe --crawl <url>\n"); raise SystemExit(2)
+    import aiseo_audit as A
+    from app import REPORTS, safe
+    dom = urllib.parse.urlparse(url if url.startswith("http") else "https://" + url).netloc.replace("www.", "")
+    out = os.path.join(REPORTS, safe(dom))
+    A.run_audit(url, out=out)
+    print("done:", out + ".html", flush=True)
+
+
 def run():
     import webview
     from app import start_server
@@ -43,5 +59,7 @@ def run():
 if __name__ == "__main__":
     if "--mcp" in sys.argv:
         _run_mcp()
+    elif "--crawl" in sys.argv:
+        _run_crawl()
     else:
         run()

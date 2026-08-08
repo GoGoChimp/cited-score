@@ -1463,6 +1463,24 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
         p["cs"]=st; p["score"]=o; p["pillars"]=pl; p["engines"]=en
     broken_links=[{"url":u,"status":(linkstatus or {}).get(u),"sources":srcs} for u,srcs in _brokenmap.items()]
     broken_links.sort(key=lambda x:-len(x["sources"]))
+    # ---- sitemap health: cross-reference the crawl x the XML sitemap x the internal-link graph.
+    # AI/engines discover + trust pages that are BOTH in the sitemap AND internally linked; the buckets below
+    # are the actionable gaps (add to sitemap / add internal links / remove noindexed URLs from the sitemap).
+    sitemap={"has_sitemap":bool(sitemap_paths),"sitemap_urls":len(sitemap_paths or set()),"crawled":len(ok200)}
+    if sitemap_paths:
+        def _idx(p): return next((c["status"] for c in p.get("checks",[]) if c["id"]=="noindex"),"good")=="good"
+        _crawled_paths={_np(p.get("path")) for p in ok200}
+        _miss=sorted({(p.get("path") or p.get("url")) for p in ok200
+                      if _np(p.get("path")) not in ("","/") and _np(p.get("path")) not in sitemap_paths and _idx(p)})
+        _nox=sorted({(p.get("path") or p.get("url")) for p in ok200
+                     if _np(p.get("path")) in sitemap_paths and not _idx(p)})
+        _orl=sorted({(p.get("path") or p.get("url")) for p in ok200
+                     if _np(p.get("path")) not in ("","/") and _np(p.get("path")) not in _linked})
+        _ncr=sorted(sitemap_paths - _crawled_paths)
+        sitemap.update({"missing_from_sitemap":_miss[:100],"missing_n":len(_miss),
+                        "noindex_in_sitemap":_nox[:100],"noindex_n":len(_nox),
+                        "orphan_no_internal_links":_orl[:100],"orphan_n":len(_orl),
+                        "in_sitemap_not_crawled":_ncr[:100],"not_crawled_n":len(_ncr)})
     # off-page advisory: which authoritative third-party surfaces the brand DECLARES (schema sameAs)
     _allsame=sorted(set(u for p in pages for u in (p.get("sameas") or [])))
     _SURF=[("LinkedIn","linkedin.com"),("Crunchbase","crunchbase.com"),("Wikipedia","wikipedia.org"),
@@ -1504,6 +1522,16 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
     _igorder={"high":0,"medium":1,"low":2}
     _igp.sort(key=lambda x:(_igorder[x["band"]],-x["pts"],-x["figures"]))
     infogain={"pages":_igp,"bands":{b:sum(1 for x in _igp if x["band"]==b) for b in ("high","medium","low")},"total":len(ok200)}
+    # link graph for the Site-map visualisation: nodes = crawled pages (score/depth/orphan), edges = internal links.
+    _idxof={_np(p.get("path")):i for i,p in enumerate(ok200)}
+    _lgnodes=[{"p":(p.get("path") or "/"),"s":p.get("score"),"d":p.get("depth") or 0,
+               "o":(_np(p.get("path")) not in _linked and _np(p.get("path")) not in ("","/"))} for p in ok200]
+    _lgedges=[]
+    for i,p in enumerate(ok200):
+        for t in (p.get("links") or []):
+            j=_idxof.get(t)
+            if j is not None and j!=i: _lgedges.append([i,j])
+    linkgraph={"nodes":_lgnodes[:250],"edges":[e for e in _lgedges if e[0]<250 and e[1]<250][:1400],"capped":len(ok200)>250}
     for p in pages:
         for _k in ("outlinks","_broken","simhash","chash","links","sameas","agent","infogain"): p.pop(_k,None)
     ok=ok200
@@ -1570,7 +1598,7 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
             "pages_crawled":len(pages),"overall":overall,"pillars":pill,"engines":eng,
             "engine_note":ENGINE_NOTE,"engine_weights":ENGINE_WEIGHTS,"check_meta":CHECK_META,
             "grok_advisory":GROK_ADVISORY,
-            "totals":dict(tot),"issues":issues,"site_checks":sitecx,"broken_links":broken_links,"offpage":offpage,"agentready":agentready,"infogain":infogain,"aicrawler":aicrawler or {},"proj_all":proj_all,
+            "totals":dict(tot),"issues":issues,"site_checks":sitecx,"broken_links":broken_links,"sitemap":sitemap,"linkgraph":linkgraph,"offpage":offpage,"agentready":agentready,"infogain":infogain,"aicrawler":aicrawler or {},"proj_all":proj_all,
             "client":client,"intro":intro,"agency":(agency or "GoGoChimp"),"logo":logo,"access_blocked":access_blocked,
             "types":dict(Counter(p["type"] for p in pages)),
             "site_type":site_type,"site_type_label":SITE_PROFILE_LABEL.get(site_type,site_type),"site_type_source":site_type_source,
@@ -1603,6 +1631,19 @@ def apply_diff(data, outbase):
         _prevbots=prev.get("aicrawler") or {}                       # AI-bot access change tracking
         _curbots={b["name"]:b["status"] for b in ((data.get("aicrawler") or {}).get("bots") or [])}
         data["diff"]["bot_changes"]=[{"bot":n,"was":_prevbots[n],"now":s} for n,s in _curbots.items() if n in _prevbots and _prevbots[n]!=s]
+    # trend: the full score history (all prior snapshots + this crawl) for a sparkline
+    _series=[]
+    if os.path.exists(hist):
+        try:
+            with open(hist,encoding="utf-8") as f:
+                for _l in f:
+                    if _l.strip():
+                        try:
+                            _sn=json.loads(_l); _series.append({"date":_sn.get("date"),"overall":_sn.get("overall")})
+                        except Exception: pass
+        except Exception: pass
+    _series.append({"date":data.get("date"),"overall":data.get("overall")})   # current crawl (appended to hist below)
+    data["trend"]=[x for x in _series if isinstance(x.get("overall"),(int,float))][-30:]
     snap={"date":data["date"],"generated":data["generated"],"overall":data["overall"],
           "pillars":data["pillars"],"engines":data["engines"],
           "aicrawler":{b["name"]:b["status"] for b in ((data.get("aicrawler") or {}).get("bots") or [])},
@@ -2410,6 +2451,31 @@ function structure(){
  const cards=[['Pages',D.pages.length],['Sections',secs.length],['Max depth',Math.max(...D.pages.map(p=>p.depth))],['Median score',med]];
  let h=`<div style="display:flex;flex-direction:column;gap:18px">`;
  h+=`<div class="statgrid">${cards.map(c=>`<div class="statcard"><div class="n">${c[1]}</div><div class="l">${c[0]}</div></div>`).join('')}</div>`;
+ var _tr=D.trend||[];
+ if(_tr.length>=2){
+   var _v=_tr.map(function(t){return t.overall;}),_mn=Math.min.apply(null,_v),_mx=Math.max.apply(null,_v),_rg=(_mx-_mn)||1;
+   var _W=680,_H=90,_pd=10;
+   var _xy=function(t,i){return [_pd+(i/(_tr.length-1))*(_W-2*_pd), _H-_pd-((t.overall-_mn)/_rg)*(_H-2*_pd)];};
+   var _poly=_tr.map(function(t,i){var q=_xy(t,i);return q[0].toFixed(1)+','+q[1].toFixed(1);}).join(' ');
+   var _sp='<svg viewBox="0 0 '+_W+' '+_H+'" style="width:100%;height:90px"><polyline points="'+_poly+'" fill="none" stroke="#42D848" stroke-width="2"/>';
+   _tr.forEach(function(t,i){var q=_xy(t,i);_sp+='<circle cx="'+q[0].toFixed(1)+'" cy="'+q[1].toFixed(1)+'" r="2.6" fill="#42D848"><title>'+esc(t.date||'')+': '+t.overall+'</title></circle>';});
+   _sp+='</svg>';
+   var _d=_tr[_tr.length-1].overall-_tr[0].overall;
+   h+='<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>SCORE OVER TIME</h3><span class="meta">'+_tr.length+' crawls &middot; '+(_d>=0?'+':'')+_d+' since first</span></div><div class="apbox" style="padding:16px 22px">'+_sp+'</div></section>';
+ }
+ var sm=D.sitemap||{};
+ if(sm.has_sitemap){
+   var smchip=function(arr,n,label,color){
+     if(!n) return '<div style="margin:7px 0;color:var(--ok);font-size:12.5px">&#10003; '+label+': none</div>';
+     var list=(arr||[]).slice(0,12).map(function(u){return '<span class="stck warn">'+esc(u)+'</span>';}).join('');
+     return '<div style="margin:9px 0"><b style="color:'+color+';font-size:12.5px">'+n+' '+label+'</b><div class="stcks" style="margin-top:5px">'+list+(n>12?'<span class="stck">+'+(n-12)+' more</span>':'')+'</div></div>';};
+   h+='<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>SITEMAP HEALTH</h3><span class="meta">'+sm.sitemap_urls+' in sitemap &middot; '+sm.crawled+' crawled</span></div><div class="apbox" style="padding:14px 22px">';
+   h+=smchip(sm.missing_from_sitemap,sm.missing_n,'indexable page(s) MISSING from the sitemap - add them so AI &amp; engines discover them','#f2c574');
+   h+=smchip(sm.orphan_no_internal_links,sm.orphan_n,'orphan page(s) with NO internal links - add links so crawlers can reach them','#f2c574');
+   h+=smchip(sm.noindex_in_sitemap,sm.noindex_n,'noindexed page(s) listed IN the sitemap - remove them (a sitemap should list only indexable URLs)','#ff9c88');
+   if(sm.not_crawled_n) h+='<div style="margin-top:11px;color:var(--muted);font-size:11px">'+sm.not_crawled_n+' sitemap URL(s) not reached in this crawl - raise the crawl limit to confirm whether these are genuine orphans or just uncrawled.</div>';
+   h+='</div></section>';
+ }
  const stpage=p=>{const b=PBAND(p.score);
    const bad=p.checks.filter(c=>c.status=='bad'),warn=p.checks.filter(c=>c.status=='warn');
    const sum=[bad.length?bad.length+' error'+(bad.length>1?'s':''):'',warn.length?warn.length+' warning'+(warn.length>1?'s':''):''].filter(Boolean).join(' · ')||'all checks pass';
@@ -2419,7 +2485,34 @@ function structure(){
  h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>BY TOP-LEVEL SECTION</h3><span class="meta">${secs.length} section${secs.length>1?'s':''}</span></div><div class="apbox" style="padding:6px 22px">${rows(secs.map(s=>['/'+s[0],s[1]]),'sec')}</div></section>`;
  const depths=Object.keys(byDepth).map(Number).sort((a,b)=>a-b),maxd=Math.max(...depths.map(d=>byDepth[d].length),1);
  h+=`<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#F0B429"></span><h3>BY CRAWL DEPTH</h3><span class="meta">clicks from the homepage</span></div><div class="apbox" style="padding:6px 22px">${rows(depths.map(d=>['Depth '+d,byDepth[d]]),'dep')}</div></section>`;
+ var _lg=D.linkgraph||{nodes:[]};
+ if(_lg.nodes&&_lg.nodes.length){
+   h+='<section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#42D848"></span><h3>SITE MAP</h3><span class="meta">rings = crawl depth &middot; colour = score &middot; red ring = orphan</span></div><div class="apbox" style="padding:16px 22px">'+sitemapViz()+'</div></section>';
+ }
  h+=`</div>`;return h}
+function sitemapViz(){
+  var g=D.linkgraph||{nodes:[],edges:[]},nodes=g.nodes||[],edges=g.edges||[];
+  if(!nodes.length) return '';
+  var W=780,H=560,cx=W/2,cy=H/2,byd={};
+  nodes.forEach(function(n,i){var d=n.d||0;(byd[d]=byd[d]||[]).push(i);});
+  var depths=Object.keys(byd).map(Number).sort(function(a,b){return a-b;}),maxd=depths[depths.length-1]||1;
+  var ring=(Math.min(W,H)/2-34)/(maxd+0.5),pos=[];
+  depths.forEach(function(d){var arr=byd[d],r=d*ring;arr.forEach(function(idx,k){
+    if(d===0){pos[idx]=[cx,cy];return;}
+    var a=(k/arr.length)*Math.PI*2-Math.PI/2+d*0.5;pos[idx]=[cx+r*Math.cos(a),cy+r*Math.sin(a)];});});
+  var band=function(s){return s>=85?'#42D848':s>=70?'#F0B429':'#E0533D';};
+  var s='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;max-height:560px;background:#00000018;border-radius:12px">';
+  edges.forEach(function(e){var a=pos[e[0]],b=pos[e[1]];if(a&&b)s+='<line x1="'+a[0].toFixed(1)+'" y1="'+a[1].toFixed(1)+'" x2="'+b[0].toFixed(1)+'" y2="'+b[1].toFixed(1)+'" stroke="#ffffff12" stroke-width="1"/>';});
+  nodes.forEach(function(n,i){var p=pos[i];if(!p)return;var r=n.d===0?8:4.5;
+    s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="'+r+'" fill="'+band(n.s)+'" '+(n.o?'stroke="#E0533D" stroke-width="2.2"':'stroke="#0000002e" stroke-width="0.6"')+'><title>'+esc(n.p)+' - '+n.s+(n.o?' - orphan (no internal links)':'')+'</title></circle>';});
+  s+='</svg><div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:11px;color:var(--muted)">'
+    +'<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#42D848;vertical-align:middle"></span> 85+</span>'
+    +'<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#F0B429;vertical-align:middle"></span> 70-84</span>'
+    +'<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#E0533D;vertical-align:middle"></span> under 70</span>'
+    +'<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:transparent;border:2px solid #E0533D;vertical-align:middle"></span> orphan = no internal links (AI can\'t reach it)</span>'
+    +(g.capped?'<span>(first 250 pages)</span>':'')+'</div>';
+  return s;
+}
 function speed(){
  const sc2=ms=>ms<=800?'#3DD68C':ms<=1800?'#F0B429':'#E0533D',sl=ms=>ms<=800?'Fast':ms<=1800?'OK':'Slow';
  const ps=[...D.pages].sort((a,b)=>b.fetch_ms-a.fetch_ms);
