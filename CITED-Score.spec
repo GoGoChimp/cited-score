@@ -3,9 +3,12 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = []
 binaries = []
-hiddenimports = ['favicon_data']
-tmp_ret = collect_all('webview')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+# local modules (mcp_server is imported lazily inside desktop.py --mcp, so name it explicitly)
+hiddenimports = ['favicon_data', 'aiseo_audit', 'app', 'mcp_server']
+# webview (GUI) + the MCP stack so `CITED-Score.exe --mcp` can serve the stdio MCP server
+for _pkg in ('webview', 'mcp', 'pydantic', 'pydantic_core', 'anyio'):
+    _d, _b, _h = collect_all(_pkg)
+    datas += _d; binaries += _b; hiddenimports += _h
 
 
 a = Analysis(
