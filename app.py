@@ -86,6 +86,115 @@ def sb_post(fn, payload, timeout=12):
     except Exception:
         return 0, {"error": "Could not reach the activation server. Check your connection."}
 
+# ---- MCP connect (add CITED Score to Claude Desktop as an MCP server) -------------------------
+def _mcp_command():
+    """(command, args) that launch THIS build's MCP server for the current runtime.
+    Frozen exe -> the exe itself with --mcp; a Python run -> python + mcp_server.py."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    if getattr(sys, "frozen", False):
+        return sys.executable, ["--mcp"]
+    return sys.executable, [os.path.join(here, "mcp_server.py")]
+
+def _claude_desktop_config_path():
+    base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "Claude", "claude_desktop_config.json")
+
+def mcp_config_snippet():
+    """Raw config a user can paste into any host (Cursor, Claude Code, etc.)."""
+    cmd, args = _mcp_command()
+    return json.dumps({"mcpServers": {"cited-score": {"command": cmd, "args": args}}}, indent=2)
+
+def mcp_status():
+    """Is cited-score registered in Claude Desktop's config? {connected, exists, path}."""
+    path = _claude_desktop_config_path()
+    try:
+        with open(path, encoding="utf-8") as f: cfg = json.load(f)
+        return {"connected": "cited-score" in (cfg.get("mcpServers") or {}), "exists": True, "path": path}
+    except FileNotFoundError:
+        return {"connected": False, "exists": False, "path": path}
+    except Exception as e:
+        return {"connected": False, "exists": True, "path": path, "error": str(e)[:120]}
+
+def connect_mcp():
+    """Merge the cited-score server into Claude Desktop's config (backs up first). {ok, path}."""
+    path = _claude_desktop_config_path()
+    cmd, args = _mcp_command()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        cfg = {}
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as f: cfg = json.load(f) or {}
+            except Exception: cfg = {}
+            try:
+                import shutil; shutil.copy(path, path + ".cited-backup")   # never clobber a user file blind
+            except Exception: pass
+        if not isinstance(cfg, dict): cfg = {}
+        cfg.setdefault("mcpServers", {})["cited-score"] = {"command": cmd, "args": args}
+        with open(path, "w", encoding="utf-8") as f: json.dump(cfg, f, indent=2)
+        return {"ok": True, "path": path, "note": "Restart Claude Desktop to load CITED Score."}
+    except Exception as e:
+        return {"ok": False, "path": path, "error": str(e)[:200]}
+
+# ---- opt-in, disclosed usage telemetry (DEFAULT OFF; content-free; never sends URLs/crawl data) -----
+_HEREDIR = os.path.dirname(os.path.abspath(__file__))
+def _telemetry_consent_path(): return os.path.join(_HEREDIR, "telemetry_consent.json")
+def telemetry_consent():
+    try:
+        with open(_telemetry_consent_path(), encoding="utf-8") as f: return bool(json.load(f).get("consent"))
+    except Exception: return False
+def set_telemetry_consent(v):
+    try:
+        with open(_telemetry_consent_path(), "w", encoding="utf-8") as f: json.dump({"consent": bool(v)}, f)
+        return True
+    except Exception: return False
+def _install_id():
+    import hashlib
+    raw = (os.environ.get("COMPUTERNAME", "") + _HEREDIR).encode("utf-8", "ignore")
+    return hashlib.sha256(raw).hexdigest()[:16]           # stable, anonymous, no PII
+def upload_telemetry():
+    """Content-free, OPT-IN. Sends per-tool CALL COUNTS + version so adoption can be gauged. Never sends
+    audited URLs, crawl data, or anything about the sites the user looked at. No-op unless opted in.
+    Graceful if the `usage` endpoint isn't deployed yet (endpoint = the one remaining infra piece)."""
+    if not telemetry_consent(): return
+    try:
+        usage = {}
+        up = os.path.join(_HEREDIR, "mcp_usage.json")
+        if os.path.exists(up):
+            with open(up, encoding="utf-8") as f:
+                usage = {k: (v or {}).get("count") for k, v in json.load(f).items()}
+        sb_post("usage", {"install": _install_id(), "version": APP_VERSION, "tools": usage})
+    except Exception:
+        pass
+
+# ---- silent auto-update (BETA, GATED - built but NOT wired to the banner until tested vs 2 real builds) --
+def self_update():
+    """Silent self-replace + relaunch for the FROZEN exe: download latest to temp, then a tiny batch waits
+    for THIS process to exit, swaps the file, and relaunches. NO-OP unless running as the packaged exe.
+    DELIBERATELY not the default update path - a bad self-updater bricks installs, so the banner still just
+    opens the download until this is tested against two real signed builds. Test before wiring."""
+    if not getattr(sys, "frozen", False):
+        return {"ok": False, "note": "Self-update only applies to the packaged exe (this is a Python run)."}
+    try:
+        exe = sys.executable
+        tmp = exe + ".new"
+        urllib.request.urlretrieve(f"https://github.com/{GITHUB_REPO}/releases/latest/download/CITED-Score.exe", tmp)
+        if os.path.getsize(tmp) < 1_000_000:                     # a real exe is many MB; guard vs an HTML error page
+            os.remove(tmp); return {"ok": False, "error": "Downloaded file too small - aborted (not swapped)."}
+        pid = os.getpid()
+        bat = os.path.join(tempfile.gettempdir(), "cited-update.bat")
+        with open(bat, "w") as f:
+            f.write("@echo off\r\n:wait\r\n"
+                    f'tasklist /fi "PID eq {pid}" | find "{pid}" >nul && (timeout /t 1 >nul & goto wait)\r\n'
+                    f'move /y "{tmp}" "{exe}" >nul\r\n'
+                    f'start "" "{exe}"\r\n'
+                    'del "%~f0"\r\n')
+        import subprocess
+        subprocess.Popen(["cmd", "/c", bat], creationflags=0x00000008)   # DETACHED_PROCESS; completes once the app exits
+        return {"ok": True, "note": "Update downloaded. Close CITED Score to finish; it will reopen on the new version."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
 INDEX = r"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>CITED Score</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -200,6 +309,13 @@ a{color:var(--grn);text-decoration:none}
      <div class="chk"><b>04</b><span>Entity clarity, sameAs and authorship</span></div>
      <div class="chk"><b>05</b><span>Freshness signals and response times</span></div>
    </div>
+   <div class="card" id="mcpcard"><div class="ph"><div class="t">Use inside Claude</div><span class="m" id="mcpdot">checking&hellip;</span></div>
+     <div class="note2">Add CITED Score to Claude Desktop as an MCP tool, then just ask Claude to audit a site or check a draft.</div>
+     <button class="mini" id="mcpbtn" onclick="connectMcp()">Connect to Claude Desktop</button>
+     <div class="note2" id="mcpnote" style="margin-top:8px"></div>
+     <div class="note2" style="margin-top:6px"><a href="#" onclick="copyMcp();return false" style="color:var(--muted)">Copy config for Cursor / Claude Code</a></div>
+     <label class="note2" style="margin-top:8px;display:flex;gap:6px;align-items:flex-start;cursor:pointer;line-height:1.4"><input type="checkbox" id="tel" style="width:auto;margin-top:2px" onchange="setTel()"><span>Share anonymous usage (tool call counts only, never the sites you audit) to help improve CITED Score</span></label>
+   </div>
  </div>
 </div>
 
@@ -228,6 +344,18 @@ const $=id=>document.getElementById(id);
 fetch('/chrome').then(r=>r.json()).then(d=>{
   $('ver').textContent='CITED Score '+d.version+' · free for life with the book';
   $('chrome').innerHTML = d.chrome ? '' : '<b class="err">CITED Score needs Chrome or Edge to read pages.</b> Install one, then reopen.';});
+function mcpRender(s){var dot=$('mcpdot'),btn=$('mcpbtn');if(!dot)return;
+  if(s&&s.connected){dot.innerHTML='<span style="color:var(--grn)">&#9679;</span> Connected';btn.textContent='Reconnect';}
+  else{dot.innerHTML='<span style="color:var(--muted)">&#9675;</span> Not connected';btn.textContent='Connect to Claude Desktop';}}
+function loadMcp(){fetch('/mcp-status').then(r=>r.json()).then(mcpRender).catch(()=>{});}
+function connectMcp(){var btn=$('mcpbtn');btn.disabled=true;btn.textContent='Connecting&hellip;';
+  fetch('/connect-mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(d=>{btn.disabled=false;
+    $('mcpnote').innerHTML = d.ok ? '<b style="color:var(--ok)">Added.</b> Restart Claude Desktop to load CITED Score.' : '<b class="err">Could not write config.</b> '+((d&&d.error)||'');
+    loadMcp();}).catch(()=>{btn.disabled=false;});}
+function copyMcp(){fetch('/mcp-config').then(r=>r.json()).then(d=>{navigator.clipboard.writeText(d.snippet);$('mcpnote').textContent='Config copied to clipboard.';});}
+function loadTel(){fetch('/telemetry-status').then(r=>r.json()).then(d=>{if($('tel'))$('tel').checked=!!d.consent;}).catch(()=>{});}
+function setTel(){fetch('/telemetry-consent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({consent:$('tel').checked})}).catch(()=>{});}
+loadMcp();loadTel();
 function loadRecent(){fetch('/reports').then(r=>r.json()).then(list=>{
   $('recent').innerHTML = list.length ? list.map(r=>{const d=r.delta;const dl=(d==null)?'<span class="dl z">first run</span>':`<span class="dl ${d>0?'up':d<0?'dn':'z'}">${d>0?'▲':d<0?'▼':'▬'} ${Math.abs(d)}</span>`;const sc=r.score==null?'':`<div class="sc">${r.score}</div>`;const mt=(r.pages!=null?r.pages+' pages · ':'')+r.when;return `<a href="/report/${r.name}" target="_blank" class="rep">${sc}<div style="flex:1"><div class="nm">${r.name}</div><div class="mt">${mt}</div></div>${dl}</a>`}).join('') : '<div class="note2">No reports yet. Run your first audit.</div>';
   var cs=$('calsite'); if(cs){var cur=cs.value; cs.innerHTML='<option value="">— pick a crawled site —</option>'+list.map(r=>'<option value="'+r.name+'">'+r.name+'</option>').join(''); cs.value=cur;}
@@ -405,6 +533,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, page.replace("__FAV__", A.FAVICON))
         if u.path == "/chrome": return self._json(200, {"chrome": A.CHROME, "version": VERSION})
         if u.path == "/update-check": return self._json(200, {**check_update(), "current": APP_VERSION})
+        if u.path == "/mcp-status": return self._json(200, mcp_status())
+        if u.path == "/mcp-config": return self._json(200, {"snippet": mcp_config_snippet()})
+        if u.path == "/telemetry-status": return self._json(200, {"consent": telemetry_consent()})
         if u.path == "/open-update":
             try: webbrowser.open(f"https://github.com/{GITHUB_REPO}/releases/latest/download/CITED-Score.exe")
             except Exception: pass
@@ -439,6 +570,9 @@ class Handler(BaseHTTPRequestHandler):
         except Exception: body = {}
         if self.path == "/activate": return self._activate(body)
         if self.path == "/request-code": return self._request_code(body)
+        if self.path == "/connect-mcp": return self._json(200, connect_mcp())
+        if self.path == "/telemetry-consent": return self._json(200, {"ok": set_telemetry_consent(body.get("consent"))})
+        if self.path == "/self-update": return self._json(200, self_update())   # BETA/gated; banner still uses /open-update
         if not is_activated(): return self._json(403, {"error": "Activate CITED Score to run audits."})
         if self.path == "/run": return self._run(body)
         if self.path == "/calibrate": return self._calibrate(body)
@@ -539,6 +673,7 @@ def start_server(port=PORT):
     """Start the HTTP server on a daemon thread; return the actual bound port (0 = OS picks)."""
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
+    threading.Thread(target=upload_telemetry, daemon=True).start()   # opt-in, no-op unless the user consented
     return srv.server_address[1]
 
 def main():

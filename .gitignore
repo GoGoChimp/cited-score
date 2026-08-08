@@ -1,6 +1,24 @@
 # --- Private data: never publish (real per-URL citation counts, site crawls, findings) ---
 citations.csv
+citations-*.csv
 build_citations.py
+
+# --- Local strategy / planning / infra docs (never publish) ---
+ROADMAP.md
+MONETISATION.md
+PLAN-*.md
+PRODUCT-OPPORTUNITIES.md
+BOOK-CODE-CONTENT-BRIEF.md
+supabase/
+
+# --- Runtime / local state (never publish) ---
+mcp_usage.json
+telemetry_consent.json
+activation.json
+latest.json
+samples/
+*.cited-backup
+*.new
 report.json
 report.csv
 report.html

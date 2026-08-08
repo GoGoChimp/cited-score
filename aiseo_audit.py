@@ -745,6 +745,7 @@ def load_queries(path):
     """Parse a grounding-query CSV (Bing AI Performance 'AI Search Queries' export:
     Grounding Query, Intent, Topic, Citations, Citation Share). Tolerant of header casing."""
     out=[]
+    if not path or not os.path.exists(path): return out
     with open(path, encoding="utf-8-sig") as f:
         for r in csv.DictReader(f):
             q=(r.get("Grounding Query") or r.get("Query") or r.get("query") or "").strip()
@@ -1066,6 +1067,7 @@ _LOG_DAY=re.compile(r'\[(\d{2})/([A-Za-z]{3})/(\d{4})')
 def load_access_log(path, max_lines=3_000_000):
     """Parse a server access log (Apache/Nginx combined format). Returns [(ua, url, status, 'YYYY-Mon-DD')]."""
     out=[]
+    if not path or not os.path.exists(path): return out
     with open(path, encoding="utf-8", errors="ignore") as f:
         for i,ln in enumerate(f):
             if i>=max_lines: break
@@ -1097,6 +1099,275 @@ def analyze_logs(path):
                     "days_seen":len({r[3] for r in hits if r[3]})}
     return {"parsed":len(rows),"total_bot_hits":sum(b["hits"] for b in bots.values()),
             "bots":dict(sorted(bots.items(), key=lambda kv:-kv[1]["hits"]))}
+
+# ------------------------------------------------------------------ log MONITOR (time-series, ground truth)
+_MON={"Jan":"01","Feb":"02","Mar":"03","Apr":"04","May":"05","Jun":"06",
+      "Jul":"07","Aug":"08","Sep":"09","Oct":"10","Nov":"11","Dec":"12"}
+def _isodate(d):
+    """'YYYY-Mon-DD' (load_access_log format) -> sortable 'YYYY-MM-DD'; '' if unparseable."""
+    try:
+        y,mon,day=d.split("-"); return f"{y}-{_MON.get(mon,'00')}-{int(day):02d}"
+    except Exception: return ""
+
+def _summarize_monitor(merged, CITE_TIME, parsed, history_path, hist_loaded):
+    """Turn a {isodate: {bot: {hits,blocked,cite}}} map into the monitor view (trends, alerts, per-bot series)."""
+    dates=sorted(d for d in merged if d)
+    bots={}; daily_totals={}
+    for iso in dates:
+        tot={"ai_hits":0,"cite":0,"blocked":0}
+        for bot,c in merged[iso].items():
+            b=bots.setdefault(bot,{"hits":0,"blocked":0,"cite":0,"days":set(),"daily":{},
+                                   "citation_time":bot in CITE_TIME,"first":iso,"last":iso})
+            b["hits"]+=c.get("hits",0); b["blocked"]+=c.get("blocked",0); b["cite"]+=c.get("cite",0)
+            b["days"].add(iso); b["daily"][iso]=c.get("hits",0)
+            b["first"]=min(b["first"],iso); b["last"]=max(b["last"],iso)
+            tot["ai_hits"]+=c.get("hits",0); tot["cite"]+=c.get("cite",0); tot["blocked"]+=c.get("blocked",0)
+        daily_totals[iso]=tot
+    n=len(dates)
+    def per_day(sub): return round(sum(daily_totals[d]["ai_hits"] for d in sub)/max(1,len(sub)),1)
+    trend={}
+    if n>=2:
+        h=n//2 or 1; fh=dates[:h]; sh=dates[h:]
+        a=per_day(fh); b=per_day(sh)
+        trend={"first_half_per_day":a,"second_half_per_day":b,
+               "direction":"rising" if b>a*1.15 else ("falling" if b<a*0.85 else "flat")}
+    total_ai=sum(t["ai_hits"] for t in daily_totals.values())
+    total_cite=sum(t["cite"] for t in daily_totals.values())
+    total_block=sum(t["blocked"] for t in daily_totals.values())
+    alerts=[]
+    for bot,b in bots.items():
+        if b["blocked"]>0:
+            alerts.append(f"{bot} blocked {b['blocked']}x (401/403/429) over {len(b['days'])} day(s) - a real block, not an estimate")
+    if n>=1:
+        last=dates[-1]
+        prior=set().union(*[set(merged[d]) for d in dates[:-1]]) if n>1 else set()
+        for bot in merged[last]:
+            if bot not in prior: alerts.append(f"NEW AI bot first seen {last}: {bot}")
+    outb={}
+    for bot,b in sorted(bots.items(), key=lambda kv:-kv[1]["hits"]):
+        outb[bot]={"hits":b["hits"],"blocked":b["blocked"],"citation_time_hits":b["cite"],
+                   "citation_time":b["citation_time"],"days_active":len(b["days"]),
+                   "first_seen":b["first"],"last_seen":b["last"],
+                   "daily":{d:b["daily"].get(d,0) for d in dates}}
+    return {"tool":"CITED Score log monitor","window":{"first":dates[0] if dates else None,
+            "last":dates[-1] if dates else None,"days":n},
+            "parsed_lines":parsed,"history_path":history_path,"history_days_carried":hist_loaded,
+            "total_ai_hits":total_ai,"citation_time_hits":total_cite,
+            "citation_time_rate_pct":round(100*total_cite/total_ai,1) if total_ai else 0,
+            "blocked_hits":total_block,"trend":trend,"alerts":alerts,
+            "daily_totals":daily_totals,"bots":outb}
+
+def monitor_logs(path, history_path=None):
+    """Standing log MONITOR — extends analyze_logs into a time series. Buckets AI-bot hits by DAY from the
+    log's own timestamps and tracks per-bot crawl frequency, citation-time fetch rate (ChatGPT-User /
+    Perplexity-User / Claude-User / OAI-SearchBot = live citation activity), blocks, and new-bot arrivals
+    over time. If history_path is given, merges with prior uploads into a persistent per-day JSONL so
+    successive logs accumulate (this log is authoritative for the dates it covers, so overlapping
+    re-uploads never double-count). Parsed entirely LOCALLY. Returns a JSON-friendly dict."""
+    rows=load_access_log(path)
+    CITE_TIME={"ChatGPT-User","Perplexity-User","Claude-User","OAI-SearchBot"}
+    matchers=[(name,re.compile(re.escape(ua_id),re.I)) for name,ua_id,op,role,pur in AI_BOTS]
+    day_bot={}
+    for ua,url,status,day in rows:
+        iso=_isodate(day)
+        if not iso: continue
+        for name,pat in matchers:
+            if pat.search(ua):
+                d=day_bot.setdefault(iso,{}).setdefault(name,{"hits":0,"blocked":0,"cite":0})
+                d["hits"]+=1
+                if status in (401,403,429): d["blocked"]+=1
+                if name in CITE_TIME: d["cite"]+=1
+                break
+    merged={k:dict(v) for k,v in day_bot.items()}
+    hist_loaded=0
+    if history_path:
+        try:
+            with open(history_path,encoding="utf-8") as f:
+                for ln in f:
+                    ln=ln.strip()
+                    if not ln: continue
+                    rec=json.loads(ln); iso=rec.get("date")
+                    if iso and iso not in day_bot:            # keep prior days we didn't just re-ingest
+                        merged[iso]=rec.get("bots",{}); hist_loaded+=1
+        except FileNotFoundError: pass
+        except Exception: pass
+        try:                                                 # persist merged history, one line per date
+            with open(history_path,"w",encoding="utf-8") as f:
+                for iso in sorted(merged):
+                    f.write(json.dumps({"date":iso,"bots":merged[iso]})+"\n")
+        except Exception: pass
+    return _summarize_monitor(merged, CITE_TIME, len(rows), history_path, hist_loaded)
+
+def check_draft(content, url="https://draft.local/page"):
+    """Pre-publish citability check: score arbitrary draft HTML the way a crawled page is scored, and
+    return the content/extractability checks + the fixes, so an AI can lint a draft BEFORE it ships
+    (no waiting weeks for citation lag). Takes the content as INPUT — source-agnostic (file, paste, or
+    another tool's output). Pass HTML for the full check; plain text still yields the prose-level checks."""
+    html = content if "<" in (content or "") else "<html><body>"+ "".join(
+        f"<p>{p.strip()}</p>" for p in re.split(r"\n\s*\n", content or "") if p.strip()) +"</body></html>"
+    dom=urllib.parse.urlparse(url).netloc.replace("www.","") or "draft.local"
+    page=analyze(url, 200, html, html, dom)
+    # Lint only what the WRITER controls in the draft body. Publish-wrapper checks (title/meta, schema,
+    # date/freshness, byline, canonical, server) are set by the CMS/template at publish, not the draft.
+    DRAFT_SKIP={"http","title","meta","canonical","noindex","speed","schema","schemavalidity",
+                "parity","schemacomplete","entity","faq","reviewschema","freshness","author"}
+    checks=[c for c in page.get("checks",[]) if c.get("id") not in DRAFT_SKIP and c.get("status")!="na"]
+    fixes=[{"check":c["label"],"status":c["status"],"detail":c.get("detail",""),"why":c.get("ev","")}
+           for c in checks if c["status"] in ("bad","warn")]
+    bad=sum(1 for c in checks if c["status"]=="bad")
+    passing=sum(1 for c in checks if c["status"]=="good")
+    verdict=("weak - restructure before publishing" if bad>=3
+             else "close - a few fixes from citable" if fixes else "citable-ready")
+    return {"tool":"CITED Score check_draft","url":url,"page_type":page.get("type"),
+            "words":page.get("metrics",{}).get("words"),"verdict":verdict,
+            "passing_checks":passing,"bad":bad,"fix_count":len(fixes),"fixes":fixes,
+            "note":"Lints the draft body's extractability; publish-wrapper checks (title, meta, schema, date, author) are excluded and handled at publish."}
+
+# ------------------------------------------------------------------ reasoning tools (compose over data)
+def click_resilience(page):
+    """Per-page CLICK-RESILIENCE band: will AI still send a click, or does it answer inline? Derived from
+    signals CITED Score already computes (page type, info-gain / original data, actionable schema, tables,
+    definitional opener). Directional proxy, honestly labelled. Pass a processed page (from process())."""
+    checks={c.get("id"):c.get("status") for c in (page.get("checks") or []) if c.get("id")}
+    ig=page.get("infogain") or {}
+    agent=page.get("agent") or {}
+    typ=page.get("type"); _w=(page.get("metrics") or {}).get("words",0) or 0
+    wc=_w if isinstance(_w,(int,float)) else 0
+    figs=ig.get("figures",0) if isinstance(ig.get("figures",0),(int,float)) else 0; reasons=[]; score=0
+    if figs>=15 or ig.get("firsthand") or ig.get("proprietary"):
+        score+=2; reasons.append("original data / first-hand research the AI answer can't fully replace")
+    if ig.get("datatable") or checks.get("liststables")=="good":
+        score+=1; reasons.append("tables/lists the user may come back to")
+    if typ in ("product","category"):
+        score+=2; reasons.append("transactional page - the user must visit the site to buy")
+    if any(agent.values()):
+        score+=1; reasons.append("actionable/transactable signals (offer/price/action)")
+    if checks.get("definitional")=="good" and checks.get("statdensity")=="bad" and not ig.get("datatable"):
+        score-=2; reasons.append("a standalone definition with no unique data - AI answers it inline")
+    if typ in ("article","page") and wc<600 and checks.get("liststables")!="good" and figs<6:
+        score-=1; reasons.append("short generic explainer - little the AI can't just summarise")
+    band="high" if score>=2 else ("low" if score<=-1 else "medium")
+    advice={"high":"AI will cite you but users still need to visit - protect and expand this page.",
+            "medium":"Mixed - part is answerable inline; strengthen the parts only your page provides (data, tools, specifics).",
+            "low":"AI likely answers this fully - low click value; don't over-invest, or add original data / tools / interactivity to earn the click."}[band]
+    return {"tool":"CITED Score click_resilience","url":page.get("url"),"type":typ,"words":wc,
+            "band":band,"signal_score":score,"reasons":reasons,"advice":advice}
+
+def correlate_data(pages, cites=None, logrows=None):
+    """Deterministic per-URL JOIN of a crawl with citation counts (cites: {url:count}) and server-log AI-bot
+    activity (logrows from load_access_log). Reliable join so the analysis doesn't depend on the model
+    stitching three sources together. Returns joined rows + plain-language insights."""
+    cites=cites or {}
+    log_hits={}
+    if logrows:
+        matchers=[(name,re.compile(re.escape(ua_id),re.I)) for name,ua_id,op,role,pur in AI_BOTS]
+        CITE_TIME={"ChatGPT-User","Perplexity-User","Claude-User","OAI-SearchBot"}
+        for ua,u,status,day in logrows:
+            for name,pat in matchers:
+                if pat.search(ua):
+                    h=log_hits.setdefault(u.rstrip("/"),{"ai":0,"cite":0}); h["ai"]+=1
+                    if name in CITE_TIME: h["cite"]+=1
+                    break
+    rows=[]
+    for p in pages:
+        if p.get("status")!=200: continue
+        k=p["url"].rstrip("/"); lh=log_hits.get(k) or {}
+        rows.append({"url":p["url"],"type":p.get("type"),"score":p.get("score"),
+                     "citations":cites.get(k),"ai_fetches":lh.get("ai"),"citation_time_fetches":lh.get("cite")})
+    def _avg(xs): xs=[x for x in xs if x is not None]; return round(sum(xs)/len(xs),1) if xs else None
+    insights=[]
+    cited=[r for r in rows if (r["citations"] or 0)>0]
+    uncited=[r for r in rows if r["citations"]==0]
+    if cited and uncited:
+        ac=_avg([r["score"] for r in cited]); au=_avg([r["score"] for r in uncited])
+        if ac is not None and au is not None:
+            insights.append(f"Cited pages average {ac}/100 vs {au}/100 uncited (a {round(ac-au,1):+} gap).")
+    opp=[r for r in rows if r["citations"]==0 and (r["score"] or 0)>=75]
+    if opp: insights.append(f"{len(opp)} well-scored pages (score >=75) earn ZERO citations - the clearest opportunity.")
+    fnc=[r for r in rows if (r["ai_fetches"] or 0)>0 and not (r["citations"] or 0)]
+    if fnc: insights.append(f"{len(fnc)} pages AI FETCHED but did not cite - retrieved yet not chosen; check framing/answerability.")
+    return {"tool":"CITED Score correlate","joined":len(rows),"have_citations":bool(cites),"have_logs":bool(logrows),
+            "insights":insights,
+            "top_cited":sorted(cited,key=lambda r:-(r["citations"] or 0))[:15],
+            "opportunities":sorted(opp,key=lambda r:-(r["score"] or 0))[:15]}
+
+def estimate_ai_influence(ai_sessions=0, total_citations=0, ai_revenue=0.0, avg_deal_value=0.0,
+                          close_rate=0.0, conversion_rate=0.0, self_reported_ai=0, period_days=30):
+    """Honest, RANGED estimate of AI-INFLUENCED value (never 'attribution'). Takes numbers the client's AI
+    can pull from GA4 (AI-Assistant channel sessions + revenue), citations (Bing/Clarity), and an optional
+    self-report anchor. The signal is fundamentally weak; this assembles it honestly and never fakes precision."""
+    assume=[]; notes=[]
+    ev_per_lead=(avg_deal_value*close_rate) if (avg_deal_value and close_rate) else avg_deal_value
+    if ai_revenue>0:
+        floor=float(ai_revenue); basis="GA4 AI-Assistant channel revenue (measured, ecommerce)"
+    elif ai_sessions and conversion_rate and ev_per_lead:
+        conv=ai_sessions*conversion_rate; floor=conv*ev_per_lead
+        basis=f"{ai_sessions} AI sessions x {round(conversion_rate*100,2)}% conv x EV/lead {ev_per_lead:g} = {round(conv,1)} leads"
+    else:
+        floor=0.0; basis="no measurable AI revenue/leads supplied (floor = 0)"
+        notes.append("For a value floor, pass ai_revenue OR (ai_sessions + conversion_rate + avg_deal_value [+ close_rate]).")
+    lo_f, hi_f = 1/0.20, 1/0.10                    # 80-90% mis-tag -> measured = 10-20% of true -> 5x..10x
+    est_low, est_mid, est_high = floor, floor*((lo_f+hi_f)/2), floor*hi_f
+    if floor>0:
+        assume.append("Mis-tagging: 80-90% of AI-driven visits mis-tag as direct/organic (Khim/beomniscient), so the measured channel is ~10-20% of true AI-driven activity -> true ~5-10x the floor.")
+    anchor=None
+    if self_reported_ai and ev_per_lead:
+        anchor=self_reported_ai*ev_per_lead
+        assume.append(f"Self-report anchor: {self_reported_ai} leads said 'AI recommended us' x EV/lead {ev_per_lead:g} = {round(anchor)} (independent, more honest than the channel estimate).")
+    iceberg=None
+    if total_citations:
+        iceberg=round(total_citations/2455)                # observed ~1 click / 2,455 citations
+        notes.append(f"{int(total_citations):,} citations at ~1 click / 2,455 = ~{iceberg} clicks; the rest is zero-click INFLUENCE, not traffic.")
+    return {"tool":"CITED Score estimate_ai_influence","period_days":period_days,
+            "measured_floor":round(floor,2),"floor_basis":basis,
+            "estimate_low":round(est_low,2),"estimate_mid":round(est_mid,2),"estimate_high":round(est_high,2),
+            "self_report_anchor":(round(anchor,2) if anchor is not None else None),
+            "citation_click_estimate":iceberg,"assumptions":assume,"notes":notes,
+            "caveats":["An ESTIMATE with ranges, never 'attribution' - AI passes no referrer and GA4 under-counts.",
+                       "Citations are visibility, not clicks or revenue; AI value is INFLUENCED, not attributed.",
+                       "Ranges stay wide without the self-report anchor; instrument a 'did AI recommend us?' field to tighten them."]}
+
+def actionable_readiness(data):
+    """Scored 'Actionable' readiness (agent-transaction test): could an AI AGENT complete a task on the
+    money pages? Derived from the agent-ready signals already crawled. Deliberately a STANDALONE advisory
+    module, NOT folded into the core Known/Findable/Trusted score - graduate it to a real 4th pillar only
+    once agentic commerce is mainstream ('declared but unread' risk today)."""
+    ag=data.get("agentready") or {}; sig=ag.get("signals") or {}; money=ag.get("money_n") or 0
+    protocols=ag.get("protocols") or {}
+    if not money:
+        return {"tool":"CITED Score actionable_readiness","score":None,"band":None,"money_pages":0,
+                "note":"No transactable / money pages detected - agent-transaction readiness is N/A for this site."}
+    weights={"offer":1.5,"price":1.5,"availability":1.0,"action":1.5,"contact":1.0,"prodserv":1.0}
+    got=tot=0.0; gaps=[]
+    for k,w in weights.items():
+        s=sig.get(k) or {}; has=len(s.get("has") or []); miss=len(s.get("missing_money") or []); base=has+miss
+        if base<=0: continue
+        cover=has/base; tot+=w; got+=w*cover
+        if cover<0.8 and miss: gaps.append({"signal":k,"missing_on_money_pages":miss,"coverage_pct":round(cover*100)})
+    score=round(100*got/tot) if tot else None
+    proto_any=any((v or {}).get("found") for v in protocols.values()) if protocols else False
+    band=None if score is None else ("high" if score>=75 else "medium" if score>=45 else "low")
+    return {"tool":"CITED Score actionable_readiness","score":score,"band":band,"money_pages":money,
+            "agent_protocol_files":proto_any,"gaps":sorted(gaps,key=lambda g:-g["missing_on_money_pages"]),
+            "note":"Advisory 'Actionable' pillar (can an AI agent transact here?) - NOT in the core score; the missing signals are what stops an agent completing a purchase/booking/contact. Watch agentic-commerce adoption before graduating it."}
+
+def scan_ai_answer(answer_text, brand, domain="", competitors=""):
+    """Mechanical layer of the AI GROUND-TRUTH audit: given a consumer-AI answer (pasted), does the BRAND
+    appear, is its DOMAIN cited, and which COMPETITORS are named? The qualitative framing read stays with
+    the model/human - this just does the deterministic presence checks so a service run is repeatable."""
+    t=(answer_text or ""); tl=t.lower()
+    brand_mentioned=bool(brand) and brand.lower() in tl
+    domain_cited=bool(domain) and domain.lower().replace("https://","").replace("http://","").replace("www.","").rstrip("/") in tl
+    comp=[c.strip() for c in re.split(r"[,\n]", competitors or "") if c.strip()]
+    named=[c for c in comp if c.lower() in tl]
+    # rough position: how early the brand appears (0-1, earlier = more prominent), None if absent
+    pos=None
+    if brand_mentioned:
+        i=tl.find(brand.lower()); pos=round(i/max(1,len(tl)),3)
+    return {"tool":"CITED Score scan_ai_answer","brand":brand,"brand_mentioned":brand_mentioned,
+            "domain_cited":domain_cited,"competitors_named":named,"competitor_count":len(named),
+            "brand_position":pos,"answer_chars":len(t),
+            "note":"Deterministic presence check only. For FRAMING (sentiment/positioning/caveats) and WHO WINS, have the model read the answer - this tool does not judge quality."}
 
 # ------------------------------------------------------------------ scoring
 def _score(statuses, weights, mult=None):
@@ -2541,7 +2812,15 @@ def main():
     ap.add_argument("--logs",help="server access log (Apache/Nginx combined) for real AI-bot log analysis")
     ap.add_argument("--no-links",action="store_true",help="skip the broken-link check (faster)")
     ap.add_argument("--queries",help="grounding-query CSV (Bing AI Performance 'AI Search Queries' export) for citation-query coverage")
+    ap.add_argument("--monitor",help="server access log for the standing LOG MONITOR (per-day time-series of AI-bot activity)")
+    ap.add_argument("--history",help="JSONL history file for --monitor to accumulate across uploads (persists per-day)")
+    ap.add_argument("--check-draft",dest="check_draft",help="path to a draft HTML/text file: pre-publish citability check, prints JSON")
     a=ap.parse_args()
+    if a.monitor:
+        print(json.dumps(monitor_logs(a.monitor, a.history), indent=2, ensure_ascii=False)); return
+    if a.check_draft:
+        with open(a.check_draft,encoding="utf-8",errors="ignore") as _f: _txt=_f.read()
+        print(json.dumps(check_draft(_txt, url="https://draft.local/"+os.path.basename(a.check_draft)), indent=2, ensure_ascii=False)); return
     if a.calibrate:
         calibrate(a.report or (a.out+".json"), a.calibrate); return
     if not a.url: ap.error("--url required (or use --calibrate with --report)")
