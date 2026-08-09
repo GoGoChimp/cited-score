@@ -11,7 +11,7 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.15.3"                # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.15.4"                # semver; bump on every release + tag the GitHub release to match
 GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
 VERSION = f"v{APP_VERSION} - August 2026"
 
@@ -154,13 +154,19 @@ def disconnect_mcp():
     except Exception as e:
         return {"ok": False, "path": path, "error": str(e)[:200]}
 
-# ---- opt-in, disclosed usage telemetry (DEFAULT OFF; content-free; never sends URLs/crawl data) -----
+# ---- anonymous usage analytics (DEFAULT ON; disclosed; one-click opt-out) --------------------------
+# What leaves the machine: an anonymous install id + version + os, per-tool MCP call counts, and per
+# event BUCKETS / CATEGORIES / BOOLEANS only (page-count band, site type, score band, is-this-a-re-run,
+# white-label used, feature used). What NEVER leaves: audited URLs, domains, the site's name, page
+# content, crawl results, or anything joining usage to a person. Re-runs are detected ON-DEVICE from
+# local history - only the true/false leaves. The user can turn it off in one click (opt-out).
 _HEREDIR = os.path.dirname(os.path.abspath(__file__))
 def _telemetry_consent_path(): return os.path.join(_HEREDIR, "telemetry_consent.json")
 def telemetry_consent():
     try:
         with open(_telemetry_consent_path(), encoding="utf-8") as f: return bool(json.load(f).get("consent"))
-    except Exception: return False
+    except Exception:
+        return True                                        # default ON (disclosed) until the user opts out
 def set_telemetry_consent(v):
     try:
         with open(_telemetry_consent_path(), "w", encoding="utf-8") as f: json.dump({"consent": bool(v)}, f)
@@ -170,10 +176,26 @@ def _install_id():
     import hashlib
     raw = (os.environ.get("COMPUTERNAME", "") + _HEREDIR).encode("utf-8", "ignore")
     return hashlib.sha256(raw).hexdigest()[:16]           # stable, anonymous, no PII
+
+def _usage_events_path(): return os.path.join(_HEREDIR, "usage_events.jsonl")
+def _pbucket(n): n = int(n or 0); return "1-10" if n <= 10 else "11-50" if n <= 50 else "51-200" if n <= 200 else "200+"
+def _sbucket(s): s = float(s or 0); return "<50" if s < 50 else "50-69" if s < 70 else "70-84" if s < 85 else "85+"
+def record_usage(kind, **fields):
+    """Append ONE content-free usage event locally (uploaded later only if consented). By construction it
+    records only buckets / categories / booleans - never a URL, domain, or crawl content."""
+    if not telemetry_consent(): return
+    try:
+        ev = {"k": kind, "day": time.strftime("%Y-%m-%d")}
+        ev.update({k: v for k, v in fields.items() if v is not None})
+        with open(_usage_events_path(), "a", encoding="utf-8") as f:
+            f.write(json.dumps(ev) + "\n")
+    except Exception:
+        pass
+
 def upload_telemetry():
-    """Content-free, OPT-IN. Sends per-tool CALL COUNTS + version so adoption can be gauged. Never sends
-    audited URLs, crawl data, or anything about the sites the user looked at. No-op unless opted in.
-    Graceful if the `usage` endpoint isn't deployed yet (endpoint = the one remaining infra piece)."""
+    """Batch-send the anonymous events + MCP call counts to the `usage` endpoint, then clear the local
+    batch. No-op unless opted in. Robust: rename-then-send so a failed upload never loses events.
+    Graceful if the `usage` endpoint isn't deployed yet."""
     if not telemetry_consent(): return
     try:
         usage = {}
@@ -181,7 +203,30 @@ def upload_telemetry():
         if os.path.exists(up):
             with open(up, encoding="utf-8") as f:
                 usage = {k: (v or {}).get("count") for k, v in json.load(f).items()}
-        sb_post("usage", {"install": _install_id(), "version": APP_VERSION, "tools": usage})
+        ep = _usage_events_path(); tmp = ep + ".send"; events = []
+        if os.path.exists(ep):
+            try: os.replace(ep, tmp)                        # atomically claim the batch (avoids upload races)
+            except Exception: tmp = None
+        if tmp and os.path.exists(tmp):
+            with open(tmp, encoding="utf-8") as f:
+                events = [json.loads(l) for l in f if l.strip()][:3000]
+        if not events and not usage:
+            if tmp and os.path.exists(tmp):
+                try: os.replace(tmp, ep)
+                except Exception: pass
+            return
+        st, _ = sb_post("usage", {"install": _install_id(), "version": APP_VERSION,
+                                  "os": sys.platform, "tools": usage, "events": events})
+        if st and 200 <= st < 300:
+            if tmp and os.path.exists(tmp):
+                try: os.remove(tmp)
+                except Exception: pass
+        elif tmp and os.path.exists(tmp):                  # send failed -> put the batch back, never lose it
+            try:
+                with open(tmp, encoding="utf-8") as fr, open(ep, "a", encoding="utf-8") as fa:
+                    fa.write(fr.read())
+                os.remove(tmp)
+            except Exception: pass
     except Exception:
         pass
 
@@ -352,7 +397,7 @@ a{color:var(--grn);text-decoration:none}
      <button class="mini" id="mcpbtn" onclick="mcpToggle()">Connect to Claude Desktop</button>
      <div class="note2" id="mcpnote" style="margin-top:8px"></div>
      <div class="note2" style="margin-top:6px"><a href="#" onclick="copyMcp();return false" style="color:var(--muted)">Copy config for Cursor / Claude Code</a></div>
-     <label class="note2" style="margin-top:8px;display:flex;gap:6px;align-items:flex-start;cursor:pointer;line-height:1.4"><input type="checkbox" id="tel" style="width:auto;margin-top:2px" onchange="setTel()"><span>Share anonymous usage (tool call counts only, never the sites you audit) to help improve CITED Score</span></label>
+     <label class="note2" style="margin-top:8px;display:flex;gap:6px;align-items:flex-start;cursor:pointer;line-height:1.4"><input type="checkbox" id="tel" style="width:auto;margin-top:2px" onchange="setTel()"><span><b>Anonymous usage stats are on</b> - content-free patterns only (page-count and site-type bands, feature use, re-runs), <b>never your URLs, domains or audit data</b>. Uncheck to turn off.</span></label>
    </div>
  </div>
 </div>
@@ -625,15 +670,15 @@ class Handler(BaseHTTPRequestHandler):
         except Exception: body = {}
         if self.path == "/activate": return self._activate(body)
         if self.path == "/request-code": return self._request_code(body)
-        if self.path == "/connect-mcp": return self._json(200, connect_mcp())
+        if self.path == "/connect-mcp": record_usage("feature", f="mcp_connect"); return self._json(200, connect_mcp())
         if self.path == "/disconnect-mcp": return self._json(200, disconnect_mcp())
-        if self.path == "/schedule": return self._json(200, schedule_crawl((body.get("url") or "").strip()))
+        if self.path == "/schedule": record_usage("feature", f="schedule"); return self._json(200, schedule_crawl((body.get("url") or "").strip()))
         if self.path == "/telemetry-consent": return self._json(200, {"ok": set_telemetry_consent(body.get("consent"))})
         if self.path == "/self-update": return self._json(200, self_update())   # BETA/gated; banner still uses /open-update
         if not is_activated(): return self._json(403, {"error": "Activate CITED Score to run audits."})
         if self.path == "/run": return self._run(body)
-        if self.path == "/calibrate": return self._calibrate(body)
-        if self.path == "/benchmark": return self._benchmark(body)
+        if self.path == "/calibrate": record_usage("feature", f="calibrate"); return self._calibrate(body)
+        if self.path == "/benchmark": record_usage("feature", f="benchmark"); return self._benchmark(body)
         return self._send(404, "not found")
 
     def _activate(self, body):
@@ -720,6 +765,16 @@ class Handler(BaseHTTPRequestHandler):
                 JOBS[job]["report"] = "/report/" + safe(dom)
                 JOBS[job]["summary"] = {"overall": data["overall"], "pages": data["pages_crawled"],
                                         "pillars": data["pillars"], "engines": data["engines"]}
+                try:                                             # anonymous usage event - no URL/domain/content leaves
+                    _hist = base + "-history.jsonl"; _n = 0
+                    if os.path.exists(_hist):
+                        with open(_hist, encoding="utf-8") as _hf: _n = sum(1 for _ in _hf)
+                    record_usage("audit", pages=_pbucket(data.get("pages_crawled")),
+                                 site_type=(data.get("site_type") or "general"),
+                                 score=_sbucket(data.get("overall")), rerun=(_n > 1),
+                                 wl=bool(client), links=bool(dolinks))
+                    threading.Thread(target=upload_telemetry, daemon=True).start()
+                except Exception: pass
             except Exception as e:
                 JOBS[job]["error"] = str(e)
             JOBS[job]["finished"] = True
@@ -730,7 +785,10 @@ def start_server(port=PORT):
     """Start the HTTP server on a daemon thread; return the actual bound port (0 = OS picks)."""
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    threading.Thread(target=upload_telemetry, daemon=True).start()   # opt-in, no-op unless the user consented
+    def _heartbeat():
+        record_usage("launch")                                       # anonymous launch ping -> active installs + return-days
+        upload_telemetry()
+    threading.Thread(target=_heartbeat, daemon=True).start()         # default-on, no-op unless consented
     return srv.server_address[1]
 
 def main():

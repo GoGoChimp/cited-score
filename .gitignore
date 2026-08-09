@@ -39,3 +39,7 @@ cited-score.url
 # --- Fonts: Anton is under the SIL Open Font License. Download Anton-Regular.ttf
 # from Google Fonts into fonts/ to regenerate the icon (make_icon.py). Not required to run the app. ---
 fonts/
+
+# anonymous usage analytics (local batch)
+usage_events.jsonl
+usage_events.jsonl.send
