@@ -273,5 +273,19 @@ def analyze_ai_answer(answer_text: str, brand: str, domain: str = "", competitor
     return A.scan_ai_answer(answer_text, brand, domain, competitors)
 
 
+@mcp.tool()
+def analyze_ai_panel(answers: list, brand: str, domain: str = "", competitors: str = "") -> dict:
+    """Aggregate several engines' answers to the SAME question into one cross-engine PANEL - the 'polling'
+    view of AI visibility. 91% of AI citations show on only ONE engine (Indig H1 2026), so a single-engine
+    read misleads; the panel is the honest unit. answers = a list of {engine, text} (paste each consumer-AI
+    answer - ChatGPT / Perplexity / Gemini / AI Overviews / Copilot / Claude). Returns where the brand is
+    NAMED vs merely CITED (the 'cited != recommended' gap the market now optimises for), panel share of
+    voice, the competitor leaderboard, and brand rank. Mechanical/deterministic; the browser probing that
+    GETS the answers stays assisted (no automation or keys in the tool). Use analyze_ai_answer for a single
+    answer, this to compare across engines or over time."""
+    _telemetry("analyze_ai_panel")
+    return A.scan_ai_panel(answers, brand, domain, competitors)
+
+
 if __name__ == "__main__":
     mcp.run()

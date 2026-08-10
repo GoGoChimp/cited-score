@@ -1373,6 +1373,52 @@ def scan_ai_answer(answer_text, brand, domain="", competitors=""):
             "brand_position":pos,"answer_chars":len(t),
             "note":"Deterministic presence check only. For FRAMING (sentiment/positioning/caveats) and WHO WINS, have the model read the answer - this tool does not judge quality."}
 
+def scan_ai_panel(answers, brand, domain="", competitors=""):
+    """Panel / POLLING layer of the AI ground-truth audit: aggregate the SAME question's answers from
+    several engines (answers = list of {engine, text}) into one cross-engine view. Built for the reality
+    that 91% of AI citations show on only ONE engine (Indig H1 2026), so a single-engine read misleads.
+    Surfaces where the brand is NAMED vs merely CITED (the 'cited != recommended' gap), panel share of
+    voice, and the competitor leaderboard. Mechanical only; the browser probing that GETS the answers
+    stays assisted (no automation/keys in the tool). Framing / who-wins nuance stays with the model."""
+    if isinstance(answers, dict):
+        answers=[{"engine":k,"text":v} for k,v in answers.items()]
+    dclean=(domain or "").lower().replace("https://","").replace("http://","").replace("www.","").rstrip("/")
+    bl=(brand or "").lower()
+    rows=[]
+    for a in (answers or []):
+        eng=((a.get("engine") if isinstance(a,dict) else None) or "?").strip() or "?"
+        txt=str((a.get("text") if isinstance(a,dict) else a) or "")
+        r=scan_ai_answer(txt, brand, domain, competitors)
+        # NAMED = brand appears in PROSE with the domain stripped out first, so a brand whose name sits
+        # inside its own domain (GoGoChimp / gogochimp.com) is not counted as 'named' merely because it is CITED.
+        prose=txt.lower().replace(dclean," ") if dclean else txt.lower()
+        named=bool(bl) and bl in prose
+        pos=round(prose.find(bl)/max(1,len(prose)),3) if named else None
+        rows.append({"engine":eng,"brand_named":named,"domain_cited":r["domain_cited"],
+                     "brand_position":pos,"competitors_named":r["competitors_named"]})
+    n=len(rows)
+    comp=[c.strip() for c in re.split(r"[,\n]", competitors or "") if c.strip()]
+    named_on=[r["engine"] for r in rows if r["brand_named"]]
+    cited_on=[r["engine"] for r in rows if r["domain_cited"]]
+    cited_not_named=[r["engine"] for r in rows if r["domain_cited"] and not r["brand_named"]]
+    named_not_cited=[r["engine"] for r in rows if r["brand_named"] and not r["domain_cited"]]
+    board={c:sum(1 for r in rows if any(c.lower()==x.lower() for x in r["competitors_named"])) for c in comp}
+    leaderboard=sorted([{"name":c,"engines":k} for c,k in board.items()], key=lambda x:-x["engines"])
+    ranking=sorted([{"name":brand,"engines":len(named_on)}]+leaderboard, key=lambda x:-x["engines"])
+    brand_rank=next((i+1 for i,x in enumerate(ranking) if x["name"]==brand), None)
+    positions=[r["brand_position"] for r in rows if r["brand_position"] is not None]
+    avg_pos=round(sum(positions)/len(positions),3) if positions else None
+    total_namings=len(named_on)+sum(board.values())
+    sov=round(100*len(named_on)/total_namings,1) if total_namings else 0.0
+    return {"tool":"CITED Score scan_ai_panel","brand":brand,"engines_polled":n,
+            "brand_named_on":len(named_on),"named_engines":named_on,
+            "brand_cited_on":len(cited_on),"cited_engines":cited_on,
+            "cited_not_recommended":cited_not_named,    # a SOURCE but the brand isn't named = the 'cited != recommended' gap
+            "recommended_not_cited":named_not_cited,
+            "share_of_voice_pct":sov,"brand_rank":brand_rank,"brand_position_avg":avg_pos,
+            "competitor_leaderboard":leaderboard[:12],"per_engine":rows,
+            "note":"Mechanical panel aggregation of pasted answers. Treat it as a POLL - run the same question across engines and watch NAMED-vs-merely-CITED + the competitor leaderboard. The browser probing that gets the answers stays assisted (no automation/keys). Sentiment/framing/who-wins nuance stays with the model."}
+
 # ------------------------------------------------------------------ scoring
 def _score(statuses, weights, mult=None):
     tot=got=0.0
