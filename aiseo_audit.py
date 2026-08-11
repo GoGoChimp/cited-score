@@ -1792,7 +1792,7 @@ def write_html(d, path):
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 'Archivo',-apple-system,Segoe UI,Arial,sans-serif}
 a{color:var(--txt);text-decoration:none}a:hover{color:var(--grn)}
-header{padding:18px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header{padding:14px 28px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:18px;flex-wrap:wrap;max-width:1616px;margin:0 auto}
 .logo{display:inline-flex;align-items:center;gap:11px}
 .logo .wm{display:inline-flex;align-items:baseline;gap:8px}
 .logo .lw{font-family:'Archivo',sans-serif;font-weight:900;font-size:22px;letter-spacing:-.02em;color:var(--txt);line-height:1}
@@ -1803,11 +1803,17 @@ header .m{color:var(--muted);font-size:13px}
 .navbtn:hover{border-color:var(--grn);color:var(--grn)}
 button{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px}
 button:hover{border-color:var(--grn);color:var(--grn2)}
-.tabs{display:flex;flex-wrap:wrap;gap:2px;padding:0 18px;border-bottom:1px solid var(--line);background:#120F0C;position:sticky;top:0;z-index:5}
-.tab{padding:11px 13px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;font-size:13px;white-space:nowrap}
-.tab:hover{color:var(--txt)}.tab.on{color:#fff;border-bottom-color:var(--grn)}
-.tab.sep{opacity:.4;pointer-events:none;padding:11px 4px}
-.wrap{padding:22px 26px;max-width:1320px}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;padding:0 28px;border-bottom:1px solid var(--line);background:var(--bg);position:sticky;top:0;z-index:5;max-width:1616px;margin:0 auto}
+.tab{padding:14px 12px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;font-size:13.5px;white-space:nowrap;display:flex;align-items:center;gap:7px}
+.tab:hover{color:var(--txt)}.tab.on{color:#fff;border-bottom-color:var(--grn);font-weight:600}
+.tabsep{width:1px;height:18px;background:var(--line);align-self:center;margin:0 8px}
+.tabcount{font-family:var(--mono);font-size:10px;background:#1A1A1A;color:var(--grn);padding:2px 5px;border-radius:3px}
+.tabcount.err{color:#E0705C}
+.tabdd{position:relative;display:flex}
+.ddmenu{display:none;position:absolute;top:100%;left:0;background:#0A0A0A;border:1px solid var(--line);border-radius:8px;padding:6px;z-index:30;min-width:170px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.ddi{padding:8px 12px;color:var(--muted);cursor:pointer;font-size:13px;border-radius:5px;display:flex;align-items:center}
+.ddi:hover{background:#141414;color:#fff}.ddi.on{color:#fff;background:#111111}
+.wrap{padding:28px;max-width:1616px;margin:0 auto}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:20px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
 .card .n{font-size:30px;font-weight:800}.card .l{color:var(--muted);font-size:12px;margin-top:2px}
@@ -2109,10 +2115,21 @@ const ring=v=>`<div class="ring" style="--p:${v};--c:${col(v)}"><i>${v}</i></div
 const scb=v=>`<span class="sc" style="background:${col(v)}">${v}</span>`;
 const bd=p=>`<span class="badge ${p}">${p}</span>`;
 const ECOLS=['ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude'];
-const TABS=['Overview','Action Plan','Issues','Pages','Off-page','Agent-ready','Info gain','|','ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude','Grok','|','Site structure','Response times','Broken links','AI crawlers'];
+const PRIMARY=['Overview','Action Plan','Issues','Pages','Agent-ready'];
+const ENGTABS=['ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude','Grok'];
+const TECHTABS=['Off-page','Info gain','Site structure','Response times','Broken links','AI crawlers'];
+const TABS=[...PRIMARY,...ENGTABS,...TECHTABS];
 let cur='Overview',sortk='score',sortd=1,pageFilter='';
-function tabsbar(){document.getElementById('tabs').innerHTML=TABS.map(t=>t=='|'?`<div class="tab sep">|</div>`:`<div class="tab ${t==cur?'on':''}" onclick="go('${t}')">${t}${t=='Grok'?'<sup style="color:#8b8480;font-weight:700;font-size:9px;margin-left:2px">adv</sup>':''}</div>`).join('')}
-function go(t){cur=t;pageFilter='';tabsbar();render();updExp()}
+function tabcount(t){if(t=='Action Plan')return (typeof ACT=='function'?ACT().length:null);if(t=='Issues')return ((D.totals||{}).warn||0)+((D.totals||{}).bad||0);return null;}
+function tabsbar(){
+ const bd=(t)=>{const c=tabcount(t);return (c!=null)?`<span class="tabcount ${t=='Issues'?'err':''}">${c}</span>`:'';};
+ const item=(t)=>`<div class="tab ${t==cur?'on':''}" onclick="go('${t}')">${t}${bd(t)}</div>`;
+ const dd=(label,items)=>{const active=items.indexOf(cur)>=0;return `<div class="tabdd"><div class="tab ${active?'on':''}" onclick="tglDD(event,'${label}')">${label} <span style="color:#7A7A7A;font-size:11px">&#9662;</span></div><div class="ddmenu" id="dd_${label}">${items.map(t=>`<div class="ddi ${t==cur?'on':''}" onclick="go('${t}')">${t}${t=='Grok'?'<span style="color:#7A7A7A;margin-left:6px">adv</span>':''}</div>`).join('')}</div></div>`;};
+ document.getElementById('tabs').innerHTML=PRIMARY.map(item).join('')+'<div class="tabsep"></div>'+dd('Engines',ENGTABS)+dd('Technical',TECHTABS);
+}
+function tglDD(e,label){e.stopPropagation();const m=document.getElementById('dd_'+label);const open=m.style.display=='block';document.querySelectorAll('.ddmenu').forEach(x=>x.style.display='none');m.style.display=open?'none':'block';}
+function go(t){cur=t;pageFilter='';document.querySelectorAll('.ddmenu').forEach(x=>x.style.display='none');tabsbar();render();updExp()}
+document.addEventListener('click',function(){document.querySelectorAll('.ddmenu').forEach(x=>x.style.display='none');});
 // ---- context-aware CSV export: the header button exports the CURRENT tab's data + labels itself for it ----
 var EXPORTS={'Pages':{label:'Export pages',fn:function(){exportPages()}},
  'Action Plan':{label:'Export action plan',fn:function(){exportPlan()}},
@@ -2215,10 +2232,11 @@ function ovw2(){
  const projCard=`<div style="background:#0A0A0A;border:1px solid #1F1F1F;border-radius:8px;padding:16px 20px;display:flex;align-items:center;gap:12px"><div style="display:flex;flex-direction:column;gap:3px"><div style="font-size:13px;font-variation-settings:'wght' 600;color:#FFFFFF">Top three done → ${proj}</div><div style="font-size:12px;color:#7A7A7A">+${proj-ov} from about a day of work</div></div><div style="flex:1"></div><div onclick="go('Action Plan')" style="border:1px solid #2A2A2A;color:#D9D9D9;font-size:12px;padding:7px 12px;border-radius:5px;cursor:pointer">Full plan</div></div>`;
  const localNote=`<div style="display:flex;align-items:center;gap:9px;padding:12px 18px;border:1px solid #1F1F1F;border-radius:8px"><div style="width:7px;height:7px;border-radius:50%;background:#3FA85A"></div><div style="font-size:12px;color:#7A7A7A">Crawl ran locally. No page data left this machine.</div></div>`;
  const banners = `${D.crawl_failed?`<div style="background:rgba(224,83,61,.16);border:1px solid rgba(224,83,61,.5);border-radius:8px;padding:16px 18px;margin-bottom:20px;color:#ff9c88;font-size:14px"><b>Couldn't crawl this site.</b> ${esc(D.crawl_note||"")}</div>`:""}${D.access_blocked?`<div style="background:rgba(224,83,61,.12);border:1px solid rgba(224,83,61,.4);border-radius:8px;padding:14px 18px;margin-bottom:20px;color:#ff9c88;font-size:14px"><b>AI crawlers are blocked.</b> robots.txt or your WAF is blocking GPTBot / PerplexityBot / Bingbot, so nothing here can be cited until it is fixed.</div>`:""}${(D.redirect_home||[]).length?`<div style="background:#0A0A0A;border:1px solid #B99329;border-radius:8px;padding:14px 18px;margin-bottom:20px;font-size:14px"><div style="color:#E5C04A;font-variation-settings:'wght' 600;margin-bottom:6px">${(D.redirect_home||[]).length} page${(D.redirect_home||[]).length==1?"":"s"} silently redirect to your homepage</div><div style="color:#7A7A7A;line-height:1.6;font-size:12.5px">If an AI engine cites one of these deep URLs, the reader is bounced to your homepage instead of the answer, so the citation is wasted. Restore the real page, or 301 to the closest matching content — not the homepage.</div></div>`:""}`;
- return `${banners}<div style="display:flex;flex-direction:column;gap:22px;max-width:1560px">
+ const siteTypeCard=(D.site_type&&D.site_type!="general")?`<div style="background:#0A0A0A;border:1px solid #1F1F1F;border-radius:8px;padding:20px 24px;display:flex;flex-direction:column;gap:12px"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><div style="${MN};font-size:10.5px;letter-spacing:0.16em;color:#7A7A7A">WEBSITE-TYPE PROFILE</div><div style="flex:1"></div><div style="font-size:12px;color:#9BD65C">detected ${esc(D.site_type_label||D.site_type)}</div></div><div style="font-size:12.5px;line-height:1.6;color:#8A8A8A">This site was ${D.site_type_source=="override"?"set by you as":"detected as"} <span style="color:#D9D9D9">${esc(D.site_type_label||D.site_type)}</span>, so the checks that decide AI citation for this page type are weighted higher and the less relevant ones lower. Same 0–100 scale, every page&#39;s applicable checks unchanged — only the emphasis shifts. ${D.site_type_source=="override"?"Set manually":"Auto-detected"}; weights are directional and never remove a page&#39;s checks.</div>${((D.profile_up&&D.profile_up.length)||(D.profile_down&&D.profile_down.length))?`<div style="display:flex;gap:24px;flex-wrap:wrap;border-top:1px solid #141414;padding-top:12px"><div style="flex:1;min-width:180px"><div style="${MN};font-size:10px;letter-spacing:0.1em;color:#3FA85A;margin-bottom:8px">WEIGHTED UP</div><div style="display:flex;flex-wrap:wrap;gap:6px">${(D.profile_up||[]).map(cid=>`<div style="${MN};font-size:10px;background:#141414;color:#8FE6B6;padding:3px 7px;border-radius:3px">${esc((((D.check_meta||{})[cid])||{}).label||cid)}</div>`).join("")||`<span style="color:#7A7A7A;font-size:12px">none</span>`}</div></div><div style="flex:1;min-width:180px"><div style="${MN};font-size:10px;letter-spacing:0.1em;color:#7A7A7A;margin-bottom:8px">WEIGHTED DOWN</div><div style="display:flex;flex-wrap:wrap;gap:6px">${(D.profile_down||[]).map(cid=>`<div style="${MN};font-size:10px;background:#111111;color:#8A8A8A;padding:3px 7px;border-radius:3px">${esc((((D.check_meta||{})[cid])||{}).label||cid)}</div>`).join("")||`<span style="color:#7A7A7A;font-size:12px">none</span>`}</div></div></div>`:""}</div>`:"";
+ return `${banners}<div style="display:flex;flex-direction:column;gap:22px">
    <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:stretch">${scoreCard}${healthCard}${qCard}</div>
    <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start">
-     <div style="flex:1;min-width:480px;display:flex;flex-direction:column;gap:22px">${engTable}<div style="display:flex;gap:22px;flex-wrap:wrap">${pagesCard}${reachCard}</div></div>
+     <div style="flex:1;min-width:480px;display:flex;flex-direction:column;gap:22px">${engTable}<div style="display:flex;gap:22px;flex-wrap:wrap">${pagesCard}${reachCard}</div>${siteTypeCard}</div>
      <div style="flex:0 0 360px;min-width:0;display:flex;flex-direction:column;gap:14px">${doFirst}${projCard}${localNote}</div>
    </div>
  </div>`;
@@ -2314,7 +2332,7 @@ function plan(){
  const wTable=worth.length?`<div style="background:#0A0A0A;border:1px solid #1F1F1F;border-radius:8px;overflow:hidden"><div style="display:flex;align-items:center;gap:12px;padding:18px 22px 14px"><div style="width:9px;height:9px;border-radius:2px;background:#6DC756;opacity:0.45"></div><div style="font-size:15px;font-variation-settings:'wght' 700;color:#FFFFFF">Worth doing</div><div style="${MN};font-size:11.5px;color:#7A7A7A">${worth.length} fixes · +${wG} points</div><div style="flex:1"></div><div style="font-size:12.5px;color:#8A8A8A">Structure for retrieval</div></div>${worth.map((i,x)=>wRow(i,wStart+x)).join("")}</div>`:"";
  const nsTable=nostand.length?`<div style="background:#070707;border:1px solid #1F1F1F;border-radius:8px;overflow:hidden"><div style="display:flex;align-items:center;gap:12px;padding:16px 22px"><div style="width:9px;height:9px;border-radius:2px;background:#1A1A1A;border:1px solid #2A2A2A"></div><div style="font-size:14px;font-variation-settings:'wght' 600;color:#D9D9D9">No standalone gain</div><div style="${MN};font-size:11.5px;color:#7A7A7A">${nostand.length} fixes · +0 alone</div><div style="flex:1"></div><div style="font-size:12.5px;color:#8A8A8A">Worth doing after the above — they compound</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;padding:0 22px 18px">${nostand.map(i=>`<div style="${MN};font-size:11px;background:#111111;color:#8A8A8A;padding:5px 9px;border-radius:4px">${esc(i.label.split("(")[0].trim())} · ${i.count}</div>`).join("")}</div></div>`:"";
  const foot=`<div style="border-top:1px solid #1F1F1F;padding-top:18px;font-size:12px;line-height:1.65;color:#7A7A7A;max-width:820px">The CITED Score estimates <span style="color:#8A8A8A">citability</span> from on-page, structural and technical signals. It does <span style="color:#8A8A8A">not</span> measure citations. Every check carries a source: engine documentation, first-party citation data, or a CITED chapter. llms.txt and Grok are shown for reference only and are not scored.</div>`;
- return `<div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;max-width:1560px"><div style="flex:1;min-width:600px;display:flex;flex-direction:column;gap:22px">${header}${infonote}${bigTable}${wTable}${nsTable}${foot}</div><div style="flex:0 0 372px;min-width:0;display:flex;flex-direction:column;gap:14px">${roadmapCard()}${effortCard(act,edits)}<div onclick="exportPlan()" style="background:#D9D9D9;color:#000000;font-size:13px;font-variation-settings:'wght' 600;padding:13px;border-radius:6px;text-align:center;cursor:pointer">Export plan as CSV</div><div style="display:flex;align-items:center;gap:9px;padding:12px 18px;border:1px solid #1F1F1F;border-radius:8px"><div style="width:7px;height:7px;border-radius:50%;background:#6DC756"></div><div style="font-size:12px;color:#7A7A7A">Crawl ran locally. No page data left this machine.</div></div></div></div>`;
+ return `<div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start"><div style="flex:1;min-width:600px;display:flex;flex-direction:column;gap:22px">${header}${infonote}${bigTable}${wTable}${nsTable}${foot}</div><div style="flex:0 0 372px;min-width:0;display:flex;flex-direction:column;gap:14px">${roadmapCard()}${effortCard(act,edits)}<div onclick="exportPlan()" style="background:#D9D9D9;color:#000000;font-size:13px;font-variation-settings:'wght' 600;padding:13px;border-radius:6px;text-align:center;cursor:pointer">Export plan as CSV</div><div style="display:flex;align-items:center;gap:9px;padding:12px 18px;border:1px solid #1F1F1F;border-radius:8px"><div style="width:7px;height:7px;border-radius:50%;background:#6DC756"></div><div style="font-size:12px;color:#7A7A7A">Crawl ran locally. No page data left this machine.</div></div></div></div>`;
 }
 function roadmapCard(){
  const MN="font-family:'IBM Plex Mono',monospace";
@@ -3035,7 +3053,9 @@ tabsbar();render();updExp();
     _hdr_logo=(f"<img src=\"{d['logo']}\" alt='' style='height:30px;flex:none;max-width:220px'>" if d.get('logo') else ("" if _wl else _cited))
     _hdr_wm=(f"<span class='wm'><span class='lw'>{H.escape(d.get('agency') or 'GoGoChimp')}</span></span>" if _wl else "")
     _nav=d.get('nav') or {}                                     # online chrome: new-crawl + logout links (relative to the web app origin)
-    _navbtns=((f"<a class='navbtn' href=\"{H.escape(_nav.get('new_crawl'))}\">New crawl</a>" if _nav.get('new_crawl') else "")
+    _reico="<svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='#9BD65C' stroke-width='2.4' style='margin-right:6px;vertical-align:-2px'><path d='M20 12a8 8 0 1 1-2.3-5.6'/><path d='M20 4v4h-4'/></svg>"
+    _navbtns=((f"<a class='navbtn' href=\"{H.escape(_nav.get('rerun'))}\">{_reico}Re-run crawl</a>" if _nav.get('rerun') else "")
+             +(f"<a class='navbtn' href=\"{H.escape(_nav.get('new_crawl'))}\">New crawl</a>" if _nav.get('new_crawl') else "")
              +(f"<a class='navbtn' href=\"{H.escape(_nav.get('logout'))}\">Log out</a>" if _nav.get('logout') else ""))
     doc=("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
          f"<title>{'AI Search Audit' if _wl else 'CITED Score'}: {H.escape(d['domain'])}</title><link rel='icon' href=\"{FAVICON}\">"
