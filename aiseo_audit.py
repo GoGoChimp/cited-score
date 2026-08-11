@@ -2012,12 +2012,82 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .statcard .l{font-size:11px;color:var(--muted);margin-top:6px}
 @media(max-width:1080px){.engcols{grid-template-columns:1fr 80px 160px 60px}.engwcols{grid-template-columns:60px 1fr 140px 56px 64px}}
 #printroot{display:none}
+/* ---- full story report (Print / PDF): a light, editorial client deliverable ---- */
+.crep{background:#fff;color:#161b18;font-family:'Archivo',-apple-system,Segoe UI,Arial,sans-serif;max-width:880px;margin:0 auto;padding:0 46px 70px;line-height:1.55;font-size:14px;
+ --ink:#161b18;--muted:#63706a;--hair:#e6eae4;--paper2:#f6f8f4;--grn:#1c7f29;--grnbg:#e7f4e6;--amb:#a06a12;--ambbg:#f8efd8;--red:#b23a2b;--redbg:#f7e5e1;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace}
+.crep *{box-sizing:border-box}
+.crep h1,.crep h2,.crep h3,.crep h4,.crep p,.crep ul{margin:0}
+.crep .cr-cover{padding:38px 0 30px;border-bottom:2px solid var(--ink)}
+.crep .cr-mast{display:flex;align-items:center;gap:12px;margin-bottom:34px}
+.crep .cr-mast .wm{font-weight:900;font-size:19px;letter-spacing:-.02em}
+.crep .cr-mast .ws{font-family:var(--mono);font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-left:-3px}
+.crep .cr-mast .meta{margin-left:auto;text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.7}
+.crep .cr-title{font-size:15px;font-family:var(--mono);letter-spacing:.02em;color:var(--muted);text-transform:uppercase}
+.crep .cr-dom{font-size:34px;font-weight:900;letter-spacing:-.03em;line-height:1.05;margin:4px 0 22px}
+.crep .cr-hero{display:flex;align-items:center;gap:26px}
+.crep .cr-bigscore{font-size:78px;font-weight:900;letter-spacing:-.04em;line-height:.9}
+.crep .cr-bigscore small{font-size:22px;color:var(--muted);font-weight:800}
+.crep .cr-verdict{flex:1}
+.crep .cr-vlead{font-size:16px;line-height:1.5;margin-top:12px;max-width:46ch}
+.crep .cr-sec{padding-top:40px}
+.crep .cr-sechead{display:flex;align-items:baseline;gap:14px;border-bottom:1px solid var(--ink);padding-bottom:10px;margin-bottom:22px}
+.crep .cr-num{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--grn)}
+.crep .cr-sechead h2{font-size:23px;font-weight:900;letter-spacing:-.025em}
+.crep .cr-sechead .cr-sub{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.crep .cr-lead{font-size:15.5px;line-height:1.6;max-width:64ch;color:#25302a}
+.crep .cr-lead b{color:var(--ink)}
+.crep .cr-bars{display:flex;flex-direction:column;gap:11px;margin-top:20px}
+.crep .cr-bar{display:grid;grid-template-columns:150px 1fr 60px;align-items:center;gap:14px}
+.crep .cr-bar .bl{font-weight:700;font-size:13.5px}
+.crep .cr-bar .bl small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.crep .cr-bar .bt{height:9px;background:var(--paper2);border-radius:6px;overflow:hidden}
+.crep .cr-bar .bt i{display:block;height:100%;border-radius:6px}
+.crep .cr-bar .bv{font-family:var(--mono);font-weight:600;text-align:right;font-size:14px}
+.crep .cr-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:24px}
+.crep .cr-chip{border:1px solid var(--hair);border-radius:11px;padding:13px 15px;background:var(--paper2)}
+.crep .cr-chip .n{font-size:25px;font-weight:900;letter-spacing:-.02em}
+.crep .cr-chip .l{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:3px}
+.crep .cr-grp{font-family:var(--mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:22px 0 10px;display:flex;align-items:center;gap:8px}
+.crep .cr-grp::after{content:"";flex:1;height:1px;background:var(--hair)}
+.crep .cr-item{display:grid;grid-template-columns:20px 1fr auto;gap:12px;padding:12px 0;border-bottom:1px solid var(--hair);break-inside:avoid}
+.crep .cr-item:last-child{border-bottom:0}
+.crep .cr-ic{font-family:var(--mono);font-weight:700;font-size:13px;line-height:1.5}
+.crep .cr-ic.g{color:var(--grn)}.crep .cr-ic.a{color:var(--amb)}.crep .cr-ic.r{color:var(--red)}
+.crep .cr-it .t{font-weight:700;font-size:14px}
+.crep .cr-it .why{color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.45}
+.crep .cr-it .fix{font-size:13px;margin-top:5px;color:#25302a}
+.crep .cr-tag{font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;white-space:nowrap}
+.crep .cr-tag.g{background:var(--grnbg);color:var(--grn)}.crep .cr-tag.a{background:var(--ambbg);color:var(--amb)}.crep .cr-tag.r{background:var(--redbg);color:var(--red)}
+.crep .cr-meta-r{text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;line-height:1.6}
+.crep .cr-meta-r b{color:var(--grn);font-size:13px}
+.crep .cr-road{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px}
+.crep .cr-phase{border:1px solid var(--hair);border-top:3px solid var(--grn);border-radius:10px;padding:15px;break-inside:avoid}
+.crep .cr-phase .ph{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.crep .cr-phase h4{font-size:15px;font-weight:800;margin:2px 0 9px}
+.crep .cr-phase ul{list-style:none;padding:0;font-size:12.5px}
+.crep .cr-phase li{padding:4px 0 4px 15px;position:relative;color:#25302a}
+.crep .cr-phase li::before{content:"";position:absolute;left:0;top:10px;width:5px;height:5px;border-radius:50%;background:var(--grn)}
+.crep .cr-proj{display:flex;align-items:center;gap:22px;margin-top:20px;background:var(--grnbg);border:1px solid #cbe6c8;border-radius:14px;padding:22px 26px;break-inside:avoid}
+.crep .cr-proj .now,.crep .cr-proj .then{text-align:center}
+.crep .cr-proj .lbl{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.crep .cr-proj .v{font-size:52px;font-weight:900;letter-spacing:-.03em;line-height:1}
+.crep .cr-proj .arrow{font-size:30px;color:var(--grn);font-weight:700}
+.crep .cr-proj .then .v{color:var(--grn)}
+.crep .cr-proj .say{flex:1;font-size:14px;line-height:1.55}
+.crep .cr-proj .say b{color:var(--grn)}
+.crep table{width:100%;border-collapse:collapse;font-size:12px;margin-top:14px}
+.crep thead th{text-align:left;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;border-bottom:1.5px solid var(--ink);padding:7px 8px}
+.crep tbody td{padding:6px 8px;border-bottom:1px solid var(--hair)}
+.crep tbody td.sc{font-family:var(--mono);font-weight:600}
+.crep .cr-foot{margin-top:38px;padding-top:16px;border-top:1px solid var(--hair);font-family:var(--mono);font-size:10.5px;color:var(--muted);line-height:1.7}
 @media print{
- body{background:#fff;color:#111}header,.tabs,.btns{background:#fff}.tab,button{display:none}
- #app{display:none}#printroot{display:block;padding:0 12px}
- .card,.issue,.pill3,.phase,.diffline{border:1px solid #ccc;background:#fff;break-inside:avoid}
- a{color:#111}.muted,.card .l{color:#555}th{background:#eee;color:#333;position:static}
- .sc{color:#fff}h2{break-before:page}
+ @page{margin:13mm 11mm}
+ body{background:#fff!important;color:#161b18}
+ header,.tabs,#app{display:none!important}
+ #printroot{display:block}
+ .crep{padding:0!important;max-width:none!important}
+ .crep .cr-item,.crep .cr-phase,.crep .cr-proj,.crep .cr-chip,.crep .cr-bar,.crep tr{break-inside:avoid}
+ .crep .cr-sec{break-inside:auto}
 }
 """
     js=r"""
@@ -2851,12 +2921,109 @@ function brokenView(){
    <div class="qd" style="margin-top:10px">Internal broken links are top priority. 403/429 (bot-blocked) links and timeouts are deliberately excluded to avoid false positives. The full list is also in the CSV / JSON export.</div>
  </div>`;
 }
-function printReport(){const Q={Known:'Do they know you?',Findable:'Can they find your answer?',Trusted:'Do they trust you?'};
- document.getElementById('printroot').innerHTML=`<h1>${SCORELABEL} — ${esc(D.domain)}</h1><p>${D.pages_crawled} pages · ${esc(D.generated)} · Overall ${D.overall}/100</p>`+
-  `<h2>Action plan</h2>`+D.issues.map((i,x)=>`<p><b>${x+1}. ${esc(i.label)}</b> [${i.pillar}, ${i.ch}, ${i.effort}] ${i.gain_overall>0?'(+'+i.gain_overall+' overall)':''}<br>${esc(i.fix)} — ${i.count} pages</p>`).join('')+
-  `<h2>All pages</h2><table><thead><tr><th>Score</th><th>URL</th><th>Kn</th><th>Fi</th><th>Tr</th></tr></thead><tbody>`+
-  D.pages.map(p=>`<tr><td>${p.score}</td><td>${rel(p.url)}</td><td>${p.pillars.Known}</td><td>${p.pillars.Findable}</td><td>${p.pillars.Trusted}</td></tr>`).join('')+`</tbody></table>`;
- window.print()}
+function _band(s){return s>=85?['Strong','g']:s>=70?['Quotable','g']:s>=55?['At risk','a']:['Weak','r'];}
+function _pm(p){return {Known:'Do the engines know you exist?',Findable:'Can they find your answer?',Trusted:'Do they trust you enough to cite you?'}[p]||'';}
+function _crb(v){return v>=75?'#1c7f29':v>=50?'#a06a12':'#b23a2b';}
+function esc2(s){return (s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function rel2(u){return esc2((u||'').replace(D.origin,'')||'/');}
+function _rollup(){var CR={};(D.pages||[]).forEach(function(p){(p.checks||[]).forEach(function(c){var r=CR[c.id]||(CR[c.id]={id:c.id,label:c.label,pillar:c.pillar,ch:c.ch,ev:c.ev,good:0,warn:0,bad:0,na:0});r[c.status]=(r[c.status]||0)+1;});});return CR;}
+
+function printReport(){
+ var d=D,wl=!!d.client,brand=wl?(d.agency||'AI Search'):'CITED Score';
+ var band=_band(d.overall),CR=_rollup();
+ var engs=['ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude'].slice().sort(function(a,b){return d.engines[a]-d.engines[b];});
+ var issues=(d.issues||[]).slice();
+ var strengths=Object.keys(CR).map(function(k){return CR[k];}).filter(function(r){var app=r.good+r.warn+r.bad;return app>0&&r.good>=app*0.85&&r.good>=3;}).sort(function(a,b){return b.good-a.good;});
+ var nbad=issues.filter(function(i){return i.severity=='bad';}).length, nwarn=issues.filter(function(i){return i.severity=='warn';}).length;
+ var H='<div class="crep">';
+
+ // COVER
+ var mark="<svg viewBox='0 0 200 200' width='30' height='30' style='flex:none'><path d='M148.3,50.1 A72,72 0 1 0 158.7,127' fill='none' stroke='#161b18' stroke-width='17' stroke-linecap='square'/><path d='M70,101 L92,123 L135.7,67.5' fill='none' stroke='#1c7f29' stroke-width='17' stroke-linecap='square'/></svg>";
+ H+='<div class="cr-cover"><div class="cr-mast">'+(wl?'':mark)+'<span><span class="wm">'+esc2(wl?(d.agency||''):'CITED')+'</span>'+(wl?'':'<span class="ws">Score</span>')+'</span>'
+   +'<span class="meta">'+esc2(d.generated)+'<br>'+d.pages_crawled+' pages analysed</span></div>';
+ H+='<div class="cr-title">'+(wl?'AI Search Audit':'AI Search Citability Report')+'</div><div class="cr-dom">'+esc2(d.domain)+'</div>';
+ H+='<div class="cr-hero"><div class="cr-bigscore">'+d.overall+'<small>/100</small></div><div class="cr-verdict">'
+   +'<span class="cr-vchip cr-tag '+band[1]+'">'+band[0]+' &middot; '+(d.overall>=70?'quotable':'below the 70 line')+'</span>'
+   +'<div class="cr-vlead">This is how citable '+esc2(d.domain)+' is to AI engines today &mdash; and exactly what would move it higher.</div></div></div></div>';
+
+ // 01 OVERVIEW
+ var weak=engs[0], strongPill=['Known','Findable','Trusted'].sort(function(a,b){return d.pillars[b]-d.pillars[a];})[0];
+ var lead='<b>'+esc2(d.domain)+' scores '+d.overall+'/100</b> for AI citability across six engines, weighted for how each one selects sources. '
+   +(d.overall>=70?'The foundation is solid &mdash; ':'It sits below the 70-point line engines treat as quotable &mdash; ')
+   +'its strongest footing is <b>'+strongPill+'</b> ('+d.pillars[strongPill]+') and its lowest engine readiness is <b>'+weak+'</b> ('+d.engines[weak]+'). '
+   +'We found <b>'+nbad+' blocking issues</b> and <b>'+nwarn+' weakening ones</b> across '+d.pages_crawled+' pages, against <b>'+strengths.length+' checks the site already passes</b>. Fixing the items in section 4 projects the score to <b>'+d.proj_all+'/100</b>.';
+ H+='<div class="cr-sec"><div class="cr-sechead"><span class="cr-num">01</span><h2>Overview</h2><span class="cr-sub">the headline</span></div>';
+ H+='<p class="cr-lead">'+lead+'</p>';
+ H+='<div class="cr-grp">The three questions engines ask</div><div class="cr-bars">';
+ ['Known','Findable','Trusted'].forEach(function(p){var v=d.pillars[p];H+='<div class="cr-bar"><div class="bl">'+p+'<small>'+_pm(p)+'</small></div><div class="bt"><i style="width:'+v+'%;background:'+_crb(v)+'"></i></div><div class="bv">'+v+'</div></div>';});
+ H+='</div>';
+ H+='<div class="cr-grp">Readiness by engine &middot; weakest first</div><div class="cr-bars">';
+ engs.forEach(function(e){var v=d.engines[e];H+='<div class="cr-bar"><div class="bl">'+e+'</div><div class="bt"><i style="width:'+v+'%;background:'+_crb(v)+'"></i></div><div class="bv">'+v+'</div></div>';});
+ H+='</div>';
+ H+='<div class="cr-chips">'
+   +'<div class="cr-chip"><div class="n">'+d.pages_crawled+'</div><div class="l">Pages analysed</div></div>'
+   +'<div class="cr-chip"><div class="n" style="color:var(--red)">'+nbad+'</div><div class="l">Blocking issues</div></div>'
+   +'<div class="cr-chip"><div class="n" style="color:var(--amb)">'+nwarn+'</div><div class="l">Weakening issues</div></div>'
+   +'<div class="cr-chip"><div class="n" style="color:var(--grn)">'+strengths.length+'</div><div class="l">Checks passed</div></div></div></div>';
+
+ // 02 WHAT'S WORKING
+ H+='<div class="cr-sec"><div class="cr-sechead"><span class="cr-num">02</span><h2>What&rsquo;s already working</h2><span class="cr-sub">the foundation</span></div>';
+ H+='<p class="cr-lead">Before the fixes, here is what the site does well &mdash; the signals AI engines reward that are already in place. Protect these.</p>';
+ ['Known','Findable','Trusted'].forEach(function(p){var ss=strengths.filter(function(s){return s.pillar==p;});if(!ss.length)return;
+   H+='<div class="cr-grp">'+p+'</div>';
+   ss.forEach(function(s){var app=s.good+s.warn+s.bad;H+='<div class="cr-item"><div class="cr-ic g">&#10003;</div><div class="cr-it"><div class="t">'+esc2(s.label)+'</div><div class="why">'+esc2(s.ev||'')+'</div></div><div class="cr-meta-r">'+s.good+'/'+app+' pages<br>'+esc2(s.ch||'')+'</div></div>';});
+ });
+ H+='</div>';
+
+ // 03 WHAT'S WRONG
+ H+='<div class="cr-sec"><div class="cr-sechead"><span class="cr-num">03</span><h2>What&rsquo;s holding you back</h2><span class="cr-sub">'+issues.length+' findings</span></div>';
+ H+='<p class="cr-lead">Every issue the crawl surfaced, grouped by the question it affects. <b>Blocking</b> items stop citation outright; <b>weakening</b> items reduce it. The page counts show how widespread each is.</p>';
+ ['Known','Findable','Trusted'].forEach(function(p){var is=issues.filter(function(i){return i.pillar==p;}).sort(function(a,b){return (a.severity=='bad'?0:1)-(b.severity=='bad'?0:1)||b.count-a.count;});if(!is.length)return;
+   H+='<div class="cr-grp">'+p+' &middot; '+_pm(p)+'</div>';
+   is.forEach(function(i){var sv=i.severity=='bad'?'r':'a';H+='<div class="cr-item"><div class="cr-ic '+sv+'">'+(i.severity=='bad'?'&#10007;':'!')+'</div><div class="cr-it"><div class="t">'+esc2(i.label)+' <span class="cr-tag '+sv+'">'+(i.severity=='bad'?'blocking':'weakening')+'</span></div><div class="why">'+esc2(i.ev||'')+'</div></div><div class="cr-meta-r">'+i.count+' pages<br>'+esc2(i.ch||'')+'</div></div>';});
+ });
+ // site-level findings
+ var sm=d.sitemap||{},sf=[];
+ if(sm.orphan_n)sf.push([sm.orphan_n+' orphan pages','No internal links point to them, so crawlers may never reach them.']);
+ if(sm.missing_n)sf.push([sm.missing_n+' pages missing from the sitemap','Indexable pages absent from the XML sitemap are harder to discover.']);
+ if(sm.noindex_n)sf.push([sm.noindex_n+' noindexed pages in the sitemap','A sitemap should list only indexable URLs.']);
+ if((d.broken_links||[]).length)sf.push([(d.broken_links.length)+' broken outbound link(s)','Dead links signal neglect and break the trust chain.']);
+ if(d.agentready&&d.agentready.money_n)sf.push([(d.agentready.money_n-(d.agentready.any_n||0))+' money pages not agent-ready','Missing offer / price / action signals stop an AI agent transacting.']);
+ if((d.redirect_home||[]).length)sf.push([(d.redirect_home.length)+' deep pages redirect to home','Any AI citation of those URLs is wasted.']);
+ if(sf.length){H+='<div class="cr-grp">Site-level findings</div>';sf.forEach(function(x){H+='<div class="cr-item"><div class="cr-ic a">!</div><div class="cr-it"><div class="t">'+esc2(x[0])+'</div><div class="why">'+esc2(x[1])+'</div></div><div class="cr-meta-r">structural</div></div>';});}
+ H+='</div>';
+
+ // 04 WHAT TO FIX
+ var ordered=issues.slice().sort(function(a,b){return (a.phase||9)-(b.phase||9)||(b.gain_overall||0)-(a.gain_overall||0)||b.count-a.count;});
+ H+='<div class="cr-sec"><div class="cr-sechead"><span class="cr-num">04</span><h2>What to fix, in order</h2><span class="cr-sub">prioritised by impact per effort</span></div>';
+ H+='<p class="cr-lead">The same findings as an ordered plan &mdash; highest score movement per hour of work first. Each shows the concrete fix, the effort, and the projected point gain.</p>';
+ ordered.forEach(function(i,x){var sv=i.severity=='bad'?'r':'a';H+='<div class="cr-item"><div class="cr-ic '+sv+'">'+(x+1)+'</div><div class="cr-it"><div class="t">'+esc2(i.label)+'</div><div class="fix">'+esc2(i.fix||'')+'</div></div><div class="cr-meta-r">'+(i.gain_overall>0?'<b>+'+i.gain_overall+' overall</b><br>':'')+(i.top_engine?i.top_engine+' +'+i.top_engine_gain+'<br>':'')+i.effort+' &middot; '+i.count+' pages</div></div>';});
+ // roadmap
+ var lbl={}; issues.forEach(function(i){lbl[i.id]=i.label;});
+ var ph=d.plan_phases||{},pt={'1':['Days 0&ndash;30','Foundation'],'2':['Days 30&ndash;60','Structure'],'3':['Days 60&ndash;90','Polish']};
+ H+='<div class="cr-grp">The 90-day roadmap</div><div class="cr-road">';
+ ['1','2','3'].forEach(function(k){var ids=ph[k]||[];H+='<div class="cr-phase"><div class="ph">'+pt[k][0]+'</div><h4>'+pt[k][1]+'</h4><ul>'+ids.map(function(id){return '<li>'+esc2(lbl[id]||id)+'</li>';}).join('')+'</ul></div>';});
+ H+='</div></div>';
+
+ // 05 EXPECTED RESULT
+ var projEng={};engs.forEach(function(e){var g=0;issues.forEach(function(i){g+=(i.gain_engines&&i.gain_engines[e])||0;});projEng[e]=Math.min(100,d.engines[e]+g);});
+ H+='<div class="cr-sec"><div class="cr-sechead"><span class="cr-num">05</span><h2>The result you can expect</h2><span class="cr-sub">after the plan</span></div>';
+ H+='<div class="cr-proj"><div class="now"><div class="lbl">Today</div><div class="v">'+d.overall+'</div></div><div class="arrow">&rarr;</div><div class="then"><div class="lbl">All fixes applied</div><div class="v">'+d.proj_all+'</div></div>'
+   +'<div class="say">Clearing the plan lifts '+esc2(d.domain)+' from <b>'+d.overall+'</b> to a projected <b>'+d.proj_all+'/100</b> &mdash; putting every page above the 70-point line engines treat as quotable, and lifting the weakest engines most.</div></div>';
+ H+='<div class="cr-grp">Projected readiness by engine</div><div class="cr-bars">';
+ engs.forEach(function(e){var v=d.engines[e],pv=projEng[e];H+='<div class="cr-bar"><div class="bl">'+e+'</div><div class="bt"><i style="width:'+pv+'%;background:var(--grn);opacity:.35"></i><i style="width:'+v+'%;background:'+_crb(v)+';margin-top:-9px"></i></div><div class="bv">'+v+'&rarr;'+pv+'</div></div>';});
+ H+='</div>';
+ H+='<div class="cr-foot">Prepared with '+esc2(brand)+(wl?'':' &middot; the AI-search auditor')+'. Scores estimate citability from on-page signals; they do not measure citations directly. Projections assume the listed fixes are applied cleanly. Full per-page data is in the CSV/JSON export.</div>';
+
+ // APPENDIX
+ var pgs=(d.pages||[]).slice().sort(function(a,b){return a.score-b.score;});
+ H+='<div class="cr-sec" style="break-before:page"><div class="cr-sechead"><span class="cr-num">A</span><h2>Every page</h2><span class="cr-sub">'+pgs.length+' URLs, weakest first</span></div>';
+ H+='<table><thead><tr><th>Score</th><th>Page</th><th>Known</th><th>Findable</th><th>Trusted</th><th>Type</th></tr></thead><tbody>';
+ pgs.forEach(function(p){H+='<tr><td class="sc" style="color:'+_crb(p.score)+'">'+p.score+'</td><td>'+rel2(p.url)+'</td><td class="sc">'+p.pillars.Known+'</td><td class="sc">'+p.pillars.Findable+'</td><td class="sc">'+p.pillars.Trusted+'</td><td style="color:var(--muted)">'+esc2(p.type||'')+'</td></tr>';});
+ H+='</tbody></table></div>';
+
+ H+='</div>';document.getElementById('printroot').innerHTML=H;window.print();
+};
 tabsbar();render();updExp();
 """
     _wl=bool(d.get('client'))                                    # white-label mode when a client is set
@@ -2870,7 +3037,7 @@ tabsbar();render();updExp();
          f"<style>{css}</style></head><body>"
          f"<header><span class='logo'>{_hdr_logo}{_hdr_wm}</span>"
          f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--txt);font-weight:600'>{H.escape(d['domain'])}</a> &middot; {d['pages_crawled']} pages &middot; {d['generated']}</span>"
-         "<span class='btns'><button onclick='printReport()'>Print / PDF</button><button id='expbtn' onclick='exportCurrent()'>Export CSV</button></span></header>"
+         "<span class='btns'><button onclick='printReport()'>Full report (PDF)</button><button id='expbtn' onclick='exportCurrent()'>Export CSV</button></span></header>"
          + ((f"<div style='padding:14px 24px;background:linear-gradient(90deg,rgba(66,216,72,.10),transparent);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#8b8480'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#8b8480'>by {H.escape(d.get('agency') or 'GoGoChimp')}</span>" + (f"<div style='color:#c9c2bd;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
        + "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view'></div>"
        + ("<div class='foot'>This report <b>estimates citability</b> for AI search from on-page, structural and technical signals. It does <b>not</b> measure citations. llms.txt and Grok are shown for reference only and are not scored.</div></div>" if _wl
