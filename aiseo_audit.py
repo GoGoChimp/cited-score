@@ -3013,7 +3013,6 @@ function printReport(){
  H+='<div class="cr-grp">Projected readiness by engine</div><div class="cr-bars">';
  engs.forEach(function(e){var v=d.engines[e],pv=projEng[e];H+='<div class="cr-bar"><div class="bl">'+e+'</div><div class="bt"><i style="width:'+pv+'%;background:var(--grn);opacity:.35"></i><i style="width:'+v+'%;background:'+_crb(v)+';margin-top:-9px"></i></div><div class="bv">'+v+'&rarr;'+pv+'</div></div>';});
  H+='</div>';
- H+='<div class="cr-foot">Prepared with '+esc2(brand)+(wl?'':' &middot; the AI-search auditor')+'. Scores estimate citability from on-page signals; they do not measure citations directly. Projections assume the listed fixes are applied cleanly. Full per-page data is in the CSV/JSON export.</div>';
 
  // APPENDIX
  var pgs=(d.pages||[]).slice().sort(function(a,b){return a.score-b.score;});
@@ -3021,6 +3020,7 @@ function printReport(){
  H+='<table><thead><tr><th>Score</th><th>Page</th><th>Known</th><th>Findable</th><th>Trusted</th><th>Type</th></tr></thead><tbody>';
  pgs.forEach(function(p){H+='<tr><td class="sc" style="color:'+_crb(p.score)+'">'+p.score+'</td><td>'+rel2(p.url)+'</td><td class="sc">'+p.pillars.Known+'</td><td class="sc">'+p.pillars.Findable+'</td><td class="sc">'+p.pillars.Trusted+'</td><td style="color:var(--muted)">'+esc2(p.type||'')+'</td></tr>';});
  H+='</tbody></table></div>';
+ H+='<div class="cr-foot">Prepared with '+esc2(brand)+(wl?'':' &middot; the AI-search auditor')+'. Scores estimate citability from on-page signals; they do not measure citations directly. Projections assume the listed fixes are applied cleanly. Full per-page data is in the CSV/JSON export.</div>';
 
  H+='</div>';document.getElementById('printroot').innerHTML=H;window.print();
 };
