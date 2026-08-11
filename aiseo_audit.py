@@ -1903,7 +1903,7 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 /* ===== Action Plan + Issues (mockup redesign) ===== */
 .ap2{display:grid;grid-template-columns:1fr 380px;gap:24px;align-items:start}
 .apmain{display:flex;flex-direction:column;gap:20px;min-width:0}
-.apside{display:flex;flex-direction:column;gap:20px;position:sticky;top:12px}
+.apside{display:flex;flex-direction:column;gap:20px}
 .apsum,.issum{background:linear-gradient(180deg,#0A0A0A,#0A0A0A);border:1px solid var(--line);border-radius:14px;padding:22px 26px}
 .apk{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.16em;color:var(--muted);text-transform:uppercase}
 .apbn{font-family:'Archivo',sans-serif;font-size:46px;font-weight:900;line-height:1;letter-spacing:-.02em}
