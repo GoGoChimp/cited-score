@@ -3063,7 +3063,7 @@ tabsbar();render();updExp();
          "<link href='https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap' rel='stylesheet'>"
          f"<style>{css}</style></head><body>"
          f"<header><span class='logo'>{_hdr_logo}{_hdr_wm}</span>"
-         f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--txt);font-weight:600'>{H.escape(d['domain'])}</a> &middot; {d['pages_crawled']} pages &middot; {d['generated']}</span>"
+         f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--txt);font-weight:600'>{H.escape(d['domain'])}</a> &middot; {d['pages_crawled']} page{'' if d['pages_crawled']==1 else 's'} &middot; {d['generated']}</span>"
          f"<span class='btns'>{_navbtns}<button onclick='printReport()'>Full report (PDF)</button><button id='expbtn' onclick='exportCurrent()'>Export CSV</button></span></header>"
          + ((f"<div style='padding:14px 24px;background:linear-gradient(90deg,rgba(66,216,72,.10),transparent);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#7A7A7A'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#7A7A7A'>by {H.escape(d.get('agency') or 'GoGoChimp')}</span>" + (f"<div style='color:#A8A8A8;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
        + "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view'></div>"
