@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CITED Score - the companion auditor to the book CITED (Chris McCarron / GoGoChimp).
+CitedScore - the companion auditor to the book CITED (Chris McCarron / GoGoChimp).
 A "Screaming Frog for AEO/GEO/AI-SEO": crawls the entire site, renders each page
 (headless Chrome), and scores how citable/extractable it is for AI search - overall,
 by pillar (Known / Findable / Trusted = the three questions an engine asks), and per
@@ -63,6 +63,8 @@ CHECK_META = {
                 "ev":"AI and SERP snippets are drawn from the meta description (Ch5)."},
  "h1":         {"label":"Exactly one H1","pillar":"Findable","ch":"Ch5","phase":1,"effort":"Low",
                 "ev":"One H1 states the page topic unambiguously (Ch5)."},
+ "snippetlead":{"label":"H1 lands in the AI snippet window","pillar":"Findable","ch":"Ch5","phase":2,"effort":"Low",
+                "ev":"ChatGPT's index snippets ~200 chars from the page's leading content and pulls the H1 83.6% of the time; if breadcrumbs, kickers or hero clutter push the H1 out of that window the snippet loses your topic (Resoneo 1,249-answer study 2026, Ch5)."},
  "answerfirst":{"label":"Answer-first opener (40-60 words)","pillar":"Findable","ch":"Ch5","phase":2,"effort":"Med",
                 "ev":"The opening 40-60 words are the chunk the machine lifts; AIO answers run ~67 words median (Pew 2026, Ch5)."},
  "qheadings":  {"label":"Question / claim-shaped H2-H3s","pillar":"Findable","ch":"Ch5","phase":2,"effort":"Med",
@@ -136,6 +138,7 @@ FIX = {
  "title":"Write a 15-65 char title leading with the topic, not the brand.",
  "meta":"Write a 50-160 char meta description that opens with the answer.",
  "h1":"Use exactly one H1 that states the page topic.",
+ "snippetlead":"Put the H1 near the very top of the content, above breadcrumbs, category kickers, dates and hero clutter, so it lands in the ~200-char AI snippet.",
  "wordcount":"Add substantive, unique depth so the page has a real answer to lift.",
  "answerfirst":"Put a direct, self-contained 40-60 word answer in the first two sentences.",
  "qheadings":"Rephrase H2/H3s as the questions or claims users actually search.",
@@ -189,6 +192,7 @@ ENGINE_WEIGHTS = {
  "Copilot":     {"schema":3,"sitemap":2,"reachability":2,"liststables":2,"statdensity":2,"answerfirst":2,"parity":2,"entity":2,"entitydensity":1,"schemacomplete":2,"faq":2,"freshness":1,"sourced":1,"comparison":1,"video":1,"noindex":3,"speed":1,"schemavalidity":1,"rankedlist":1,"orphans":1,"duplicate":1,"brokenlinks":1,"nearduplicate":1,"reviewschema":1},
  "Claude":      {"sections":3,"parity":3,"answerfirst":2,"definitional":1,"readability":1,"statdensity":2,"qheadings":2,"liststables":2,"entity":2,"entitydensity":1,"citations":1,"author":1,"sourced":1,"noindex":2,"h2answer":2,"answerthird":1},
 }
+for _e,_w in (("ChatGPT",2),("AI Overviews",1),("Perplexity",1),("Copilot",1)): ENGINE_WEIGHTS[_e]["snippetlead"]=_w
 ENGINE_NOTE = {
  "ChatGPT":"Favours comprehensive, authoritative, source-cited content + strong entity grounding. Cites few sources per answer, so be THE definitive page.",
  "Perplexity":"Live-searches every query. Rewards freshness, extractable facts and external citations. Cites many sources, so breadth helps.",
@@ -243,7 +247,7 @@ def fetch_raw(url, ua=UA, timeout=25, capture=None, _retry=True):
     except urllib.error.HTTPError as e:
         if _retry and e.code in (429, 503):                             # transient rate-limit / overload -> back off once
             time.sleep(2.0); return fetch_raw(url, ua, timeout, capture, _retry=False)
-        return e.code, {}, "", int((time.time()-t0)*1000)
+        return e.code, dict(e.headers or {}), "", int((time.time()-t0)*1000)
     except Exception:
         return None, {}, "", int((time.time()-t0)*1000)
 
@@ -442,6 +446,17 @@ def analyze(url, status, raw, rendered, domain, hdrs=None, fetch_ms=0):
     C.append(chk("answerfirst","good" if fp and 40<=fp<=60 else ("warn" if fp and 30<=fp<=90 else "bad"),f"opening para {fp or 0} words"))
     defn=bool(re.match(r"^\W{0,3}[A-Z][\w&/.\- ]{1,60}?\s+(is|are|means|refers to)\b", fptext))
     C.append(chk("definitional","good" if defn else "warn","definitional opener" if defn else "opener is not a definition"))
+    # snippet lead: does the H1 land inside the ~200-char window ChatGPT snippets from the content? (H1 pulled 83.6%, Resoneo 2026)
+    _sl_h1=h1s[0].get_text(" ",strip=True) if h1s else ""
+    if not _sl_h1:
+        C.append(chk("snippetlead","na","no H1 to anchor the snippet"))
+    else:
+        _sl_lead=root.get_text(" ",strip=True); _sl_pos=_sl_lead.find(_sl_h1[:45])
+        if _sl_pos<0:
+            C.append(chk("snippetlead","warn","H1 sits outside the main content"))
+        else:
+            C.append(chk("snippetlead","good" if _sl_pos<=200 else ("warn" if _sl_pos<=500 else "bad"),
+                         (f"H1 at char {_sl_pos} of the content" if _sl_pos else "H1 leads the snippet")))
     # answer-in-first-third: does a substantive (>=40w) answer sit in the first ~30% of the body?
     _pws=[len(words(pp.get_text(" ",strip=True))) for pp in root.find_all("p")]
     _totpw=sum(_pws) or 1; _ansat=None; _cw=0
@@ -1043,6 +1058,20 @@ def _bot_status(groups, ua):
     if any((d or "").strip()=="/" for d in grp["dis"]): return "blocked"
     if any((d or "").strip() for d in grp["dis"]): return "partial"
     return "allowed"
+def _block_cause(h, s):
+    """Attribute a blocked/failed bot fetch to a vendor from response headers, so a bare 403 becomes
+    'Cloudflare' (which default-blocks AI crawlers on domains created after Jul 2025) instead of a mystery."""
+    if s not in (401,403,429,503,0,None): return ""
+    g=lambda k:str(h.get(k) or h.get(k.lower()) or h.get(k.title()) or "")
+    srv=g("Server").lower()
+    if "cloudflare" in srv or g("cf-ray") or g("cf-mitigated"): return "Cloudflare"
+    if "sucuri" in srv or g("x-sucuri-id"): return "Sucuri"
+    if "akamai" in srv or g("x-akamai-transformed") or g("x-akamai-request-id"): return "Akamai"
+    if "squarespace" in srv: return "Squarespace"
+    if "awselb" in srv or g("x-amz-cf-id"): return "AWS"
+    if "fastly" in srv: return "Fastly"
+    return srv.split("/")[0].title() if srv else ""
+
 def ai_crawler_matrix(origin):
     """AI-bot access matrix: robots.txt rules for every bot, PLUS a live reachability probe of the
     citation-serving bots, so the tab can show robots-allowed-but-firewall-blocked. Per bot, `reach`
@@ -1051,16 +1080,45 @@ def ai_crawler_matrix(origin):
     groups=_parse_robots(robots)
     _uamap=dict(SERVING_UAS)
     def _probe(nm):
-        s,_,_,_=fetch_raw(origin+"/",ua=_uamap[nm])
+        s,hd,_,_=fetch_raw(origin+"/",ua=_uamap[nm])
         if s==429:                              # 429 = rate limit, usually our own concurrent burst -> back off + retry once
-            time.sleep(1.5); s,_,_,_=fetch_raw(origin+"/",ua=_uamap[nm])
-        return (nm, s if s is not None else 0)
-    reachmap={}
+            time.sleep(1.5); s,hd,_,_=fetch_raw(origin+"/",ua=_uamap[nm])
+        return (nm, s if s is not None else 0, _block_cause(hd,s))
+    reachmap={}; causemap={}
     with ThreadPoolExecutor(max_workers=3) as ex:   # gentler burst so we do not self-trigger the WAF rate limit
-        for nm,s in ex.map(_probe,[n for n,_ in SERVING_UAS]): reachmap[nm]=s
+        for nm,s,cz in ex.map(_probe,[n for n,_ in SERVING_UAS]): reachmap[nm]=s; causemap[nm]=cz
     bots=[{"name":n,"ua":ua,"op":op,"role":role,"purpose":pur,
-           "status":_bot_status(groups,ua),"reach":reachmap.get(n)} for n,ua,op,role,pur in AI_BOTS]
+           "status":_bot_status(groups,ua),"reach":reachmap.get(n),"cause":causemap.get(n,"")} for n,ua,op,role,pur in AI_BOTS]
     return {"has_robots":bool(st==200 and robots),"bots":bots}
+
+def common_crawl_presence(domain, timeout=10):
+    """ADVISORY (not scored): how many pages of this domain are in the latest Common Crawl monthly index.
+    Common Crawl feeds ~64% of LLM training sets (C4/RefinedWeb/FineWeb/RedPajama/Dolma), so absence = invisible
+    to the training layer. Best-effort + fail-safe (short timeouts, try/except): never breaks an audit."""
+    try:
+        st,_,body,_=fetch_raw("https://index.commoncrawl.org/collinfo.json", timeout=timeout)
+        if st!=200 or not body: return {"ok":False,"reason":"index list unavailable"}
+        cols=json.loads(body)
+        if not cols: return {"ok":False,"reason":"no crawls listed"}
+        latest=cols[0]; api=latest.get("cdx-api") or ""
+        if not api: return {"ok":False,"reason":"no cdx endpoint"}
+        q=api+"?url="+urllib.parse.quote(domain)+"&matchType=domain&output=json&fl=url&limit=1000"
+        st2,_,body2,_=fetch_raw(q, timeout=timeout)
+        if st2==404: return {"ok":True,"crawl":latest.get("id",""),"crawl_name":latest.get("name",""),"captures":0,"capped":False}
+        if st2!=200: return {"ok":False,"reason":"query failed ("+str(st2)+")","crawl":latest.get("id","")}
+        paths=set(); n=0
+        for line in body2.splitlines():
+            line=line.strip()
+            if not line: continue
+            n+=1
+            try: _u=json.loads(line).get("url","")
+            except Exception: _u=""
+            if _u:
+                try: paths.add(urllib.parse.urlparse(_u).path.rstrip("/").lower() or "/")
+                except Exception: pass
+        return {"ok":True,"crawl":latest.get("id",""),"crawl_name":latest.get("name",""),"captures":n,"capped":n>=1000,"paths":sorted(paths)[:2000]}
+    except Exception as e:
+        return {"ok":False,"reason":str(e)[:80]}
 
 # ------------------------------------------------------------------ log analysis (bring-your-own access log)
 _LOG_LINE=re.compile(r'"[A-Z]+\s+(\S+)\s+[^"]*"\s+(\d{3})\s+\S+\s+"[^"]*"\s+"([^"]*)"')  # Apache/Nginx combined
@@ -1150,7 +1208,7 @@ def _summarize_monitor(merged, CITE_TIME, parsed, history_path, hist_loaded):
                    "citation_time":b["citation_time"],"days_active":len(b["days"]),
                    "first_seen":b["first"],"last_seen":b["last"],
                    "daily":{d:b["daily"].get(d,0) for d in dates}}
-    return {"tool":"CITED Score log monitor","window":{"first":dates[0] if dates else None,
+    return {"tool":"CitedScore log monitor","window":{"first":dates[0] if dates else None,
             "last":dates[-1] if dates else None,"days":n},
             "parsed_lines":parsed,"history_path":history_path,"history_days_carried":hist_loaded,
             "total_ai_hits":total_ai,"citation_time_hits":total_cite,
@@ -1219,7 +1277,7 @@ def check_draft(content, url="https://draft.local/page"):
     passing=sum(1 for c in checks if c["status"]=="good")
     verdict=("weak - restructure before publishing" if bad>=3
              else "close - a few fixes from citable" if fixes else "citable-ready")
-    return {"tool":"CITED Score check_draft","url":url,"page_type":page.get("type"),
+    return {"tool":"CitedScore check_draft","url":url,"page_type":page.get("type"),
             "words":page.get("metrics",{}).get("words"),"verdict":verdict,
             "passing_checks":passing,"bad":bad,"fix_count":len(fixes),"fixes":fixes,
             "note":"Lints the draft body's extractability; publish-wrapper checks (title, meta, schema, date, author) are excluded and handled at publish."}
@@ -1227,7 +1285,7 @@ def check_draft(content, url="https://draft.local/page"):
 # ------------------------------------------------------------------ reasoning tools (compose over data)
 def click_resilience(page):
     """Per-page CLICK-RESILIENCE band: will AI still send a click, or does it answer inline? Derived from
-    signals CITED Score already computes (page type, info-gain / original data, actionable schema, tables,
+    signals CitedScore already computes (page type, info-gain / original data, actionable schema, tables,
     definitional opener). Directional proxy, honestly labelled. Pass a processed page (from process())."""
     checks={c.get("id"):c.get("status") for c in (page.get("checks") or []) if c.get("id")}
     ig=page.get("infogain") or {}
@@ -1251,7 +1309,7 @@ def click_resilience(page):
     advice={"high":"AI will cite you but users still need to visit - protect and expand this page.",
             "medium":"Mixed - part is answerable inline; strengthen the parts only your page provides (data, tools, specifics).",
             "low":"AI likely answers this fully - low click value; don't over-invest, or add original data / tools / interactivity to earn the click."}[band]
-    return {"tool":"CITED Score click_resilience","url":page.get("url"),"type":typ,"words":wc,
+    return {"tool":"CitedScore click_resilience","url":page.get("url"),"type":typ,"words":wc,
             "band":band,"signal_score":score,"reasons":reasons,"advice":advice}
 
 def correlate_data(pages, cites=None, logrows=None):
@@ -1290,7 +1348,7 @@ def correlate_data(pages, cites=None, logrows=None):
     if opp: insights.append(f"{len(opp)} well-scored pages (score >=75) earn ZERO citations - the clearest opportunity.")
     fnc=[r for r in rows if (r["ai_fetches"] or 0)>0 and not (r["citations"] or 0)]
     if fnc: insights.append(f"{len(fnc)} pages AI FETCHED but did not cite - retrieved yet not chosen; check framing/answerability.")
-    return {"tool":"CITED Score correlate","joined":len(rows),"have_citations":bool(cites),"have_logs":bool(logrows),
+    return {"tool":"CitedScore correlate","joined":len(rows),"have_citations":bool(cites),"have_logs":bool(logrows),
             "insights":insights,
             "top_cited":sorted(cited,key=lambda r:-(r["citations"] or 0))[:15],
             "opportunities":sorted(opp,key=lambda r:-(r["score"] or 0))[:15]}
@@ -1322,7 +1380,7 @@ def estimate_ai_influence(ai_sessions=0, total_citations=0, ai_revenue=0.0, avg_
     if total_citations:
         iceberg=round(total_citations/2455)                # observed ~1 click / 2,455 citations
         notes.append(f"{int(total_citations):,} citations at ~1 click / 2,455 = ~{iceberg} clicks; the rest is zero-click INFLUENCE, not traffic.")
-    return {"tool":"CITED Score estimate_ai_influence","period_days":period_days,
+    return {"tool":"CitedScore estimate_ai_influence","period_days":period_days,
             "measured_floor":round(floor,2),"floor_basis":basis,
             "estimate_low":round(est_low,2),"estimate_mid":round(est_mid,2),"estimate_high":round(est_high,2),
             "self_report_anchor":(round(anchor,2) if anchor is not None else None),
@@ -1339,7 +1397,7 @@ def actionable_readiness(data):
     ag=data.get("agentready") or {}; sig=ag.get("signals") or {}; money=ag.get("money_n") or 0
     protocols=ag.get("protocols") or {}
     if not money:
-        return {"tool":"CITED Score actionable_readiness","score":None,"band":None,"money_pages":0,
+        return {"tool":"CitedScore actionable_readiness","score":None,"band":None,"money_pages":0,
                 "note":"No transactable / money pages detected - agent-transaction readiness is N/A for this site."}
     weights={"offer":1.5,"price":1.5,"availability":1.0,"action":1.5,"contact":1.0,"prodserv":1.0}
     got=tot=0.0; gaps=[]
@@ -1351,7 +1409,7 @@ def actionable_readiness(data):
     score=round(100*got/tot) if tot else None
     proto_any=any((v or {}).get("found") for v in protocols.values()) if protocols else False
     band=None if score is None else ("high" if score>=75 else "medium" if score>=45 else "low")
-    return {"tool":"CITED Score actionable_readiness","score":score,"band":band,"money_pages":money,
+    return {"tool":"CitedScore actionable_readiness","score":score,"band":band,"money_pages":money,
             "agent_protocol_files":proto_any,"gaps":sorted(gaps,key=lambda g:-g["missing_on_money_pages"]),
             "note":"Advisory 'Actionable' pillar (can an AI agent transact here?) - NOT in the core score; the missing signals are what stops an agent completing a purchase/booking/contact. Watch agentic-commerce adoption before graduating it."}
 
@@ -1368,7 +1426,7 @@ def scan_ai_answer(answer_text, brand, domain="", competitors=""):
     pos=None
     if brand_mentioned:
         i=tl.find(brand.lower()); pos=round(i/max(1,len(tl)),3)
-    return {"tool":"CITED Score scan_ai_answer","brand":brand,"brand_mentioned":brand_mentioned,
+    return {"tool":"CitedScore scan_ai_answer","brand":brand,"brand_mentioned":brand_mentioned,
             "domain_cited":domain_cited,"competitors_named":named,"competitor_count":len(named),
             "brand_position":pos,"answer_chars":len(t),
             "note":"Deterministic presence check only. For FRAMING (sentiment/positioning/caveats) and WHO WINS, have the model read the answer - this tool does not judge quality."}
@@ -1410,7 +1468,7 @@ def scan_ai_panel(answers, brand, domain="", competitors=""):
     avg_pos=round(sum(positions)/len(positions),3) if positions else None
     total_namings=len(named_on)+sum(board.values())
     sov=round(100*len(named_on)/total_namings,1) if total_namings else 0.0
-    return {"tool":"CITED Score scan_ai_panel","brand":brand,"engines_polled":n,
+    return {"tool":"CitedScore scan_ai_panel","brand":brand,"engines_polled":n,
             "brand_named_on":len(named_on),"named_engines":named_on,
             "brand_cited_on":len(cited_on),"cited_engines":cited_on,
             "cited_not_recommended":cited_not_named,    # a SOURCE but the brand isn't named = the 'cited != recommended' gap
@@ -1641,7 +1699,7 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
     for p in pages:
         for c in p["checks"]:
             if c["status"] not in ("na","info"): tot[c["status"]]+=1
-    return {"tool":"CITED Score","domain":domain,"origin":origin,
+    return {"tool":"CitedScore","domain":domain,"origin":origin,
             "generated":datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
             "date":datetime.date.today().isoformat(),
             "pages_crawled":len(pages),"overall":overall,"pillars":pill,"engines":eng,
@@ -1753,7 +1811,7 @@ def calibrate(report_json, citations_csv):
     r=calibrate_data(d, parse_cites(open(citations_csv,encoding="utf-8-sig").read()))
     if not r or r.get("error"):
         print((r or {}).get("error","no data")); print("CSV format: url,citations (Bing WMT > AI Performance)."); return
-    print(f"\n=== CITED Score calibration vs {r['matched']} pages with real citations ===")
+    print(f"\n=== CitedScore calibration vs {r['matched']} pages with real citations ===")
     print(f"Overall  <-> citations : rho {r['overall']:+.2f}")
     for pl,v in r["pillars"].items(): print(f"{pl:13} <-> citations : rho {v:+.2f}")
     for e,v in r["engines"].items(): print(f"{e:13} <-> citations : rho {v:+.2f}")
@@ -2103,7 +2161,7 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 """
     js=r"""
 const D=window.__DATA__;
-const WL=!!D.client, SCORELABEL=WL?'AI Search Score':'CITED Score';   // white-label: de-brand the score name
+const WL=!!D.client, SCORELABEL=WL?'AI Search Score':'CitedScore';   // white-label: de-brand the score name
 const col=s=>s>=75?'#6DC756':s>=50?'#F0B429':'#E0533D';
 const bcol=v=>v>=70?'#6DC756':v>=50?'#F0B429':'#E0533D';
 const dlt=(now,was)=>{if(was==null)return'';const d=now-was,c=d>0?'up':d<0?'dn':'z',s=(d>0?'+':'')+d;return ` <span class="d ${c}">${s}</span>`};
@@ -2116,7 +2174,7 @@ const bd=p=>`<span class="badge ${p}">${p}</span>`;
 const ECOLS=['ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude'];
 const PRIMARY=['Overview','Action Plan','Issues','Pages','Agent-ready'];
 const ENGTABS=['ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude','Grok'];
-const TECHTABS=['Off-page','Info gain','Site structure','Response times','Broken links','AI crawlers'];
+const TECHTABS=['Off-page','Info gain','Site structure','Response times','Broken links','AI crawlers','Common Crawl'];
 const TABS=[...PRIMARY,...ENGTABS,...TECHTABS];
 let cur='Overview',sortk='score',sortd=1,pageFilter='';
 function tabcount(t){if(t=='Action Plan')return (typeof ACT=='function'?ACT().length:null);if(t=='Issues')return ((D.totals||{}).warn||0)+((D.totals||{}).bad||0);return null;}
@@ -2155,6 +2213,7 @@ function render(){const w=document.getElementById('view');
  if(cur=='Agent-ready')return w.innerHTML=agentView();
  if(cur=='Info gain')return w.innerHTML=infogainView();
  if(cur=='AI crawlers')return w.innerHTML=aicrawlerView();
+ if(cur=='Common Crawl')return w.innerHTML=commoncrawlView();
  if(cur=='Grok')return w.innerHTML=grokView();
  return w.innerHTML=engine(cur);}
 
@@ -2333,7 +2392,7 @@ function plan(){
  const wStart=biggest.length+1;
  const wTable=worth.length?`<div style="background:#0A0A0A;border:1px solid #1F1F1F;border-radius:8px;overflow:hidden"><div style="display:flex;align-items:center;gap:12px;padding:18px 22px 14px"><div style="width:9px;height:9px;border-radius:2px;background:#6DC756;opacity:0.45"></div><div style="font-size:15px;font-variation-settings:'wght' 700;color:#FFFFFF">Worth doing</div><div style="${MN};font-size:11.5px;color:#7A7A7A">${worth.length} fixes · +${wG} points</div><div style="flex:1"></div><div style="font-size:12.5px;color:#8A8A8A">Structure for retrieval</div></div>${worth.map((i,x)=>wRow(i,wStart+x)).join("")}</div>`:"";
  const nsTable=nostand.length?`<div style="background:#070707;border:1px solid #1F1F1F;border-radius:8px;overflow:hidden"><div style="display:flex;align-items:center;gap:12px;padding:16px 22px"><div style="width:9px;height:9px;border-radius:2px;background:#1A1A1A;border:1px solid #2A2A2A"></div><div style="font-size:14px;font-variation-settings:'wght' 600;color:#D9D9D9">No standalone gain</div><div style="${MN};font-size:11.5px;color:#7A7A7A">${nostand.length} fixes · +0 alone</div><div style="flex:1"></div><div style="font-size:12.5px;color:#8A8A8A">Worth doing after the above — they compound</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;padding:0 22px 18px">${nostand.map(i=>`<div style="${MN};font-size:11px;background:#111111;color:#8A8A8A;padding:5px 9px;border-radius:4px">${esc(i.label.split("(")[0].trim())} · ${i.count}</div>`).join("")}</div></div>`:"";
- const foot=`<div style="border-top:1px solid #1F1F1F;padding-top:18px;font-size:12px;line-height:1.65;color:#7A7A7A;max-width:820px">The CITED Score estimates <span style="color:#8A8A8A">citability</span> from on-page, structural and technical signals. It does <span style="color:#8A8A8A">not</span> measure citations. Every check carries a source: engine documentation, first-party citation data, or a CITED chapter. llms.txt and Grok are shown for reference only and are not scored.</div>`;
+ const foot=`<div style="border-top:1px solid #1F1F1F;padding-top:18px;font-size:12px;line-height:1.65;color:#7A7A7A;max-width:820px">The CitedScore estimates <span style="color:#8A8A8A">citability</span> from on-page, structural and technical signals. It does <span style="color:#8A8A8A">not</span> measure citations. Every check carries a source: engine documentation, first-party citation data, or a CITED chapter. llms.txt and Grok are shown for reference only and are not scored.</div>`;
  return `<div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start"><div style="flex:1;min-width:600px;display:flex;flex-direction:column;gap:22px">${header}${infonote}${bigTable}${wTable}${nsTable}${foot}</div><div style="flex:0 0 372px;min-width:0;display:flex;flex-direction:column;gap:14px">${roadmapCard()}${effortCard(act,edits)}<div onclick="exportPlan()" style="background:#D9D9D9;color:#000000;font-size:13px;font-variation-settings:'wght' 600;padding:13px;border-radius:6px;text-align:center;cursor:pointer">Export plan as CSV</div><div style="display:flex;align-items:center;gap:9px;padding:12px 18px;border:1px solid #1F1F1F;border-radius:8px"><div style="width:7px;height:7px;border-radius:50%;background:#6DC756"></div><div style="font-size:12px;color:#7A7A7A">Crawl ran locally. No page data left this machine.</div></div></div></div>`;
 }
 function roadmapCard(){
@@ -2512,7 +2571,7 @@ function pagesView(){
  h+=`</div>`;
  return h}
 const SITEIDS=new Set(['robots','llms','sitemap','reachability','comparison']);
-const SHORT={parity:'Schema in JS',answerfirst:'no opener',definitional:'no definition',readability:'hard to read',entitydensity:'few entities',sections:'walls of text',schema:'Article schema',wordcount:'thin content',freshness:'stale',qheadings:'H2s',faq:'no FAQ',liststables:'no tables',meta:'meta desc',title:'title',alt:'alt text',citations:'few sources',internal:'few links',statdensity:'few stats',canonical:'canonical',h1:'H1',robots:'bot blocked',sitemap:'no sitemap',reachability:'blocked',entity:'no entity',schemacomplete:'thin schema',author:'no author',sourced:'unsourced stats',video:'no video',comparison:'no comparison',noindex:'noindexed',speed:'slow response',schemavalidity:'invalid schema',duplicate:'dup title/meta',rankedlist:'no ranked list',answerthird:'answer buried',h2answer:'headings unanswered',orphans:'orphaned',brokenlinks:'broken links',nearduplicate:'near-duplicate',reviewschema:'no review schema'};
+const SHORT={parity:'Schema in JS',answerfirst:'no opener',definitional:'no definition',readability:'hard to read',entitydensity:'few entities',sections:'walls of text',schema:'Article schema',wordcount:'thin content',freshness:'stale',qheadings:'H2s',faq:'no FAQ',liststables:'no tables',meta:'meta desc',title:'title',alt:'alt text',citations:'few sources',internal:'few links',statdensity:'few stats',canonical:'canonical',h1:'H1',robots:'bot blocked',sitemap:'no sitemap',reachability:'blocked',entity:'no entity',schemacomplete:'thin schema',author:'no author',sourced:'unsourced stats',video:'no video',comparison:'no comparison',noindex:'noindexed',speed:'slow response',schemavalidity:'invalid schema',duplicate:'dup title/meta',rankedlist:'no ranked list',answerthird:'answer buried',h2answer:'headings unanswered',orphans:'orphaned',brokenlinks:'broken links',nearduplicate:'near-duplicate',reviewschema:'no review schema',snippetlead:'H1 buried'};
 const EBOTS={'ChatGPT':['OAI-SearchBot','ChatGPT-User'],'Perplexity':['PerplexityBot','Perplexity-User'],'AI Overviews':['Googlebot'],'Gemini':['Googlebot','Google-Extended'],'Copilot':['Bingbot'],'Claude':['ClaudeBot','Claude-User']};
 const EOWNER={'ChatGPT':'OpenAI','Perplexity':'Perplexity','AI Overviews':'Google','Gemini':'Google','Copilot':'Microsoft','Claude':'Anthropic'};
 const ORD=['','strongest','second-strongest','third-strongest','fourth-strongest','fifth-strongest','sixth-strongest'];
@@ -2720,7 +2779,7 @@ function grokView(){const G=D.grok_advisory||{};
  h+=`</div><div class="apside">
    <div class="card2"><h3>Why advisory, not a 7th ring</h3><div class="qd" style="line-height:1.6">A scored engine has to be calibrated against real citation data. There is no Grok export to calibrate against, and its web weighting would just clone Perplexity's. A fabricated ring would cheapen the six that are earned.</div></div>
    <div class="card2"><h3>If you want Grok visibility</h3><div class="qd" style="line-height:1.6">The lever is X presence, not this site. Keep shipping the parity, entity and freshness work that already feeds Grok's open-web pool, and treat any Grok mention as a free by-product of your X footprint.</div></div>
-   <div class="card2"><div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#9BD65C"></span><span style="font-size:13px;font-weight:700">Informational, like llms.txt</span></div><div class="qd" style="line-height:1.6;margin-top:8px">Shown for completeness and deliberately not counted in your CITED Score, exactly as the tool treats llms.txt.</div></div>
+   <div class="card2"><div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#9BD65C"></span><span style="font-size:13px;font-weight:700">Informational, like llms.txt</span></div><div class="qd" style="line-height:1.6;margin-top:8px">Shown for completeness and deliberately not counted in your CitedScore, exactly as the tool treats llms.txt.</div></div>
  </div></div>`;
  return h}
 function agentView(){
@@ -2754,7 +2813,7 @@ function agentView(){
  return `<div class="ap2"><div class="apmain">
    <div class="apsum" style="padding:24px 28px">
      <div class="apk">AGENT-READINESS &middot; ADVISORY (NOT SCORED YET)</div>
-     <div style="font-size:14px;line-height:1.65;color:#A8A8A8;max-width:730px;margin-top:10px">The next shift is answers &rarr; <b>agents</b>: AI that browses, compares and <b>transacts</b> on the user's behalf. An agent doesn't just read your page, it needs to <b>act</b> - read a price, check availability, book, contact. Actions need machine-readable precision prose can't give. This tab reads whether AI can <b>act</b> on you, not just cite you. Forward-looking and directional, not part of the CITED Score yet.</div>
+     <div style="font-size:14px;line-height:1.65;color:#A8A8A8;max-width:730px;margin-top:10px">The next shift is answers &rarr; <b>agents</b>: AI that browses, compares and <b>transacts</b> on the user's behalf. An agent doesn't just read your page, it needs to <b>act</b> - read a price, check availability, book, contact. Actions need machine-readable precision prose can't give. This tab reads whether AI can <b>act</b> on you, not just cite you. Forward-looking and directional, not part of the CitedScore yet.</div>
    </div>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#6DC756"></span><h3>ACTIONABLE SIGNALS ON YOUR SITE</h3><span class="meta">${a.any_n||0} of ${tot} pages expose at least one &middot; ${a.money_n||0} commercial &middot; click a signal to see which pages</span></div><div class="apbox" style="padding:6px 22px 16px">${matrix}</div></section>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#6DC756"></span><h3>PROTOCOL &amp; DISCOVERY FILES</h3><span class="meta">${protoFound} of ${pk.length} present &middot; how an agent connects programmatically</span></div><div class="apbox" style="padding:6px 22px 14px">${protoH}<div class="qd" style="line-height:1.55;border-top:1px solid var(--line);padding-top:11px;margin-top:6px">These are emerging and nascent - most sites have none yet - so this is forward guidance, not a mark against you. The one to watch is the <b>MCP server card</b> (<code>/.well-known/mcp.json</code>): as agents standardise on MCP, it becomes how they discover your tools and actions.</div></div></section>
@@ -2764,6 +2823,27 @@ function agentView(){
      <div class="card2"><h3>Do this first</h3><div class="qd" style="line-height:1.6">On product / service pages, add an <b>Offer</b> with price + availability, and a <b>potentialAction</b> for the primary action (buy / book / contact). That is the minimum an agent needs to act on you.</div></div>
      <div class="card2"><h3>Why it isn't scored</h3><div class="qd" style="line-height:1.6">Agentic search is emerging, not mainstream, and agent support for Action schema is still nascent (it could be "declared but unread" for a while). So this is a forward-looking advisory - the same honest treatment as Grok and llms.txt - and it graduates to a scored "Actionable" pillar as agents arrive.</div></div>
    </div></div>`;
+}
+function commoncrawlView(){
+ var cc=D.commoncrawl||{ok:false};
+ var MNc="font-family:'IBM Plex Mono',monospace";
+ var body='', lists='';
+ if(!cc.ok){
+   body='<div class="qd" style="line-height:1.65;max-width:720px">Could not reach Common Crawl&#39;s index on this run ('+esc(cc.reason||'no response')+'), so presence is unavailable here. It is an external lookup and never affects your CitedScore.</div>';
+ }else{
+   var pin=cc.pages_in||[], pout=cc.pages_out||[], tot=pin.length+pout.length;
+   var n=tot||cc.captures||0, col=pin.length>0?'#9BD65C':'#E0533D';
+   var big=(tot? (''+pin.length) : (cc.capped?'1k+':(''+(cc.captures||0))));
+   var sub=tot?('OF YOUR '+tot+'<br>CRAWLED PAGES'):('PAGES IN<br>'+esc(cc.crawl_name||cc.crawl||'LATEST CRAWL'));
+   var lead=(pin.length>0)
+     ?(''+pin.length+' of the '+tot+' pages we crawled are in the '+esc(cc.crawl_name||'latest')+' Common Crawl. Those reach the open-web dataset that seeds most model training - it does not prove any single model trained on them (every lab filters the crawl), but the ones below marked red are invisible to the training layer.')
+     :('None of the pages we crawled were found in the latest monthly crawl. Usual causes: a robots.txt / WAF block on CCBot (see the AI crawlers tab), a brand-new or thinly-linked domain, or JavaScript-only content - CCBot does not run JS.');
+   body='<div style="display:flex;align-items:baseline;gap:14px;margin:6px 0 16px"><div style="font-size:46px;font-variation-settings:&#39;wght&#39; 700;line-height:1;color:'+col+'">'+big+'</div><div style="'+MNc+';font-size:10.5px;color:#7A7A7A;letter-spacing:.12em;line-height:1.5">'+sub+'</div></div><div class="qd" style="line-height:1.65;max-width:720px">'+lead+(cc.capped?' <span style="color:#F0B429">(Common Crawl returned the 1,000-capture cap, so a red page may be a capture beyond that limit rather than truly absent.)</span>':'')+'</div>';
+   var mkList=function(title,arr,c){ if(!arr||!arr.length) return '';
+     return '<div class="egh" style="margin-top:18px">'+title+' ('+arr.length+')</div><div style="columns:2;column-gap:26px;margin-top:4px">'+arr.map(function(u){return '<span class="egp" style="display:block;break-inside:avoid;padding:2px 0"><span class="dotb" style="background:'+c+'"></span><a href="'+esc(u)+'" target="_blank">'+rel(u)+'</a></span>';}).join('')+'</div>'; };
+   lists=mkList('In Common Crawl',pin,'#9BD65C')+mkList('Not in Common Crawl',pout,'#E0533D');
+ }
+ return '<div class="ap2"><div class="apmain"><div class="apsum" style="padding:24px 28px"><div class="apk">COMMON CRAWL PRESENCE &middot; ADVISORY (NOT SCORED)</div><div style="font-size:14px;line-height:1.65;color:#A8A8A8;max-width:740px;margin-top:10px">Common Crawl is the open-web snapshot that feeds ~64% of LLM training sets (C4, RefinedWeb, FineWeb, RedPajama, Dolma). Whether your pages are in it is a rough proxy for whether the <b>training</b> layer can know you exist - distinct from live-search citation, which the engine tabs measure.</div><div style="margin-top:14px">'+body+'</div>'+(lists?'<div style="padding:2px 28px 18px">'+lists+'</div>':'')+'</div><div class="apside"><div class="card2"><h3>Why it isn&#39;t scored</h3><div class="qd" style="line-height:1.6">Presence does not prove any model trained on you - every training set filters the crawl, and labs stopped disclosing their mixes around 2023. So it is an honest directional signal, shown like llms.txt and Grok, not part of the CitedScore.</div></div><div class="card2"><h3>If pages are missing</h3><div class="qd" style="line-height:1.6">Check CCBot is not blocked in robots.txt or at the WAF (AI crawlers tab), server-render key pages (CCBot runs no JS), and earn a few inbound links so the crawler discovers them.</div></div></div></div>';
 }
 function aicrawlerView(){
  var ac=D.aicrawler||{bots:[],has_robots:false};
@@ -2778,7 +2858,7 @@ function aicrawlerView(){
    if(b.reach==null) return '<span style="width:104px;flex:none"></span>';
    if(isRL(b.reach)) return '<span title="429 rate-limit after retry, likely our probe burst, not a block" style="color:#F0B429;font-weight:700;font-size:11px;flex:none;width:104px;text-align:right">rate-limited</span>';
    var blk=isBlk(b.reach);
-   return '<span style="color:'+(blk?'#E0533D':'#9BD65C')+';font-weight:700;font-size:11px;flex:none;width:104px;text-align:right">'+(blk?('firewall '+(b.reach||'x')):'reachable')+'</span>';
+   return '<span style="color:'+(blk?'#E0533D':'#9BD65C')+';font-weight:700;font-size:11px;flex:none;width:150px;text-align:right">'+(blk?('firewall '+(b.reach||'x')+(b.cause?' &middot; '+esc(b.cause):'')):'reachable')+'</span>';
  };
  var serving=bots.filter(function(b){return b.role=='serving'});
  var servingBlocked=serving.filter(function(b){return b.status=='blocked'||b.status=='partial'||fwBlocked(b);});
@@ -2807,6 +2887,8 @@ function aicrawlerView(){
  else if(servingBlocked.length)headline='<span style="color:#ff9c88"><b>'+servingBlocked.length+' citation bot'+(servingBlocked.length==1?'':'s')+' restricted</b> ('+servingBlocked.map(function(b){return esc(b.name)}).join(', ')+') - those engines cannot fully cite you.</span>';
  else headline='<span style="color:#9BD65C"><b>All citation bots allowed.</b> '+allowedN+' of '+bots.length+' AI bots allowed overall.</span>';
  var searchRisk=bots.filter(function(b){return (b.name=='Googlebot'||b.name=='Bingbot')&&fwBlocked(b);});
+ var cfBlk=serving.filter(function(b){return fwBlocked(b)&&b.cause=='Cloudflare';});
+ var cfNote=cfBlk.length?'<div class="qd" style="margin-top:6px;color:#ff9c88"><b>Cloudflare is the blocker.</b> '+cfBlk.map(function(b){return esc(b.name)}).join(', ')+' hit a Cloudflare 403 - most often its default "Block AI Scrapers and Crawlers" rule (on by default for domains created after Jul 2025). Turn that off or add a verified-bot allowlist so the citation bots get through.</div>':'';
  var probeCaveat='<div class="qd" style="margin-top:6px;font-style:italic">Caveat: we probe from a generic client, not the bot&#39;s real IP, so a WAF that verifies bots by IP may be blocking our impersonation while the real bot gets through. Treat a firewall block as a strong flag, then confirm in robots.txt and your server logs.</div>';
  var reachNote=searchRisk.length
    ?'<div class="qd" style="margin-top:8px;color:#ff9c88"><b>Search crawler blocked.</b> '+searchRisk.map(function(b){return esc(b.name)+' ('+b.reach+')'}).join(', ')+' is firewall-blocked, a Google/Bing <b>indexing</b> risk, not just an AI one. A WAF "block AI training" rule can 403 the search crawlers too (Cloudflare formalises this on 15 Sep 2026).</div>'+probeCaveat
@@ -2821,7 +2903,7 @@ function aicrawlerView(){
    <div class="apsum" style="padding:24px 28px">
      <div class="apk">AI-CRAWLER EXPOSURE &middot; ADVISORY</div>
      <div style="font-size:14px;line-height:1.65;color:#A8A8A8;max-width:740px;margin-top:10px">Crawler access is the on/off switch for AI citation, and it is becoming a battleground (Cloudflare AI-blocking, pay-per-crawl, page-level controls). A blocked <b>citation</b> bot means that engine literally cannot quote you; a blocked <b>training</b> bot is a legitimate content-protection choice that does not stop live-search citation. This matrix pairs your robots.txt rules with a <b>live firewall probe</b> of the citation-serving bots (the ones that fetch at answer time), because a robots.txt "allow" means nothing if the firewall 403s the bot.</div>
-     <div style="margin-top:14px;font-size:14px;line-height:1.55">${headline}${reachNote}${noidxNote}</div>
+     <div style="margin-top:14px;font-size:14px;line-height:1.55">${headline}${reachNote}${cfNote}${noidxNote}</div>
    </div>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#6DC756"></span><h3>AI-BOT ACCESS MATRIX</h3><span class="meta">${allowedN} of ${bots.length} allowed &middot; from robots.txt</span></div><div class="apbox" style="padding:2px 22px 16px">${grid}</div></section>
    ${(function(){var la=D.log_analysis;if(!la)return '';
@@ -2874,7 +2956,7 @@ function infogainView(){
    </div>
    <div class="apside">
      <div class="card2"><h3>Do this first</h3><div class="qd" style="line-height:1.6">Take your <b>thin / low</b> pages and add something only you can say: a first-hand result, an original statistic with its source, a named framework, or a data table. One genuinely original figure beats ten borrowed ones.</div></div>
-     <div class="card2"><h3>Why it's a proxy</h3><div class="qd" style="line-height:1.6">True information gain needs a web-corpus comparison this local tool does not do. These signals <b>correlate</b> with original content but cannot confirm novelty - so it is an honest directional read, not part of the CITED Score. The underlying stat / citation / sourced checks already feed the Trusted pillar.</div></div>
+     <div class="card2"><h3>Why it's a proxy</h3><div class="qd" style="line-height:1.6">True information gain needs a web-corpus comparison this local tool does not do. These signals <b>correlate</b> with original content but cannot confirm novelty - so it is an honest directional read, not part of the CitedScore. The underlying stat / citation / sourced checks already feed the Trusted pillar.</div></div>
    </div></div>`;
 }
 function offpageView(){
@@ -2893,7 +2975,7 @@ function offpageView(){
  return `<div class="ap2"><div class="apmain">
    <div class="apsum" style="padding:24px 28px">
      <div class="apk">OFF-PAGE PRESENCE &middot; ADVISORY (NOT SCORED)</div>
-     <div style="font-size:14px;line-height:1.65;color:#A8A8A8;max-width:730px;margin-top:10px">CITED Score audits your pages, but AI citation is dominated by <b>off-page</b> signals this on-page crawl cannot measure. A brand's own site is cited in only <b>~16%</b> of AI responses; the other ~84% are third-party sources (Reddit, YouTube, review sites, roundups), and brand mentions correlate with citation far more than backlinks (0.664 vs 0.218). This tab is directional guidance, not a score.</div>
+     <div style="font-size:14px;line-height:1.65;color:#A8A8A8;max-width:730px;margin-top:10px">CitedScore audits your pages, but AI citation is dominated by <b>off-page</b> signals this on-page crawl cannot measure. A brand's own site is cited in only <b>~16%</b> of AI responses; the other ~84% are third-party sources (Reddit, YouTube, review sites, roundups), and brand mentions correlate with citation far more than backlinks (0.664 vs 0.218). This tab is directional guidance, not a score.</div>
    </div>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#9BD65C"></span><h3>PROFILES YOU DECLARE</h3><span class="meta">from your schema sameAs (${o.sameas_count} links)</span></div><div class="apbox" style="padding:14px 20px">${declared}</div></section>
    <section class="aptier"><div class="aptierh"><span class="sq" style="width:9px;height:9px;border-radius:2px;background:#6DC756"></span><h3>MENTION DIVERSITY</h3><span class="meta">${(o.declared||[]).length} distinct declared domain${(o.declared||[]).length===1?'':'s'} &middot; parametric-authority proxy</span></div><div class="apbox" style="padding:14px 20px"><div class="qd" style="line-height:1.65">What an AI model already <b>knows</b> about you, before it retrieves anything, is <b>parametric authority</b>. Research shows that only becomes reliable when your name appears in <b>varied phrasing across many independent sources</b>, not from self-publishing (a fact seen in too few, too-similar sources can sit in a model at near-zero recall). You currently declare <b>${(o.declared||[]).length}</b> distinct third-party domain${(o.declared||[]).length===1?'':'s'} in your schema. Treat that as a floor, not a measurement: real mention diversity, how many independent sites describe you, needs a backlink / mention tool. The more independent domains describe you, and the more varied the wording, the more reliably AI names you by default. This is slow and third-party-built, years not campaigns.</div></div></section>
@@ -2951,7 +3033,7 @@ function rel2(u){return esc2((u||'').replace(D.origin,'')||'/');}
 function _rollup(){var CR={};(D.pages||[]).forEach(function(p){(p.checks||[]).forEach(function(c){var r=CR[c.id]||(CR[c.id]={id:c.id,label:c.label,pillar:c.pillar,ch:c.ch,ev:c.ev,good:0,warn:0,bad:0,na:0});r[c.status]=(r[c.status]||0)+1;});});return CR;}
 
 function printReport(){
- var d=D,wl=!!d.client,brand=wl?(d.agency||'AI Search'):'CITED Score';
+ var d=D,wl=!!d.client,brand=wl?(d.agency||'AI Search'):'CitedScore';
  var band=_band(d.overall),CR=_rollup();
  var engs=['ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude'].slice().sort(function(a,b){return d.engines[a]-d.engines[b];});
  var issues=(d.issues||[]).slice();
@@ -2962,7 +3044,7 @@ function printReport(){
  // COVER
  var mark="<svg viewBox='0 0 200 200' width='30' height='30' style='flex:none'><circle cx='100' cy='100' r='86' fill='none' stroke='#1c7f29' stroke-width='16'/></svg>";
  var LG=window.__LOGO_DARK__||'';                     // black-text ring lockup for the printed (white) page
- var brandmark=wl?('<span><span class="wm">'+esc2(d.agency||'')+'</span></span>'):(LG?'<img src="'+LG+'" alt="Cited Score" style="height:30px;flex:none">':(mark+'<span><span class="wm">CitedScore</span></span>'));
+ var brandmark=wl?('<span><span class="wm">'+esc2(d.agency||'')+'</span></span>'):(LG?'<img src="'+LG+'" alt="CitedScore" style="height:30px;flex:none">':(mark+'<span><span class="wm">CitedScore</span></span>'));
  H+='<div class="cr-cover"><div class="cr-mast">'+brandmark
    +'<span class="meta">'+esc2(d.generated)+'<br>'+d.pages_crawled+' pages analysed</span></div>';
  H+='<div class="cr-title">'+(wl?'AI Search Audit':'AI Search Citability Report')+'</div><div class="cr-dom">'+esc2(d.domain)+'</div>';
@@ -3051,9 +3133,9 @@ function printReport(){
 tabsbar();render();updExp();
 """
     _wl=bool(d.get('client'))                                    # white-label mode when a client is set
-    _cited=(f"<img src=\"{CITED_LOGO_DATAURI}\" alt='Cited Score' style='height:26px;flex:none;max-width:210px'>" if CITED_LOGO_DATAURI
+    _cited=(f"<img src=\"{CITED_LOGO_DATAURI}\" alt='CitedScore' style='height:26px;flex:none;max-width:210px'>" if CITED_LOGO_DATAURI
             else "<svg viewBox='0 0 200 200' width='26' height='26' style='flex:none'><defs><linearGradient id='pk' x1='0' y1='200' x2='200' y2='0' gradientUnits='userSpaceOnUse'><stop offset='0' stop-color='#1FA23C'/><stop offset='1' stop-color='#BCE250'/></linearGradient></defs><rect x='14' y='14' width='172' height='172' fill='none' stroke='url(#pk)' stroke-width='8'/><polygon points='100,40.5 184,137.5 16,137.5' fill='url(#pk)'/></svg>")
-    # default report = Cited Score lockup (mark+wordmark already in the PNG); white-label keeps the client/agency treatment.
+    # default report = CitedScore lockup (mark+wordmark already in the PNG); white-label keeps the client/agency treatment.
     _hdr_logo=(f"<img src=\"{d['logo']}\" alt='' style='height:30px;flex:none;max-width:220px'>" if d.get('logo') else ("" if _wl else _cited))
     _hdr_wm=(f"<span class='wm'><span class='lw'>{H.escape(d.get('agency') or 'GoGoChimp')}</span></span>" if _wl else "")
     _nav=d.get('nav') or {}                                     # online chrome: new-crawl + logout links (relative to the web app origin)
@@ -3062,7 +3144,7 @@ tabsbar();render();updExp();
              +(f"<a class='navbtn' href=\"{H.escape(_nav.get('new_crawl'))}\">New crawl</a>" if _nav.get('new_crawl') else "")
              +(f"<a class='navbtn' href=\"{H.escape(_nav.get('logout'))}\">Log out</a>" if _nav.get('logout') else ""))
     doc=("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-         f"<title>{'AI Search Audit' if _wl else 'CITED Score'}: {H.escape(d['domain'])}</title><link rel='icon' href=\"{FAVICON}\">"
+         f"<title>{'AI Search Audit' if _wl else 'CitedScore'}: {H.escape(d['domain'])}</title><link rel='icon' href=\"{FAVICON}\">"
          "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
          "<link href='https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap' rel='stylesheet'>"
          f"<style>{css}</style></head><body>"
@@ -3072,7 +3154,7 @@ tabsbar();render();updExp();
          + ((f"<div style='padding:14px 24px;background:rgba(155,214,92,.06);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#7A7A7A'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#7A7A7A'>by {H.escape(d.get('agency') or 'GoGoChimp')}</span>" + (f"<div style='color:#A8A8A8;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
        + "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view'></div>"
        + ("<div class='foot'>This report <b>estimates citability</b> for AI search from on-page, structural and technical signals. It does <b>not</b> measure citations. llms.txt and Grok are shown for reference only and are not scored.</div></div>" if _wl
-          else "<div class='foot'>The CITED Score <b>estimates citability</b> from on-page, structural and technical signals. It does <b>not</b> measure citations. For measured citations, calibrate the model against your Bing Webmaster Tools AI Performance export (<code>--calibrate citations.csv</code>). Every check carries a source (engine documentation, first-party citation data, or a CITED chapter). llms.txt and Grok are shown for reference only and are not scored (Ch5): llms.txt shows no citation correlation, and Grok has no citation export to calibrate against.</div></div>")
+          else "<div class='foot'>The CitedScore <b>estimates citability</b> from on-page, structural and technical signals. It does <b>not</b> measure citations. For measured citations, calibrate the model against your Bing Webmaster Tools AI Performance export (<code>--calibrate citations.csv</code>). Every check carries a source (engine documentation, first-party citation data, or a CITED chapter). llms.txt and Grok are shown for reference only and are not scored (Ch5): llms.txt shows no citation correlation, and Grok has no citation export to calibrate against.</div></div>")
        + "<div id='printroot'></div>"
          f"<script>window.__DATA__={payload};window.__LOGO_DARK__={json.dumps(CITED_LOGO_DARK)};</script><script>{js}</script></body></html>")
     with open(path,"w",encoding="utf-8") as f: f.write(doc)
@@ -3120,6 +3202,15 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, cl
     protocols=agent_protocols(origin) if (out and not unreachable) else {}    # agent protocol/discovery probe (advisory)
     aicrawler=ai_crawler_matrix(origin) if (out and not unreachable) else {}  # AI-bot access matrix (advisory monitor)
     data=build(domain,origin,pages,sitecx,sitemap_paths,linkstatus,client,intro,protocols,aicrawler,site_type_override=site_type,agency=agency,logo=_logo_uri)
+    data["commoncrawl"]=common_crawl_presence(domain)   # advisory: training-corpus presence (best-effort, never fatal)
+    _cc=data["commoncrawl"]
+    if _cc.get("ok") and _cc.get("paths") is not None:   # split the crawled pages into in / not-in Common Crawl
+        _ccset=set(_cc.pop("paths")); _pin=[]; _pout=[]
+        for _pg in data.get("pages",[]):
+            try: _pp=urllib.parse.urlparse(_pg["url"]).path.rstrip("/").lower() or "/"
+            except Exception: _pp=_pg.get("url","")
+            (_pin if _pp in _ccset else _pout).append(_pg["url"])
+        _cc["pages_in"]=_pin; _cc["pages_out"]=_pout
     if sum(1 for pg in pages if pg.get("status")==200)==0:       # nothing crawlable -> flag it clearly, do not present a 0 as a citability score
         data["crawl_failed"]=True
         data["crawl_note"]=((f"{domain} did not respond (timeout or network-level bot protection)" if unreachable
@@ -3141,7 +3232,7 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, cl
     return data
 
 def benchmark(urls, max_pages=25, workers=WORKERS, progress=None):
-    """Crawl each site (capped for speed) and return side-by-side CITED Score / pillars / engines."""
+    """Crawl each site (capped for speed) and return side-by-side CitedScore / pillars / engines."""
     out=[]
     for i,u in enumerate(urls):
         if not (u or "").strip(): continue
@@ -3184,7 +3275,7 @@ def main():
     def prog(phase,done,total,msg):
         print(f"  [{done}/{total}] {msg}" if phase=="crawl" else msg, flush=True)
     data=run_audit(a.url,out=a.out,max_pages=a.max_pages,workers=a.workers,progress=prog,client=a.client,intro=a.intro,links=not a.no_links,queries=a.queries,logs=a.logs,agency=a.agency,logo=a.logo)
-    print(f"\n=== CITED Score: {data['domain']} === {data['overall']}/100 | {data['pages_crawled']} pages")
+    print(f"\n=== CitedScore: {data['domain']} === {data['overall']}/100 | {data['pages_crawled']} pages")
     print("Pillars: "+" | ".join(f"{k} {v}" for k,v in data['pillars'].items()))
     print("Engines: "+" | ".join(f"{e} {v}" for e,v in data['engines'].items()))
     top=data['issues'][:3]
