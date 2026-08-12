@@ -353,9 +353,18 @@ def find_date(soup, objs):
             dates.extend(_parse_dates(m.group(1)))
     return max(dates) if dates else None
 
+ARCHIVE_RE = re.compile(
+    r"(?:^|/)tags?(?:/|$)"                                # /tag/x, /tags/x  (blog taxonomy; ecom uses collections/category)
+    r"|(?:^|/)authors?(?:/|$)"                            # /author/x
+    r"|/blog/(?:categor(?:y|ies)|tags?|authors?)(?:/|$)"  # taxonomy under /blog
+    r"|/page/\d+(?:/|$)"                                 # pagination /page/2
+    r"|/\d{4}/\d{2}(?:/|$)"                             # date archives /2024/05/
+    r"|/(?:feed|rss)(?:/|$)", re.I)
+
 def classify(path, types):
     if path in ("", "/"): return "home"
     segs = [s for s in path.strip("/").split("/") if s]
+    if ARCHIVE_RE.search(path): return "archive"       # tag/category/author/date/pagination archives: index pages, not citation targets
     if path.rstrip("/") in ("/blog","/case-studies","/blogs","/resources","/guides","/tools"): return "listing"
     if segs and segs[0] == "blog": return "article"
     if {"Article","BlogPosting","NewsArticle","TechArticle"} & set(types): return "article"
@@ -1641,7 +1650,10 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
     linkgraph={"nodes":_lgnodes[:250],"edges":[e for e in _lgedges if e[0]<250 and e[1]<250][:1400],"capped":len(ok200)>250}
     for p in pages:
         for _k in ("outlinks","_broken","simhash","chash","links","sameas","agent","infogain"): p.pop(_k,None)
-    ok=ok200
+    _ARCH=lambda p:(p.get("type") or "")=="archive"      # tag/taxonomy archives: detected but excluded from the citability score
+    archives=[p for p in pages if _ARCH(p)]
+    content=[p for p in pages if not _ARCH(p)]
+    ok=[p for p in ok200 if not _ARCH(p)]                # 200-OK content pages feed the score + action plan
     def avg(f): return round(sum(f(p) for p in ok)/len(ok)) if ok else 0
     overall=avg(lambda p:p["score"])
     pill={pl:avg(lambda p:p["pillars"][pl]) for pl in PILLARS}
@@ -1655,7 +1667,7 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
         eng={e:min(v,25) for e,v in eng.items()}
     # ---- issues aggregated (+ pillar/chapter/evidence/effort) ----
     agg=defaultdict(lambda:{"warn":[],"bad":[]})
-    for p in pages:
+    for p in content:
         for c in p["checks"]:
             if c["status"] in ("warn","bad"): agg[c["id"]]["bad" if c["status"]=="bad" else "warn"].append(p["url"])
     for c in sitecx:
@@ -1696,23 +1708,24 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
         if it["gain_overall"]<=0 and it["severity"]!="bad": continue
         plan_phases[it["phase"] if it["phase"] in (1,2,3) else 3].append(it["id"])
     tot=Counter()
-    for p in pages:
+    for p in content:
         for c in p["checks"]:
             if c["status"] not in ("na","info"): tot[c["status"]]+=1
     return {"tool":"CitedScore","domain":domain,"origin":origin,
             "generated":datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
             "date":datetime.date.today().isoformat(),
-            "pages_crawled":len(pages),"overall":overall,"pillars":pill,"engines":eng,
+            "pages_crawled":len(content),"archive_n":len(archives),
+            "archive_pages":[{"url":p.get("url"),"score":p.get("score")} for p in archives][:200],"overall":overall,"pillars":pill,"engines":eng,
             "engine_note":ENGINE_NOTE,"engine_weights":ENGINE_WEIGHTS,"check_meta":CHECK_META,
             "grok_advisory":GROK_ADVISORY,
             "totals":dict(tot),"issues":issues,"site_checks":sitecx,"broken_links":broken_links,"sitemap":sitemap,"linkgraph":linkgraph,"offpage":offpage,"agentready":agentready,"infogain":infogain,"aicrawler":aicrawler or {},"proj_all":proj_all,
             "client":client,"intro":intro,"agency":(agency or "GoGoChimp"),"logo":logo,"access_blocked":access_blocked,
-            "types":dict(Counter(p["type"] for p in pages)),
+            "types":dict(Counter(p["type"] for p in content)),
             "site_type":site_type,"site_type_label":SITE_PROFILE_LABEL.get(site_type,site_type),"site_type_source":site_type_source,
             "profile":(prof or {}),"profile_up":sorted([c for c,m in (prof or {}).items() if m>1]),
             "profile_down":sorted([c for c,m in (prof or {}).items() if m<1]),
-            "redirect_home":[{"url":p["url"],"to":p.get("redirect_home")} for p in pages if p.get("redirect_home")],
-            "plan_phases":plan_phases,"pages":pages}
+            "redirect_home":[{"url":p["url"],"to":p.get("redirect_home")} for p in content if p.get("redirect_home")],
+            "plan_phases":plan_phases,"pages":content}
 
 # ------------------------------------------------------------------ re-crawl diff
 def apply_diff(data, outbase):
@@ -2277,7 +2290,7 @@ function ovw2(){
  const tent=Object.entries(ts).sort((a,c)=>c[1].n-a[1].n); const tmax=Math.max.apply(0,tent.map(t=>t[1].n).concat(1));
  const qcol=(pct)=>pct>=80?"#9BD65C":pct>=50?"#B99329":"#E0705C";
  const typeRow=(k,o)=>{const pct=o.n?Math.round(100*o.q/o.n):0; return `<div style="display:flex;align-items:center;gap:12px"><div style="width:58px;font-size:12.5px;color:#D9D9D9">${esc(k)}</div><div style="flex:1;min-width:0;height:7px;background:#161616;border-radius:4px;overflow:hidden"><div style="width:${Math.round(100*o.n/tmax)}%;height:100%;background:${qcol(pct)}"></div></div><div style="width:34px;text-align:right;${MN};font-size:12.5px;color:#FFFFFF">${o.n}</div><div style="width:40px;text-align:right;${MN};font-size:11.5px;color:${qcol(pct)}">${pct}%</div></div>`;};
- const pagesCard=`<div style="flex:1;min-width:260px;background:#0A0A0A;border:1px solid #1F1F1F;border-radius:8px;padding:20px 24px;display:flex;flex-direction:column;gap:14px"><div style="display:flex;align-items:baseline;gap:10px"><div style="${MN};font-size:10.5px;letter-spacing:0.16em;color:#7A7A7A">PAGES BY TYPE</div><div style="flex:1"></div><div style="${MN};font-size:10px;color:#4A4A4A">% QUOTABLE</div></div>${tent.map(([k,o])=>typeRow(k,o)).join("")}</div>`;
+ const pagesCard=`<div style="flex:1;min-width:260px;background:#0A0A0A;border:1px solid #1F1F1F;border-radius:8px;padding:20px 24px;display:flex;flex-direction:column;gap:14px"><div style="display:flex;align-items:baseline;gap:10px"><div style="${MN};font-size:10.5px;letter-spacing:0.16em;color:#7A7A7A">PAGES BY TYPE</div><div style="flex:1"></div><div style="${MN};font-size:10px;color:#4A4A4A">% QUOTABLE</div></div>${tent.map(([k,o])=>typeRow(k,o)).join("")}${D.archive_n?`<div style="border-top:1px solid #141414;padding-top:12px;margin-top:2px;font-size:12px;line-height:1.55;color:#8A8A8A"><span style="color:#D9D9D9">${D.archive_n} tag / archive page${D.archive_n==1?"":"s"}</span> found and excluded from the score. Index pages, not citation targets; noindex them if they are indexable.</div>`:""}</div>`;
  const P=(D.pages||[]).length, parityBad=(D.pages||[]).filter(p=>p.cs&&p.cs.parity=="bad").length, reach=((D.site_checks||[]).find(s=>s.id=="reachability")||{}).status||"good";
  const rdot=(c)=>`<div style="width:9px;height:9px;border-radius:50%;background:${c};flex:0 0 9px"></div>`;
  const rrow=(name,c,txt,tcol)=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #141414">${rdot(c)}<div style="font-size:13px;color:#D9D9D9">${name}</div><div style="flex:1"></div><div style="${MN};font-size:11.5px;color:${tcol}">${txt}</div></div>`;
