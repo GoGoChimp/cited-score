@@ -1848,6 +1848,10 @@ try:
     from cited_logo_data import CITED_LOGO_DATAURI, CITED_LOGO_DARK, CITED_FAVICON  # ring lockup (light), print variant (black text), favicon symbol
 except Exception:
     CITED_LOGO_DATAURI = CITED_LOGO_DARK = CITED_FAVICON = ""
+try:
+    from cited_fonts import FONT_FACE_CSS                # embedded Archivo + IBM Plex Mono (no network / Google-Fonts / CSP dependency)
+except Exception:
+    FONT_FACE_CSS = ""
 if CITED_FAVICON:
     FAVICON = CITED_FAVICON                            # ring symbol
 else:                                                 # fallback: ring mark as SVG
@@ -2252,7 +2256,7 @@ function ovw2(){
    ? `<div style="font-size:12px;color:#7A7A7A">First crawl · trend shows next run</div>`
    : `<div style="display:flex;align-items:center;gap:8px"><div style="${MN};font-size:13px;color:${gcol(od)}">${darr(od)}</div><div style="font-size:12.5px;color:#7A7A7A">since ${esc(df.since||"last crawl")}</div></div>`;
  const scoreCard=`<div style="flex:0 0 320px;min-width:0;background:#0A0A0A;border:1px solid #1F1F1F;border-radius:8px;padding:24px;display:flex;align-items:center;gap:22px">
-   <svg viewBox="0 0 200 200" width="116" height="116" style="flex:none"><defs><linearGradient id="pk2" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#21B24B"></stop><stop offset="1" stop-color="#C8E265"></stop></linearGradient></defs><g transform="rotate(-90 100 100)"><circle cx="100" cy="100" r="82" fill="none" stroke="#1A1A1A" stroke-width="15"></circle><circle cx="100" cy="100" r="82" fill="none" stroke="url(#pk2)" stroke-width="15" stroke-dasharray="${arc.toFixed(0)} ${(CIRC-arc).toFixed(0)}" stroke-linecap="butt"></circle></g><text x="100" y="112" text-anchor="middle" font-family="Archivo" font-size="62" font-weight="600" fill="#FFFFFF" letter-spacing="-3">${ov}</text></svg>
+   <svg viewBox="0 0 200 200" width="116" height="116" style="flex:none"><defs><linearGradient id="pk2" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#21B24B"></stop><stop offset="1" stop-color="#C8E265"></stop></linearGradient></defs><g transform="rotate(-90 100 100)"><circle cx="100" cy="100" r="82" fill="none" stroke="#1A1A1A" stroke-width="15"></circle><circle cx="100" cy="100" r="82" fill="none" stroke="url(#pk2)" stroke-width="15" stroke-dasharray="${arc.toFixed(0)} ${(CIRC-arc).toFixed(0)}" stroke-linecap="butt"></circle></g><text x="100" y="112" text-anchor="middle" font-family="Archivo,'Segoe UI',Arial,sans-serif" font-size="62" font-weight="800" fill="#FFFFFF" letter-spacing="-3">${ov}</text></svg>
    <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
      <div style="${MN};font-size:10.5px;letter-spacing:0.16em;color:#7A7A7A">${SCORELABEL.toUpperCase()}</div>
      ${odHTML}
@@ -3165,8 +3169,7 @@ tabsbar();render();updExp();
              +(f"<a class='navbtn' href=\"{H.escape(_nav.get('logout'))}\">Log out</a>" if _nav.get('logout') else ""))
     doc=("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
          f"<title>{'AI Search Audit' if _wl else 'CitedScore'}: {H.escape(d['domain'])}</title><link rel='icon' href=\"{FAVICON}\">"
-         "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
-         "<link href='https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap' rel='stylesheet'>"
+         f"<style>{FONT_FACE_CSS}</style>"
          f"<style>{css}</style></head><body>"
          f"<header><span class='logo'>{_hdr_logo}{_hdr_wm}</span>"
          f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--txt);font-weight:600'>{H.escape(d['domain'])}</a> &middot; {d['pages_crawled']} page{'' if d['pages_crawled']==1 else 's'} &middot; {d['generated']}</span>"
