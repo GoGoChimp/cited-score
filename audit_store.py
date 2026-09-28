@@ -11,7 +11,7 @@ def _safe(s):
 def save(mcp_json, url):
     os.makedirs(STORE_DIR, exist_ok=True)
     dom = mcp_json.get("domain") or _safe(url)
-    aid = f"{_safe(dom)}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+    aid = f"{_safe(dom)}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}"   # microseconds: unique + sortable even for same-second saves
     rec = dict(mcp_json); rec["_url"] = url; rec["_audit_id"] = aid
     with open(os.path.join(STORE_DIR, aid + ".json"), "w", encoding="utf-8") as f:
         json.dump(rec, f)
