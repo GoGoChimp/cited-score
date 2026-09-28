@@ -168,7 +168,7 @@ def _cmd_watch(rest):
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
-        print("Usage: rubric [activate <key> | status | audit --url <url> ... | mcp install | watch add <url>]")
+        print("Usage: rubric [activate <key> | status | audit --url <url> ... | mcp install | watch add <url> | ui]")
         return 0
     cmd, rest = argv[0], argv[1:]
     if cmd == "activate":
@@ -184,6 +184,11 @@ def main(argv=None):
         return _cmd_mcp(rest)
     if cmd == "watch":
         return _cmd_watch(rest)
+    if cmd == "ui":
+        licence.require_pro()
+        import app
+        app.main()   # launches the local GUI server + opens the browser; blocks until closed
+        return 0
     safe_cmd = licence.key_prefix(cmd) if cmd.startswith("cs_live_") else cmd
     print(f"Unknown command: {safe_cmd}. Try: activate, status, audit, mcp, watch.")
     return 1

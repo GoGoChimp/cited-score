@@ -49,6 +49,23 @@ PORT = 5000
 
 def safe(d): return re.sub(r"[^a-z0-9._-]", "-", d.lower())[:80]
 
+def _compare_reports(da, db):
+    """Diff two stored report data dicts (a = newer, b = older): score, pillar and engine deltas, and which
+    issue check-ids were fixed (in b, gone in a) or regressed (in a, not in b). Mirrors the MCP compare_audits."""
+    Pa, Pb = da.get("pillars") or {}, db.get("pillars") or {}
+    Ea, Eb = da.get("engines") or {}, db.get("engines") or {}
+    Ia = {i.get("id"): i.get("label") for i in (da.get("issues") or [])}
+    Ib = {i.get("id"): i.get("label") for i in (db.get("issues") or [])}
+    return {
+        "newer": {"domain": da.get("domain"), "date": da.get("date"), "overall": da.get("overall")},
+        "older": {"domain": db.get("domain"), "date": db.get("date"), "overall": db.get("overall")},
+        "score_delta": (da.get("overall") or 0) - (db.get("overall") or 0),
+        "pillar_deltas": {k: (Pa.get(k) or 0) - (Pb.get(k) or 0) for k in ("Known", "Findable", "Trusted")},
+        "engine_deltas": {k: (Ea.get(k) or 0) - (Eb.get(k) or 0) for k in Ea},
+        "fixed": [{"id": k, "label": Ib[k]} for k in Ib if k not in Ia][:20],
+        "regressed": [{"id": k, "label": Ia[k]} for k in Ia if k not in Ib][:20],
+    }
+
 # --- Activation (Phase A: hard-gate on launch, email capture) ------------------
 SB_FUNCTIONS = "https://xhalhtbsddaqmnqruljt.supabase.co/functions/v1"
 ACT_FILE = os.path.join(HERE, "activation.json")
@@ -70,6 +87,13 @@ def save_activation(d):
         return False
 
 def is_activated(): return load_activation() is not None
+
+def _pro_ok():
+    """A pipx desktop user unlocks with their Pro licence (rubric activate) instead of the free email activation."""
+    try:
+        import licence; return licence.is_pro()
+    except Exception:
+        return False
 
 def sb_post(fn, payload, timeout=12):
     """POST to a CITED Score Edge Function. Returns (status, dict). No secret ever ships here -
@@ -364,6 +388,8 @@ a{color:var(--grn);text-decoration:none}
        <div><label>Site type (scoring profile)</label><select id="stype"><option value="">Auto-detect</option><option value="ecommerce">E-commerce</option><option value="blog">Blog / publisher</option><option value="b2b_saas">B2B SaaS</option><option value="general">General</option></select></div>
        <div><label>Client name (white-label report, optional)</label><input id="client" type="text" placeholder="e.g. Acme Corp"></div>
        <div><label>Intro line (optional)</label><input id="intro" type="text" placeholder="Prepared as part of your Q3 review"></div>
+       <div><label>Agency name (white-label, optional)</label><input id="agency" type="text" placeholder="e.g. GoGoChimp"></div>
+       <div><label>Logo file path (white-label, optional)</label><input id="logo" type="text" placeholder="C:\path\to\logo.png"></div>
        <div style="display:flex;align-items:center;gap:8px;grid-column:1/-1"><input id="dolinks" type="checkbox" checked style="width:auto"><label style="margin:0">Check for broken links (adds ~30-60s at the end)</label></div>
        <div style="grid-column:1/-1;display:flex;align-items:center;gap:10px"><button class="optbtn" type="button" onclick="scheduleCrawl()">Schedule weekly re-crawl</button><span class="note2" id="schednote">Re-crawls the URL above every Monday, building the Score-over-time trend automatically.</span></div>
      </div>
@@ -399,6 +425,12 @@ a{color:var(--grn);text-decoration:none}
      <div class="note2" style="margin-top:6px"><a href="#" onclick="copyMcp();return false" style="color:var(--muted)">Copy config for Cursor / Claude Code</a></div>
      <label class="note2" style="margin-top:8px;display:flex;gap:6px;align-items:flex-start;cursor:pointer;line-height:1.4"><input type="checkbox" id="tel" style="width:auto;margin-top:2px" onchange="setTel()"><span><b>Anonymous usage stats are on</b> - content-free patterns only (page-count and site-type bands, feature use, re-runs), <b>never your URLs, domains or audit data</b>. Uncheck to turn off.</span></label>
    </div>
+   <div class="card"><div class="ph"><div class="t">Watched sites</div><span class="m">local</span></div>
+     <div class="note2">Re-crawl on a schedule and get an alert when a score moves. Schedule it with <code>rubric watch install</code>; see changes with <code>rubric watch alerts</code>.</div>
+     <div class="inp" style="margin-top:8px"><span class="pfx">https://</span><input id="watchurl" placeholder="www.example.com"></div>
+     <button class="mini" id="watchbtn" onclick="addWatch()">Watch this site</button>
+     <div id="watchlist" style="margin-top:8px"></div>
+   </div>
  </div>
 </div>
 
@@ -417,6 +449,38 @@ a{color:var(--grn);text-decoration:none}
    <textarea id="calcsv" placeholder="https://you.com/page,42&#10;https://you.com/other-page,17"></textarea>
    <button class="mini" id="calbtn" onclick="runCal()">Correlate</button>
    <div class="tout" id="calout"></div>
+ </div>
+ <div class="card tool">
+   <div class="ph"><div class="t">Check a draft before you publish</div><span class="m">no crawl</span></div>
+   <div class="note2">Paste draft copy (or enter a URL) and get the citability checks it would pass or fail before it goes live.</div>
+   <textarea id="draftc" placeholder="Paste your draft copy here, or leave blank and enter a URL below"></textarea>
+   <div class="inp" style="margin-top:8px"><span class="pfx">url</span><input id="drafturl" placeholder="or https://you.com/draft-page"></div>
+   <button class="mini" id="draftbtn" onclick="runDraft()">Check draft</button>
+   <div class="tout" id="draftout"></div>
+ </div>
+ <div class="card tool">
+   <div class="ph"><div class="t">Compare a page vs a competitor</div><span class="m">crawls both</span></div>
+   <div class="note2">Your page and a competitor page, scored side by side, with the signals they have that you lack.</div>
+   <div class="inp"><span class="pfx">you</span><input id="cmpyou" placeholder="https://you.com/page"></div>
+   <div class="inp" style="margin-top:8px"><span class="pfx">rival</span><input id="cmprival" placeholder="https://competitor.com/page"></div>
+   <button class="mini" id="cmpbtn" onclick="runCompare()">Compare pages</button>
+   <div class="tout" id="cmpout"></div>
+ </div>
+ <div class="card tool">
+   <div class="ph"><div class="t">Clicks at risk (value bridge)</div><span class="m">crawls + matches CSV</span></div>
+   <div class="note2">Crawl your site and match a Search Console Pages export (<code>url,clicks</code>) to put a ranged number on the clicks your un-citable pages put at risk.</div>
+   <div class="inp"><span class="pfx">https://</span><input id="valurl" placeholder="www.you.com"></div>
+   <textarea id="valcsv" placeholder="https://you.com/page,420&#10;https://you.com/other,180" style="margin-top:8px"></textarea>
+   <button class="mini" id="valbtn" onclick="runValue()">Estimate</button>
+   <div class="tout" id="valout"></div>
+ </div>
+ <div class="card tool">
+   <div class="ph"><div class="t">Compare two crawls</div><span class="m">score over time</span></div>
+   <div class="note2">Pick two stored reports of the same site to see what changed: score, pillars, engines, and which checks were fixed or regressed.</div>
+   <select id="cra"><option value="">— newer report —</option></select>
+   <select id="crb" style="margin-top:8px"><option value="">— older report —</option></select>
+   <button class="mini" id="crbtn" onclick="runCompareReports()">Compare crawls</button>
+   <div class="tout" id="crout"></div>
  </div>
 </div>
 
@@ -454,8 +518,34 @@ function scheduleCrawl(){var u=$('url').value.trim();if(!u){$('schednote').textC
 function loadRecent(){fetch('/reports').then(r=>r.json()).then(list=>{
   $('recent').innerHTML = list.length ? list.map(r=>{const d=r.delta;const dl=(d==null)?'<span class="dl z">first run</span>':`<span class="dl ${d>0?'up':d<0?'dn':'z'}">${d>0?'▲':d<0?'▼':'▬'} ${Math.abs(d)}</span>`;const sc=r.score==null?'':`<div class="sc">${r.score}</div>`;const mt=(r.pages!=null?r.pages+' pages · ':'')+r.when;return `<a href="/report/${r.name}" target="_blank" class="rep">${sc}<div style="flex:1"><div class="nm">${r.name}</div><div class="mt">${mt}</div></div>${dl}</a>`}).join('') : '<div class="note2">No reports yet. Run your first audit.</div>';
   var cs=$('calsite'); if(cs){var cur=cs.value; cs.innerHTML='<option value="">— pick a crawled site —</option>'+list.map(r=>'<option value="'+r.name+'">'+r.name+'</option>').join(''); cs.value=cur;}
+  ['cra','crb'].forEach(id=>{var sel=$(id); if(sel){var cur=sel.value, ph=sel.options[0].text; sel.innerHTML='<option value="">'+ph+'</option>'+list.map(r=>'<option value="'+r.name+'">'+r.name+'</option>').join(''); sel.value=cur;}});
   })}
 loadRecent();
+function loadWatches(){fetch('/watches').then(r=>r.json()).then(d=>{var el=$('watchlist'); if(!el)return;
+  var ws=d.watches||[]; el.innerHTML = ws.length ? ws.map(w=>{var ls=(w.last_score==null?'-':w.last_score); return '<div class="rep" style="cursor:default"><div style="flex:1"><div class="nm">'+w.url+'</div><div class="mt">'+(w.cadence||'weekly')+' · last '+ls+'</div></div><button class="optbtn" style="padding:4px 10px" onclick="removeWatch(\''+w.url.replace(/\x27/g,"")+'\')">Stop</button></div>';}).join('') : '<div class="note2">No watched sites yet.</div>';
+  }).catch(()=>{});}
+function addWatch(){var u=$('watchurl').value.trim(); if(!u)return; if(!/^https?:/.test(u))u='https://'+u;
+  fetch('/watch-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})}).then(r=>r.json()).then(()=>{$('watchurl').value='';loadWatches();}).catch(()=>{});}
+function removeWatch(u){fetch('/watch-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})}).then(()=>loadWatches()).catch(()=>{});}
+loadWatches();
+function pollJob(job, outId){var out=$(outId); out.textContent='Working...';
+  var t=setInterval(()=>fetch('/status/'+job).then(r=>r.json()).then(j=>{ if(!j)return;
+    if(j.lines&&j.lines.length) out.textContent=j.lines[j.lines.length-1];
+    if(j.finished){clearInterval(t); if(j.error){out.innerHTML='<span class=err>'+j.error+'</span>';return;}
+      out.innerHTML='<a class="open" href="'+j.report+'" target="_blank">Open report</a>'; loadRecent();}}),1000);}
+function runDraft(){var c=$('draftc').value.trim(), u=$('drafturl').value.trim(); if(!c&&!u){$('draftout').innerHTML='<span class=err>Paste a draft or enter a URL.</span>';return;}
+  fetch('/draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:c,url:u})}).then(r=>r.json()).then(d=>{if(d.error){$('draftout').innerHTML='<span class=err>'+d.error+'</span>';return;}pollJob(d.job,'draftout');});}
+function runCompare(){var y=$('cmpyou').value.trim(), rv=$('cmprival').value.trim(); if(!y||!rv){$('cmpout').innerHTML='<span class=err>Enter both URLs.</span>';return;}
+  fetch('/compare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({your_url:y,competitor_url:rv})}).then(r=>r.json()).then(d=>{if(d.error){$('cmpout').innerHTML='<span class=err>'+d.error+'</span>';return;}pollJob(d.job,'cmpout');});}
+function runValue(){var u=$('valurl').value.trim(), csv=$('valcsv').value; if(!u||!csv.trim()){$('valout').innerHTML='<span class=err>Enter a URL and paste your CSV.</span>';return;} if(!/^https?:/.test(u))u='https://'+u;
+  fetch('/value',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u,csv:csv})}).then(r=>r.json()).then(d=>{if(d.error){$('valout').innerHTML='<span class=err>'+d.error+'</span>';return;}pollJob(d.job,'valout');});}
+function runCompareReports(){var a=$('cra').value, b=$('crb').value; if(!a||!b){$('crout').innerHTML='<span class=err>Pick two reports.</span>';return;}
+  $('crout').textContent='Comparing...';
+  fetch('/compare-reports?a='+encodeURIComponent(a)+'&b='+encodeURIComponent(b)).then(r=>r.json()).then(d=>{ if(d.error){$('crout').innerHTML='<span class=err>'+d.error+'</span>';return;}
+    var pd=Object.entries(d.pillar_deltas||{}).map(([k,v])=>k+' '+(v>0?'+':'')+v).join(', ');
+    var fx=(d.fixed||[]).map(f=>f.label).join('; ')||'none'; var rg=(d.regressed||[]).map(f=>f.label).join('; ')||'none';
+    $('crout').innerHTML='<div class="note2">Score '+(d.score_delta>0?'+':'')+d.score_delta+' ('+d.older.overall+' &rarr; '+d.newer.overall+')<br>Pillars: '+pd+'<br><b>Fixed:</b> '+fx+'<br><b>Regressed:</b> '+rg+'</div>';
+  }).catch(()=>{$('crout').innerHTML='<span class=err>Compare failed.</span>';});}
 fetch('/update-check').then(r=>r.json()).then(d=>{
   if(d&&d.update){ $('updmsg').textContent='Version '+d.latest+' is available';
     $('upddesc').textContent='You are on v'+d.current+'. The update takes about a minute.';
@@ -466,7 +556,7 @@ function run(){
   const url=$('url').value.trim(); if(!url)return;
   $('run').disabled=true; $('form').classList.add('hide'); $('progress').classList.remove('hide'); $('done').classList.add('hide');
   $('log').textContent=''; $('phase').textContent='Discovering URLs...'; $('fill').style.width='0';
-  fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,max_pages:$('maxp').value,workers:$('workers').value,client:$('client').value,intro:$('intro').value,links:$('dolinks').checked,site_type:$('stype').value})})
+  fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,max_pages:$('maxp').value,workers:$('workers').value,client:$('client').value,intro:$('intro').value,agency:$('agency').value,logo:$('logo').value,links:$('dolinks').checked,site_type:$('stype').value})})
     .then(r=>r.json()).then(d=>{ if(d.error){$('phase').innerHTML='<span class=err>'+d.error+'</span>';return;} poll=setInterval(()=>check(d.job),1000); });
 }
 function check(job){fetch('/status/'+job).then(r=>r.json()).then(j=>{
@@ -627,7 +717,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         if u.path == "/":
-            page = INDEX if is_activated() else ACTIVATE
+            page = INDEX if (is_activated() or _pro_ok()) else ACTIVATE
             return self._send(200, page.replace("__FAV__", A.FAVICON))
         if u.path == "/chrome": return self._json(200, {"chrome": A.CHROME, "version": VERSION})
         if u.path == "/update-check": return self._json(200, {**check_update(), "current": APP_VERSION})
@@ -653,6 +743,21 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception: pass
                 items.append(it)
             return self._json(200, items)
+        if u.path == "/watches":
+            try:
+                import watch_store
+                return self._json(200, {"watches": watch_store.list_watches(), "alerts": watch_store.list_alerts(10)})
+            except Exception as e:
+                return self._json(200, {"watches": [], "alerts": [], "error": str(e)[:120]})
+        if u.path == "/compare-reports":
+            q = urllib.parse.parse_qs(u.query)
+            a = safe(q.get("a", [""])[0]); b = safe(q.get("b", [""])[0])
+            try:
+                da = json.load(open(os.path.join(REPORTS, a + ".json"), encoding="utf-8"))
+                db = json.load(open(os.path.join(REPORTS, b + ".json"), encoding="utf-8"))
+            except Exception:
+                return self._json(400, {"error": "Pick two crawled reports to compare."})
+            return self._json(200, _compare_reports(da, db))
         if u.path.startswith("/status/"):
             return self._json(200, JOBS.get(u.path.rsplit("/", 1)[-1], {}))
         if u.path.startswith("/report/"):
@@ -672,13 +777,69 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/connect-mcp": record_usage("feature", f="mcp_connect"); return self._json(200, connect_mcp())
         if self.path == "/disconnect-mcp": return self._json(200, disconnect_mcp())
         if self.path == "/schedule": record_usage("feature", f="schedule"); return self._json(200, schedule_crawl((body.get("url") or "").strip()))
+        if self.path == "/watch-add":
+            import watch_store; wu = (body.get("url") or "").strip()
+            if not wu: return self._json(400, {"error": "Enter a URL to watch."})
+            watch_store.add(wu, (body.get("cadence") or "weekly")); return self._json(200, {"ok": True})
+        if self.path == "/watch-remove":
+            import watch_store; return self._json(200, {"ok": watch_store.remove((body.get("url") or "").strip())})
         if self.path == "/telemetry-consent": return self._json(200, {"ok": set_telemetry_consent(body.get("consent"))})
         if self.path == "/self-update": return self._json(200, self_update())   # BETA/gated; banner still uses /open-update
-        if not is_activated(): return self._json(403, {"error": "Activate CITED Score to run audits."})
+        if not (is_activated() or _pro_ok()): return self._json(403, {"error": "Activate CITED Score, or unlock with a Pro licence (rubric activate), to run audits."})
         if self.path == "/run": return self._run(body)
         if self.path == "/calibrate": record_usage("feature", f="calibrate"); return self._calibrate(body)
         if self.path == "/benchmark": record_usage("feature", f="benchmark"); return self._benchmark(body)
+        if self.path == "/draft": record_usage("feature", f="draft"); return self._draft(body)
+        if self.path == "/compare": record_usage("feature", f="compare"); return self._compare(body)
+        if self.path == "/value": record_usage("feature", f="value"); return self._value(body)
         return self._send(404, "not found")
+
+    def _job_report(self, name, worker_body, total=1):
+        """Shared async-job runner for the draft/compare/value cards: writes a report into REPORTS and exposes
+        /report/<name> + a /status/<job> the card polls. worker_body(job, setrep) does the engine work."""
+        job = str(int(time.time() * 1000))
+        JOBS[job] = {"phase": "start", "done": 0, "total": total, "lines": [], "finished": False, "report": None, "error": None, "summary": None}
+        def prog(phase, done, tot, msg):
+            j = JOBS[job]; j["phase"] = phase; j["done"] = done; j["total"] = tot or total; j["lines"] = (j["lines"] + [msg])[-14:]
+        def run():
+            try: worker_body(job, prog, "/report/" + name, os.path.join(REPORTS, name + ".html"))
+            except Exception as e: JOBS[job]["error"] = str(e)
+            JOBS[job]["finished"] = True
+        threading.Thread(target=run, daemon=True).start()
+        return self._json(200, {"job": job})
+
+    def _draft(self, body):
+        content = (body.get("content") or "").strip(); url = (body.get("url") or "").strip()
+        if not content and not url: return self._json(400, {"error": "Paste draft content or enter a URL."})
+        def wk(job, prog, rep, path):
+            res = A.check_draft(content, url)
+            A.write_draft_html(res, path)
+            JOBS[job]["report"] = rep; JOBS[job]["summary"] = {"overall": res.get("readiness")}
+        return self._job_report("draft-" + str(int(time.time())), wk)
+
+    def _compare(self, body):
+        your_url = (body.get("your_url") or "").strip(); comp = (body.get("competitor_url") or "").strip()
+        if not your_url or not comp: return self._json(400, {"error": "Enter your page URL and a competitor page URL."})
+        dom = urllib.parse.urlparse(your_url if your_url.startswith("http") else "https://" + your_url).netloc.replace("www.", "")
+        def wk(job, prog, rep, path):
+            data = A.page_compare(your_url, comp, progress=prog)
+            A.write_compare_html(data, path)
+            JOBS[job]["report"] = rep; JOBS[job]["summary"] = {"overall": (data.get("you") or {}).get("score")}
+        return self._job_report("compare-" + safe(dom or "pages"), wk, total=2)
+
+    def _value(self, body):
+        url = (body.get("url") or "").strip(); csv_text = (body.get("csv") or "")
+        if not url or not csv_text.strip(): return self._json(400, {"error": "Enter a URL and paste your Search Console Pages CSV (url,clicks)."})
+        dom = urllib.parse.urlparse(url if url.startswith("http") else "https://" + url).netloc.replace("www.", "")
+        name = "value-" + safe(dom or "site")
+        def wk(job, prog, rep, path):
+            csv_path = os.path.join(REPORTS, name + "-perf.csv")
+            with open(csv_path, "w", encoding="utf-8", newline="") as f:
+                f.write(csv_text if csv_text.endswith("\n") else csv_text + "\n")
+            vb = A.value_bridge(url, csv_path, progress=prog)
+            A.write_value_html(vb, path)
+            JOBS[job]["report"] = rep; JOBS[job]["summary"] = {"overall": None}
+        return self._job_report(name, wk)
 
     def _activate(self, body):
         email = (body.get("email") or "").strip()
@@ -763,6 +924,8 @@ class Handler(BaseHTTPRequestHandler):
         client = (body.get("client") or "").strip() or None
         stype = (body.get("site_type") or "").strip() or None
         intro = (body.get("intro") or "").strip() or None
+        agency = (body.get("agency") or "").strip() or None
+        logo = (body.get("logo") or "").strip() or None
         dolinks = body.get("links") is not False   # default True unless explicitly unchecked
         base = os.path.join(REPORTS, safe(dom))
         job = str(int(time.time() * 1000))
@@ -773,7 +936,7 @@ class Handler(BaseHTTPRequestHandler):
             j["lines"] = (j["lines"] + [msg])[-14:]
         def worker():
             try:
-                data = A.run_audit(url, out=base, max_pages=maxp, workers=workers, progress=prog, client=client, intro=intro, links=dolinks, site_type=stype)
+                data = A.run_audit(url, out=base, max_pages=maxp, workers=workers, progress=prog, client=client, intro=intro, links=dolinks, site_type=stype, agency=agency, logo=logo)
                 JOBS[job]["report"] = "/report/" + safe(dom)
                 JOBS[job]["summary"] = {"overall": data["overall"], "pages": data["pages_crawled"],
                                         "pillars": data["pillars"], "engines": data["engines"]}
