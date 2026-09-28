@@ -30,3 +30,23 @@ rubric audit --url https://staging.internal.example.com   # any flag aiseo_audit
 ```
 
 Never paste your key anywhere public; Rubric only ever sends it in an Authorization header to the licence check.
+
+## Authenticated and private crawls
+
+Rubric runs locally, so it can already crawl private, staging, pre-launch, localhost and intranet URLs that the web app cannot reach, with no page cap.
+
+For a site behind a login, supply credentials locally. They are sent only to the site you are auditing (the audited host or a subdomain of it, never a parent, a sibling, or a third party on a redirect) and are never written to a log or a report.
+
+```bash
+# HTTP Basic Auth (common on staging)
+rubric audit --url https://staging.example.com --basic user:password
+
+# A session cookie copied from your logged-in browser
+rubric audit --url https://app.internal.example.com --cookie "session=abc123; role=admin"
+
+# Preferred for secrets: a local JSON file, kept off your command line and shell history
+echo '{ "cookie": "session=abc123" }' > auth.json
+rubric audit --url https://app.internal.example.com --auth-file auth.json
+```
+
+`--basic` and `--cookie` appear in your shell history, so prefer `--auth-file` for anything sensitive. Automated form login is not yet supported; copy a session cookie from your browser instead.
