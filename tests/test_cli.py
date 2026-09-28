@@ -140,6 +140,23 @@ def test_watch_run_skips_failed_crawl(tmp_path, monkeypatch):
     assert cli.main(["watch", "run"]) == 0                    # no crash
     assert _W.list_alerts() == [] and _W.get("https://a.com/")["last_score"] is None
 
+def test_score_of_none_on_failed_or_partial_crawl(monkeypatch):
+    import aiseo_audit
+    monkeypatch.setattr(aiseo_audit, "run_audit", lambda *a, **k: {"overall": 5, "crawl_failed": True})
+    assert cli._score_of("https://x.com/") is None      # a WAF-blocked crawl scores low but is not a real drop
+    monkeypatch.setattr(aiseo_audit, "run_audit", lambda *a, **k: {"overall": 3, "partial": True})
+    assert cli._score_of("https://x.com/") is None      # a partial crawl is not comparable
+    monkeypatch.setattr(aiseo_audit, "run_audit", lambda *a, **k: {"overall": 88})
+    assert cli._score_of("https://x.com/") == 88
+
+def test_watch_run_skips_corrupt_watch_entry(tmp_path, monkeypatch):
+    _wh(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli.licence, "require_pro", lambda: None)
+    (tmp_path / "w.json").write_text('[{"cadence":"weekly"}, {"url":"https://a.com/","last_score":null}]', encoding="utf-8")
+    monkeypatch.setattr(cli, "_score_of", lambda url: 70)
+    monkeypatch.setattr(cli, "_notify", lambda *a, **k: None)
+    assert cli.main(["watch", "run"]) == 0              # a watch entry with no url must not crash the whole run
+
 def test_watch_run_toast_failure_is_nonfatal(tmp_path, monkeypatch):
     _wh(tmp_path, monkeypatch)
     monkeypatch.setattr(cli.licence, "require_pro", lambda: None)

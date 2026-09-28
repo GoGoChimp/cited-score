@@ -812,9 +812,14 @@ class Handler(BaseHTTPRequestHandler):
         content = (body.get("content") or "").strip(); url = (body.get("url") or "").strip()
         if not content and not url: return self._json(400, {"error": "Paste draft content or enter a URL."})
         def wk(job, prog, rep, path):
-            res = A.check_draft(content, url)
+            c = content
+            if not c and url:                                    # URL-only: fetch the page so we check its real content, not an empty doc
+                st, _h, html, _ms = A.fetch_raw(url)
+                if not html: raise RuntimeError("Could not fetch that URL to check (it may be down or blocking crawlers).")
+                c = html
+            res = A.check_draft(c, url)
             A.write_draft_html(res, path)
-            JOBS[job]["report"] = rep; JOBS[job]["summary"] = {"overall": res.get("readiness")}
+            JOBS[job]["report"] = rep; JOBS[job]["summary"] = {"verdict": res.get("verdict")}
         return self._job_report("draft-" + str(int(time.time())), wk)
 
     def _compare(self, body):

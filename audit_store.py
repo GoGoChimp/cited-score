@@ -33,7 +33,7 @@ def _all_recs():
         names = [n for n in os.listdir(STORE_DIR) if n.endswith(".json")]
     except Exception:
         return recs
-    for n in sorted(names, reverse=True):     # audit_id embeds a sortable timestamp, so name-desc == newest-first
+    for n in sorted(names, key=lambda x: x[:-5].rsplit("-", 1)[-1], reverse=True):   # by timestamp segment = globally newest-first, not domain-alphabetical
         d = load(n[:-5])
         if d:
             recs.append(d)

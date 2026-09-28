@@ -88,20 +88,24 @@ def _cmd_audit(rest):
 ALERT_THRESHOLD = 2
 
 def _score_of(url):
-    """Crawl a watched site and return its overall score, or None if the crawl could not score it."""
+    """Crawl a watched site and return its overall score, or None if the crawl could not score it. A blocked
+    (crawl_failed) or partial crawl scores low but is NOT a real drop, so it returns None (skipped, no alert)."""
     import aiseo_audit
     try:
         d = aiseo_audit.run_audit(url, out=None, links=False)
+        if d.get("crawl_failed") or d.get("partial"):
+            return None
         return d.get("overall")
     except Exception:
         return None
 
 def _notify(title, message):
-    """Best-effort desktop notification. The alert log is the reliable channel; this never fails the run."""
-    import subprocess
+    """Best-effort desktop notification. Safe by construction: it never interpolates the message into a shell
+    command. A real toast needs an optional notifier (plyer); without it this is silent and the alert log
+    (rubric watch alerts) is the reliable channel. Never fails the run."""
     try:
-        subprocess.run(["powershell", "-NoProfile", "-Command",
-                        f"Write-Output ('{title}: {message}')"], timeout=8, capture_output=True)
+        from plyer import notification
+        notification.notify(title=str(title), message=str(message), timeout=8)
     except Exception:
         pass
 
@@ -149,7 +153,10 @@ def _cmd_watch(rest):
         licence.require_pro()
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         for w in watch_store.list_watches():
-            url = w["url"]; new = _score_of(url)
+            url = w.get("url")
+            if not url:
+                continue
+            new = _score_of(url)
             if new is None:
                 print(f"{url}: crawl did not score (skipped)"); continue
             old = w.get("last_score")
@@ -185,6 +192,7 @@ def main(argv=None):
     if cmd == "watch":
         return _cmd_watch(rest)
     if cmd == "ui":
+        licence.refresh()          # downgrade a cancelled account before unlocking the GUI (consistent with audit/mcp)
         licence.require_pro()
         import app
         app.main()   # launches the local GUI server + opens the browser; blocks until closed

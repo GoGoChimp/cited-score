@@ -54,6 +54,14 @@ def test_get_page(tmp_path, monkeypatch):
     assert M.get_page(aid, "https://x.com/")["page_type"] == "home"
     assert "error" in M.get_page(aid, "https://x.com/missing")
 
+def test_compare_audits_handles_none_scores(tmp_path, monkeypatch):
+    _seed(tmp_path, monkeypatch)
+    m1 = _mcp("x.com", 60, []); m1["pillars"] = {"known": None, "findable": 70, "trusted": 55, "weakest": None}
+    m2 = _mcp("x.com", 68, []); m2["score"] = None; m2["engines"] = {"chatgpt": None}
+    a = S.save(m1, "https://x.com/"); b = S.save(m2, "https://x.com/")
+    c = M.compare_audits(a, b)   # a present-but-None pillar/engine/score must not raise
+    assert "error" not in c and isinstance(c["score_delta"], int)
+
 def test_compare_audits(tmp_path, monkeypatch):
     _seed(tmp_path, monkeypatch)
     older = S.save(_mcp("x.com", 60, [FIX]), "https://x.com/")

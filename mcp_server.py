@@ -165,8 +165,8 @@ def compare_audits(audit_id_a: str, audit_id_b: str) -> dict:
     _telemetry("compare_audits")
     a = _store.load(audit_id_a); b = _store.load(audit_id_b)
     if not a or not b: return {"error": "One or both audits not found."}
-    pd = {k: (a.get("pillars") or {}).get(k, 0) - (b.get("pillars") or {}).get(k, 0) for k in ("known", "findable", "trusted")}
-    ed = {k: (a.get("engines") or {}).get(k, 0) - (b.get("engines") or {}).get(k, 0) for k in (a.get("engines") or {})}
+    pd = {k: ((a.get("pillars") or {}).get(k) or 0) - ((b.get("pillars") or {}).get(k) or 0) for k in ("known", "findable", "trusted")}
+    ed = {k: ((a.get("engines") or {}).get(k) or 0) - ((b.get("engines") or {}).get(k) or 0) for k in (a.get("engines") or {})}
     A_ids = {f.get("check_id"): f for f in (a.get("action_plan") or [])}
     B_ids = {f.get("check_id"): f for f in (b.get("action_plan") or [])}
     fixed = [{"check_id": k, "title": B_ids[k].get("title"), "pages_resolved": B_ids[k].get("pages_affected")} for k in B_ids if k not in A_ids]

@@ -28,6 +28,13 @@ def test_list_recent_newest_first_with_delta(tmp_path, monkeypatch):
     assert rows[0]["audit_id"] == a2 and rows[0]["delta_vs_previous"] == 8   # 68 - 60
     assert rows[1]["audit_id"] == a1 and rows[1]["delta_vs_previous"] is None
 
+def test_list_recent_global_newest_first(tmp_path, monkeypatch):
+    monkeypatch.setattr(S, "STORE_DIR", str(tmp_path))
+    import time
+    az = S.save(_mcp("zebra.com", 50), "https://zebra.com/"); time.sleep(0.01)
+    aa = S.save(_mcp("apple.com", 90), "https://apple.com/")   # newer, but an alphabetically-earlier domain
+    assert S.list_recent()[0]["audit_id"] == aa   # globally newest, not the alphabetically-greatest domain
+
 def test_list_recent_filters_domain(tmp_path, monkeypatch):
     monkeypatch.setattr(S, "STORE_DIR", str(tmp_path))
     S.save(_mcp("a.com", 50), "https://a.com/"); S.save(_mcp("b.com", 90), "https://b.com/")
