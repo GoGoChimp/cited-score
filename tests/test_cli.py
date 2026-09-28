@@ -35,3 +35,9 @@ def test_audit_gated_by_pro(monkeypatch):
     except SystemExit:
         pass
     assert calls["require"] == 1 and calls["audit"] == 0  # gate runs, audit never reached
+
+def test_unknown_command_does_not_echo_a_keylike_arg(capsys):
+    # A user who runs `rubric cs_live_...` (forgetting `activate`) must not have the key echoed to stdout.
+    cli.main(["cs_live_supersecretvalue0000"])
+    out = capsys.readouterr().out
+    assert "supersecretvalue0000" not in out

@@ -43,7 +43,8 @@ def main(argv=None):
         return _cmd_status()
     if cmd == "audit":
         return _cmd_audit(rest)
-    print(f"Unknown command: {cmd}. Try: activate, status, audit.")
+    safe_cmd = licence.key_prefix(cmd) if cmd.startswith("cs_live_") else cmd
+    print(f"Unknown command: {safe_cmd}. Try: activate, status, audit.")
     return 1
 
 def mcp_main():
