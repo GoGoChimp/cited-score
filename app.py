@@ -308,11 +308,11 @@ INDEX = r"""<!doctype html><html><head><meta charset="utf-8">
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 'Archivo',-apple-system,Segoe UI,Arial,sans-serif}
 .wrap{max-width:1180px;margin:0 auto;padding:26px 26px 60px}
 a{color:var(--grn);text-decoration:none}
-.logo{display:inline-flex;align-items:center;gap:11px}
+.logo{display:inline-flex;align-items:baseline;gap:0}
 .logo .wm{display:inline-flex;align-items:baseline;gap:8px}
-.logo .lw{font-family:'Archivo',sans-serif;font-weight:900;font-size:23px;letter-spacing:-.02em;color:var(--txt);line-height:1}
+.logo .lw{font-family:'Archivo',sans-serif;font-weight:800;font-size:25px;letter-spacing:-.056em;color:var(--txt);line-height:1;margin-left:-1px}
 .logo .ls{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.24em;color:var(--muted);text-transform:uppercase}
-.upd{display:flex;align-items:center;gap:16px;background:rgba(66,216,72,.07);border:1px solid rgba(66,216,72,.32);border-radius:14px;padding:14px 18px;margin-bottom:26px}
+.upd{display:flex;align-items:center;gap:16px;background:rgba(219,6,50,.07);border:1px solid rgba(219,6,50,.32);border-radius:14px;padding:14px 18px;margin-bottom:26px}
 .upd .uc{background:var(--grn);color:#0a0a0a;font-weight:800;font-size:11px;letter-spacing:.5px;padding:3px 8px;border-radius:5px}
 .upd .ut{font-weight:800}.upd .ud{color:var(--muted);font-size:13px}.upd .sp{flex:1}
 .updbtn{background:var(--grn);color:#0a0a0a;font-weight:800;padding:9px 16px;border-radius:9px;white-space:nowrap}
@@ -372,7 +372,7 @@ a{color:var(--grn);text-decoration:none}
 
 <div class="cols">
  <div class="main">
-   <div class="logo"><svg viewBox='0 0 97 100' width='22' height='23' style='flex:none'><path fill-rule='evenodd' d='M0 0 H61.8 A35 35 0 0 1 74.8 67.5 L96.6 100 H68.6 Z M30.5 23 H55.3 A12.5 12.5 0 0 1 55.3 48 H30.5 Z' fill='#db0632'/></svg><span class="wm"><span class="lw" style="margin-left:1px">ubric</span></span></div>
+   <div class="logo"><svg viewBox='0 0 97 100' width='17' height='18' style='flex:none'><path fill-rule='evenodd' d='M0 0 H61.8 A35 35 0 0 1 74.8 67.5 L96.6 100 H68.6 Z M30.5 23 H55.3 A12.5 12.5 0 0 1 55.3 48 H30.5 Z' fill='#db0632'/></svg><span class="wm"><span class="lw">ubric</span></span></div>
    <h1 class="h1">Score every page the way an AI crawler would</h1>
    <div class="lede">Enter a website. Rubric crawls every page and grades how citable it is for six engines, then tells you which fix moves the number fastest.</div>
    <div class="engrow"><span>ChatGPT</span><span>Perplexity</span><span>AI Overviews</span><span>Gemini</span><span>Copilot</span><span>Claude</span></div>
@@ -636,7 +636,7 @@ ACTIVATE = r"""<!doctype html><html><head><meta charset="utf-8">
 .box{width:100%;max-width:440px}
 .logo{display:inline-flex;align-items:center;gap:11px;margin-bottom:24px}
 .logo .wm{display:inline-flex;align-items:baseline;gap:8px}
-.logo .lw{font-family:'Archivo',sans-serif;font-weight:900;font-size:23px;letter-spacing:-.02em;color:var(--txt);line-height:1}
+.logo .lw{font-family:'Archivo',sans-serif;font-weight:800;font-size:25px;letter-spacing:-.056em;color:var(--txt);line-height:1;margin-left:-1px}
 .logo .ls{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.24em;color:var(--muted);text-transform:uppercase}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px}
 h1{font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:-.4px;margin:0 0 8px}
@@ -656,7 +656,7 @@ input#code{font-family:var(--mono);letter-spacing:.22em;text-transform:uppercase
 .hint{color:var(--muted);font-size:12px;margin-top:7px}
 .foot{text-align:center;color:var(--muted);font-size:12px;margin-top:20px}
 </style></head><body><div class="box">
-<div class="logo"><svg viewBox='0 0 97 100' width='22' height='23' style='flex:none'><path fill-rule='evenodd' d='M0 0 H61.8 A35 35 0 0 1 74.8 67.5 L96.6 100 H68.6 Z M30.5 23 H55.3 A12.5 12.5 0 0 1 55.3 48 H30.5 Z' fill='#db0632'/></svg><span class="wm"><span class="lw" style="margin-left:1px">ubric</span></span></div>
+<div class="logo"><svg viewBox='0 0 97 100' width='17' height='18' style='flex:none'><path fill-rule='evenodd' d='M0 0 H61.8 A35 35 0 0 1 74.8 67.5 L96.6 100 H68.6 Z M30.5 23 H55.3 A12.5 12.5 0 0 1 55.3 48 H30.5 Z' fill='#db0632'/></svg><span class="wm"><span class="lw">ubric</span></span></div>
 <div class="card">
   <h1>Activate your copy</h1>
   <p class="sub">Enter the code from your download email. Free for life, up to 500 URLs.</p>
