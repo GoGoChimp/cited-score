@@ -94,3 +94,59 @@ def test_mcp_install_warns_on_unparseable_config(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out.lower()
     assert "could not be parsed" in out and "backed up" in out
     assert "rubric" in _json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"]
+
+import watch_store as _W
+
+def _wh(tmp_path, monkeypatch):
+    monkeypatch.setattr(_W, "WATCH_FILE", str(tmp_path / "w.json"))
+    monkeypatch.setattr(_W, "ALERTS_FILE", str(tmp_path / "a.jsonl"))
+
+def test_watch_add_list_remove(tmp_path, monkeypatch, capsys):
+    _wh(tmp_path, monkeypatch)
+    assert cli.main(["watch", "add", "https://a.com/", "--every", "daily"]) == 0
+    cli.main(["watch", "list"]); assert "a.com" in capsys.readouterr().out
+    assert cli.main(["watch", "remove", "https://a.com/"]) == 0
+
+def test_watch_run_baseline_then_alert(tmp_path, monkeypatch, capsys):
+    _wh(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli.licence, "require_pro", lambda: None)
+    cli.main(["watch", "add", "https://a.com/"])
+    scores = iter([70, 75])   # first run = baseline, second run = +5 -> alert
+    monkeypatch.setattr(cli, "_score_of", lambda url: next(scores))
+    monkeypatch.setattr(cli, "_notify", lambda *a, **k: None)
+    cli.main(["watch", "run"]); capsys.readouterr()
+    assert _W.get("https://a.com/")["last_score"] == 70 and _W.list_alerts() == []   # baseline, no alert
+    cli.main(["watch", "run"])
+    al = _W.list_alerts()
+    assert len(al) == 1 and al[0]["new"] == 75 and al[0]["old"] == 70
+    assert _W.get("https://a.com/")["last_score"] == 75
+
+def test_watch_run_below_threshold_no_alert(tmp_path, monkeypatch):
+    _wh(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli.licence, "require_pro", lambda: None)
+    cli.main(["watch", "add", "https://a.com/"])
+    scores = iter([70, 71])   # +1 < threshold(2)
+    monkeypatch.setattr(cli, "_score_of", lambda url: next(scores))
+    monkeypatch.setattr(cli, "_notify", lambda *a, **k: None)
+    cli.main(["watch", "run"]); cli.main(["watch", "run"])
+    assert _W.list_alerts() == [] and _W.get("https://a.com/")["last_score"] == 71
+
+def test_watch_run_skips_failed_crawl(tmp_path, monkeypatch):
+    _wh(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli.licence, "require_pro", lambda: None)
+    cli.main(["watch", "add", "https://a.com/"])
+    monkeypatch.setattr(cli, "_score_of", lambda url: None)   # crawl failed
+    monkeypatch.setattr(cli, "_notify", lambda *a, **k: None)
+    assert cli.main(["watch", "run"]) == 0                    # no crash
+    assert _W.list_alerts() == [] and _W.get("https://a.com/")["last_score"] is None
+
+def test_watch_run_toast_failure_is_nonfatal(tmp_path, monkeypatch):
+    _wh(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli.licence, "require_pro", lambda: None)
+    cli.main(["watch", "add", "https://a.com/"])
+    scores = iter([70, 80])
+    monkeypatch.setattr(cli, "_score_of", lambda url: next(scores))
+    def boom(*a, **k): raise RuntimeError("no notifier")
+    monkeypatch.setattr(cli, "_notify", boom)
+    cli.main(["watch", "run"]); assert cli.main(["watch", "run"]) == 0   # toast raised, run still ok
+    assert len(_W.list_alerts()) == 1                                    # alert still recorded
