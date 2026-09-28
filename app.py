@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CITED Score - local desktop app / shell.
+Rubric - local desktop app / shell.
 Run:  python app.py    (opens http://127.0.0.1:5000 in your browser)
 Enter any website, click Run, watch the crawl, open the report. No command line needed.
 Uses the same engine as aiseo_audit.py (your installed Chrome renders each page).
@@ -96,7 +96,7 @@ def _pro_ok():
         return False
 
 def sb_post(fn, payload, timeout=12):
-    """POST to a CITED Score Edge Function. Returns (status, dict). No secret ever ships here -
+    """POST to a Rubric Edge Function. Returns (status, dict). No secret ever ships here -
     the functions are public; the secret + signing key live only in Supabase."""
     req = urllib.request.Request(f"{SB_FUNCTIONS}/{fn}",
         data=json.dumps(payload).encode("utf-8"),
@@ -110,7 +110,7 @@ def sb_post(fn, payload, timeout=12):
     except Exception:
         return 0, {"error": "Could not reach the activation server. Check your connection."}
 
-# ---- MCP connect (add CITED Score to Claude Desktop as an MCP server) -------------------------
+# ---- MCP connect (add Rubric to Claude Desktop as an MCP server) -------------------------
 def _mcp_command():
     """(command, args) that launch THIS build's MCP server for the current runtime.
     Frozen exe -> the exe itself with --mcp; a Python run -> python + mcp_server.py."""
@@ -156,7 +156,7 @@ def connect_mcp():
         if not isinstance(cfg, dict): cfg = {}
         cfg.setdefault("mcpServers", {})["cited-score"] = {"command": cmd, "args": args}
         with open(path, "w", encoding="utf-8") as f: json.dump(cfg, f, indent=2)
-        return {"ok": True, "path": path, "note": "Restart Claude Desktop to load CITED Score."}
+        return {"ok": True, "path": path, "note": "Restart Claude Desktop to load Rubric."}
     except Exception as e:
         return {"ok": False, "path": path, "error": str(e)[:200]}
 
@@ -278,7 +278,7 @@ def self_update():
                     'del "%~f0"\r\n')
         import subprocess
         subprocess.Popen(["cmd", "/c", bat], creationflags=0x00000008)   # DETACHED_PROCESS; completes once the app exits
-        return {"ok": True, "note": "Update downloaded. Close CITED Score to finish; it will reopen on the new version."}
+        return {"ok": True, "note": "Update downloaded. Close Rubric to finish; it will reopen on the new version."}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
 
@@ -291,7 +291,7 @@ def schedule_crawl(url, cadence="WEEKLY"):
     try:
         import subprocess, urllib.parse
         dom = urllib.parse.urlparse(url if url.startswith("http") else "https://"+url).netloc.replace("www.", "") or "site"
-        name = "CITED Score - " + dom
+        name = "Rubric - " + dom
         tr = f'"{sys.executable}" --crawl {url}'
         r = subprocess.run(["schtasks","/create","/tn",name,"/tr",tr,"/sc",cadence,"/d","MON","/st","09:00","/f"],
                            capture_output=True, text=True, creationflags=0x08000000)
@@ -302,9 +302,9 @@ def schedule_crawl(url, cadence="WEEKLY"):
         return {"ok": False, "error": str(e)[:200]}
 
 INDEX = r"""<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>CITED Score</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Rubric</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0F1410;--panel:#161D18;--panel2:#0A0F0B;--line:#26302A;--muted:#6E7A6F;--txt:#EDF0EB;--grn:#42D848;--grn2:#74E67A;--ok:#3DD68C;--red:#E0533D;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;--display:'Archivo',sans-serif}
+:root{--bg:#14140f;--panel:#191914;--panel2:#1e1e18;--line:#2a2a24;--muted:#a8a495;--txt:#f2f0e4;--grn:#db0632;--grn2:#ef1a48;--ok:#3DD68C;--red:#db0632;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;--display:'Archivo',sans-serif}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 'Archivo',-apple-system,Segoe UI,Arial,sans-serif}
 .wrap{max-width:1180px;margin:0 auto;padding:26px 26px 60px}
 a{color:var(--grn);text-decoration:none}
@@ -319,7 +319,7 @@ a{color:var(--grn);text-decoration:none}
 .later{color:#fff;font-weight:600;cursor:pointer;padding:9px 10px}
 .cols{display:grid;grid-template-columns:1fr 360px;gap:30px;align-items:start}
 @media(max-width:960px){.cols{grid-template-columns:1fr}.side{margin-top:0}}
-.h1{font-family:var(--display);font-weight:800;text-transform:uppercase;font-size:44px;line-height:1.03;letter-spacing:-.5px;margin:16px 0 0}
+.h1{font-family:var(--display);font-weight:800;font-size:clamp(40px,5vw,60px);line-height:.95;letter-spacing:-.03em;margin:16px 0 0}
 .lede{color:var(--muted);font-size:17px;max-width:520px;margin:16px 0 14px}
 .engrow{color:var(--muted);font-size:14px;display:flex;flex-wrap:wrap;gap:22px;margin-bottom:26px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px}
@@ -372,9 +372,9 @@ a{color:var(--grn);text-decoration:none}
 
 <div class="cols">
  <div class="main">
-   <div class="logo"><svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M148.3,50.1 A72,72 0 1 0 158.7,127' fill='none' stroke='#EDF0EB' stroke-width='17' stroke-linecap='square'/><path d='M70,101 L92,123 L135.7,67.5' fill='none' stroke='#42D848' stroke-width='17' stroke-linecap='square'/></svg><span class="wm"><span class="lw">CITED</span><span class="ls">Score</span></span></div>
+   <div class="logo"><svg viewBox='0 0 97 100' width='22' height='23' style='flex:none'><path fill-rule='evenodd' d='M0 0 H61.8 A35 35 0 0 1 74.8 67.5 L96.6 100 H68.6 Z M30.5 23 H55.3 A12.5 12.5 0 0 1 55.3 48 H30.5 Z' fill='#db0632'/></svg><span class="wm"><span class="lw" style="margin-left:1px">ubric</span></span></div>
    <h1 class="h1">Score every page the way an AI crawler would</h1>
-   <div class="lede">Enter a website. CITED Score crawls every page and grades how citable it is for six engines, then tells you which fix moves the number fastest.</div>
+   <div class="lede">Enter a website. Rubric crawls every page and grades how citable it is for six engines, then tells you which fix moves the number fastest.</div>
    <div class="engrow"><span>ChatGPT</span><span>Perplexity</span><span>AI Overviews</span><span>Gemini</span><span>Copilot</span><span>Claude</span></div>
 
    <div class="card" id="form">
@@ -419,7 +419,7 @@ a{color:var(--grn);text-decoration:none}
      <div class="chk"><b>05</b><span>Freshness signals and response times</span></div>
    </div>
    <div class="card" id="mcpcard"><div class="ph"><div class="t">Use inside Claude</div><span class="m" id="mcpdot">checking&hellip;</span></div>
-     <div class="note2">Add CITED Score to Claude Desktop as an MCP tool, then just ask Claude to audit a site or check a draft.</div>
+     <div class="note2">Add Rubric to Claude Desktop as an MCP tool, then just ask Claude to audit a site or check a draft.</div>
      <button class="mini" id="mcpbtn" onclick="mcpToggle()">Connect to Claude Desktop</button>
      <div class="note2" id="mcpnote" style="margin-top:8px"></div>
      <div class="note2" style="margin-top:6px"><a href="#" onclick="copyMcp();return false" style="color:var(--muted)">Copy config for Cursor / Claude Code</a></div>
@@ -484,13 +484,13 @@ a{color:var(--grn);text-decoration:none}
  </div>
 </div>
 
-<div class="foot"><span id="ver">CITED Score · free for life with the book</span><span class="lk"><a href="https://github.com/GoGoChimp/cited-score" target="_blank">Read the docs</a></span></div>
+<div class="foot"><span id="ver">Rubric · free for life with the book</span><span class="lk"><a href="https://github.com/GoGoChimp/cited-score" target="_blank">Read the docs</a></span></div>
 </div>
 <script>
 const $=id=>document.getElementById(id);
 fetch('/chrome').then(r=>r.json()).then(d=>{
-  $('ver').textContent='CITED Score '+d.version+' · free for life with the book';
-  $('chrome').innerHTML = d.chrome ? '' : '<b class="err">CITED Score needs Chrome or Edge to read pages.</b> Install one, then reopen.';});
+  $('ver').textContent='Rubric '+d.version+' · free for life with the book';
+  $('chrome').innerHTML = d.chrome ? '' : '<b class="err">Rubric needs Chrome or Edge to read pages.</b> Install one, then reopen.';});
 var _mcpConn=false;
 function mcpRender(s){var dot=$('mcpdot'),btn=$('mcpbtn');if(!dot)return;
   _mcpConn=!!(s&&s.connected);
@@ -500,7 +500,7 @@ function loadMcp(){fetch('/mcp-status').then(r=>r.json()).then(mcpRender).catch(
 function mcpToggle(){ if(_mcpConn){disconnectMcp();} else {connectMcp();} }
 function connectMcp(){var btn=$('mcpbtn');btn.disabled=true;btn.textContent='Connecting...';
   fetch('/connect-mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(d=>{btn.disabled=false;
-    $('mcpnote').innerHTML = d.ok ? '<b style="color:var(--ok)">Added.</b> Restart Claude Desktop to load CITED Score.' : '<b class="err">Could not write config.</b> '+((d&&d.error)||'');
+    $('mcpnote').innerHTML = d.ok ? '<b style="color:var(--ok)">Added.</b> Restart Claude Desktop to load Rubric.' : '<b class="err">Could not write config.</b> '+((d&&d.error)||'');
     loadMcp();}).catch(()=>{btn.disabled=false;});}
 function disconnectMcp(){var btn=$('mcpbtn');btn.disabled=true;btn.textContent='Disconnecting...';
   fetch('/disconnect-mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(d=>{btn.disabled=false;
@@ -571,7 +571,7 @@ function check(job){fetch('/status/'+job).then(r=>r.json()).then(j=>{
     if(j.error){ $('phase').innerHTML='<span class=err>Error: '+j.error+'</span>'; return; }
     const s=j.summary||{};
     $('tiles').innerHTML =
-      tile(s.overall,'CITED Score') + tile(s.pages,'Pages') +
+      tile(s.overall,'Rubric') + tile(s.pages,'Pages') +
       Object.entries(s.pillars||{}).map(([k,v])=>tile(v,k)).join('');
     $('openbtn').href = j.report;
     $('done').classList.remove('hide'); loadRecent();
@@ -618,7 +618,7 @@ function checkBench(job){fetch('/status/'+job).then(r=>r.json()).then(j=>{
   if(!rows.length){$('benout').innerHTML='<span class=err>No sites could be scored - check the URLs.</span>';return;}
   const eng=['ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude'];
   const cols=['overall','Known','Findable','Trusted'].concat(eng);
-  const abbr={overall:'CITED',Known:'Kn',Findable:'Fi',Trusted:'Tr','AI Overviews':'AIO',ChatGPT:'GPT',Perplexity:'PPLX',Gemini:'GEM',Copilot:'CPLT',Claude:'CLDE'};
+  const abbr={overall:'Rubric',Known:'Kn',Findable:'Fi',Trusted:'Tr','AI Overviews':'AIO',ChatGPT:'GPT',Perplexity:'PPLX',Gemini:'GEM',Copilot:'CPLT',Claude:'CLDE'};
   const val=(r,c)=> c=='overall'?r.overall : (c=='Known'||c=='Findable'||c=='Trusted')?r.pillars[c] : r.engines[c];
   const best={}; cols.forEach(c=>best[c]=Math.max.apply(0,rows.map(r=>val(r,c)||0)));
   let h='<table><tr><th>Site</th>'+cols.map(c=>'<th>'+(abbr[c]||c)+'</th>').join('')+'</tr>';
@@ -629,9 +629,9 @@ function checkBench(job){fetch('/status/'+job).then(r=>r.json()).then(j=>{
 </script></body></html>"""
 
 ACTIVATE = r"""<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Activate CITED Score</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Activate Rubric</title><link rel="icon" href="__FAV__"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0F1410;--panel:#161D18;--panel2:#0A0F0B;--line:#26302A;--muted:#6E7A6F;--txt:#EDF0EB;--grn:#42D848;--grn2:#74E67A;--ok:#3DD68C;--red:#E0533D;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;--display:'Archivo',sans-serif}
+:root{--bg:#14140f;--panel:#191914;--panel2:#1e1e18;--line:#2a2a24;--muted:#a8a495;--txt:#f2f0e4;--grn:#db0632;--grn2:#ef1a48;--ok:#3DD68C;--red:#db0632;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;--display:'Archivo',sans-serif}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 'Archivo',-apple-system,Segoe UI,Arial,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
 .box{width:100%;max-width:440px}
 .logo{display:inline-flex;align-items:center;gap:11px;margin-bottom:24px}
@@ -656,7 +656,7 @@ input#code{font-family:var(--mono);letter-spacing:.22em;text-transform:uppercase
 .hint{color:var(--muted);font-size:12px;margin-top:7px}
 .foot{text-align:center;color:var(--muted);font-size:12px;margin-top:20px}
 </style></head><body><div class="box">
-<div class="logo"><svg viewBox='0 0 200 200' width='29' height='29' style='flex:none'><path d='M148.3,50.1 A72,72 0 1 0 158.7,127' fill='none' stroke='#EDF0EB' stroke-width='17' stroke-linecap='square'/><path d='M70,101 L92,123 L135.7,67.5' fill='none' stroke='#42D848' stroke-width='17' stroke-linecap='square'/></svg><span class="wm"><span class="lw">CITED</span><span class="ls">Score</span></span></div>
+<div class="logo"><svg viewBox='0 0 97 100' width='22' height='23' style='flex:none'><path fill-rule='evenodd' d='M0 0 H61.8 A35 35 0 0 1 74.8 67.5 L96.6 100 H68.6 Z M30.5 23 H55.3 A12.5 12.5 0 0 1 55.3 48 H30.5 Z' fill='#db0632'/></svg><span class="wm"><span class="lw" style="margin-left:1px">ubric</span></span></div>
 <div class="card">
   <h1>Activate your copy</h1>
   <p class="sub">Enter the code from your download email. Free for life, up to 500 URLs.</p>
@@ -686,7 +686,7 @@ function activate(){
   $('go').disabled=true; msg('Activating...','');
   fetch('/activate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,code})})
     .then(r=>r.json()).then(d=>{
-      if(d.ok){msg('Activated. Loading CITED Score...','ok'); setTimeout(()=>location.href='/',700);}
+      if(d.ok){msg('Activated. Loading Rubric...','ok'); setTimeout(()=>location.href='/',700);}
       else{$('go').disabled=false; msg(d.error||'That code did not work.','err');}
     }).catch(()=>{$('go').disabled=false; msg('Could not reach the server.','err');});
 }
@@ -785,7 +785,7 @@ class Handler(BaseHTTPRequestHandler):
             import watch_store; return self._json(200, {"ok": watch_store.remove((body.get("url") or "").strip())})
         if self.path == "/telemetry-consent": return self._json(200, {"ok": set_telemetry_consent(body.get("consent"))})
         if self.path == "/self-update": return self._json(200, self_update())   # BETA/gated; banner still uses /open-update
-        if not (is_activated() or _pro_ok()): return self._json(403, {"error": "Activate CITED Score, or unlock with a Pro licence (rubric activate), to run audits."})
+        if not (is_activated() or _pro_ok()): return self._json(403, {"error": "Activate Rubric, or unlock with a Pro licence (rubric activate), to run audits."})
         if self.path == "/run": return self._run(body)
         if self.path == "/calibrate": record_usage("feature", f="calibrate"); return self._calibrate(body)
         if self.path == "/benchmark": record_usage("feature", f="benchmark"); return self._benchmark(body)
@@ -969,7 +969,7 @@ def start_server(port=PORT):
 def main():
     port = start_server(PORT)
     url = f"http://127.0.0.1:{port}/"
-    print(f"CITED Score is running at {url}")
+    print(f"Rubric is running at {url}")
     print("Leave this window open. Close it (Ctrl+C) to stop the app.")
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     try: threading.Event().wait()
