@@ -606,7 +606,10 @@ function sendCode(){
   $('send').disabled=true; msg('Sending...','');
   fetch('/request-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,book_code:book})})
     .then(r=>r.json()).then(d=>{$('send').disabled=false;
-      if(d.ok){msg('Sent. Check your inbox for the code.','ok');}
+      if(d.ok){
+        if(d.code){msg('Your code: '+d.code+'  (also emailed). Paste it above to activate.','ok');}
+        else{msg('Sent. Check your inbox for the code.','ok');}
+      }
       else{msg(d.error||'Could not send a code.','err');}
     }).catch(()=>{$('send').disabled=false; msg('Could not reach the server.','err');});
 }
@@ -638,11 +641,7 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/reports":
             files = [f for f in glob.glob(os.path.join(REPORTS, "*.html"))]
             files.sort(key=os.path.getmtime, reverse=True)
-            for _old in files[5:]:                               # keep only the 5 most recent: delete older report files (the -history.jsonl trend is kept)
-                for _ext in (".html", ".json", ".csv"):
-                    try: os.remove(_old[:-5] + _ext)
-                    except Exception: pass
-            files = files[:5]
+            files = files[:50]                                   # library: keep the full local history on disk; list the 50 most recent (no destructive prune)
             items = []
             for f in files:
                 it = {"name": os.path.basename(f)[:-5],
@@ -699,11 +698,24 @@ class Handler(BaseHTTPRequestHandler):
         book = (body.get("book_code") or "").strip()
         if not email:
             return self._json(400, {"error": "Enter your email first."})
-        payload = {"email": email, "source": "app", "send": True}
-        if book: payload["book_code"] = book
-        status, d = sb_post("request-code", payload)
-        if status == 200 and d.get("ok"):
-            return self._json(200, {"ok": True})
+        base = {"email": email, "source": "app"}
+        if book: base["book_code"] = book
+        # Attempt the email (best-effort). The Loops workflow may NOT re-fire for a contact that already
+        # entered it once, so a re-request can silently send nothing - which is the bug this fixes.
+        status, d = sb_post("request-code", {**base, "send": True})
+        # Durable fix: also read the code directly (send:false returns it WITHOUT triggering the one-shot
+        # email workflow) so the app can ALWAYS show it, regardless of whether the email went out.
+        code = None
+        try:
+            _s2, d2 = sb_post("request-code", {**base, "send": False})
+            if _s2 == 200 and isinstance(d2, dict):
+                code = d2.get("code") or d2.get("personalCode") or d2.get("personal_code")
+        except Exception:
+            pass
+        if status == 200 and (d.get("ok") or code):
+            out = {"ok": True}
+            if code: out["code"] = code   # shown in the UI so email delivery is never the only path
+            return self._json(200, out)
         err = (d.get("error") or "Could not send a code.")
         if "not configured" in err:
             err = "Code email isn't switched on yet - use the code from your download email."
