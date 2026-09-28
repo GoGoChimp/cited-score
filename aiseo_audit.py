@@ -5504,6 +5504,30 @@ def benchmark(urls, max_pages=25, workers=WORKERS, progress=None):
             out.append({"domain":u,"overall":None,"pillars":{},"engines":{},"pages":0,"error":str(e)[:180]})
     return out
 
+def _build_auth(a):
+    """Assemble the crawl auth from CLI flags. host is derived from --url so credentials are locked to it.
+    Returns None when no auth flag is present. Exits with a clear message on malformed input. The credential
+    values are never printed or logged; they live only in the request headers and the user's own --auth-file."""
+    parts = {}
+    if getattr(a, "auth_file", None):
+        try:
+            with open(a.auth_file, encoding="utf-8") as f: parts.update(json.load(f))
+        except Exception as e:
+            sys.exit(f"Could not read --auth-file: {str(e)[:120]}")
+    if getattr(a, "basic", None):
+        if ":" not in a.basic: sys.exit("--basic must be user:password (missing ':').")
+        parts["basic"] = a.basic
+    if getattr(a, "cookie", None): parts["cookie"] = a.cookie
+    hdrs = parts.get("headers") or {}
+    for item in (getattr(a, "auth_header", None) or []):
+        if ":" not in item: sys.exit(f"--auth-header must be 'Name: value' (got {item[:40]!r}).")
+        k, v = item.split(":", 1); hdrs[k.strip()] = v.strip()
+    if hdrs: parts["headers"] = hdrs
+    if not (parts.get("basic") or parts.get("cookie") or parts.get("headers")):
+        return None
+    parts["host"] = (urllib.parse.urlparse(a.url).hostname or "").lower()
+    return parts
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--url"); ap.add_argument("--out",default="report")
@@ -5517,6 +5541,10 @@ def main():
     ap.add_argument("--logo",help="white-label: path to an agency/client logo image to embed in the report header")
     ap.add_argument("--logs",help="server access log (Apache/Nginx combined) for real AI-bot log analysis")
     ap.add_argument("--no-links",action="store_true",help="skip the broken-link check (faster)")
+    ap.add_argument("--basic",help="HTTP Basic Auth user:password for a private/staging crawl (prefer --auth-file for secrets)")
+    ap.add_argument("--cookie",help="Cookie header value for an authenticated crawl (e.g. a session cookie copied from your logged-in browser)")
+    ap.add_argument("--auth-header",action="append",dest="auth_header",help="extra request header 'Name: value' for the crawl; repeatable")
+    ap.add_argument("--auth-file",dest="auth_file",help="path to a local JSON file with {basic, cookie, headers}, kept off the command line")
     ap.add_argument("--queries",help="grounding-query CSV (Bing AI Performance 'AI Search Queries' export) for citation-query coverage")
     ap.add_argument("--monitor",help="server access log for the standing LOG MONITOR (per-day time-series of AI-bot activity)")
     ap.add_argument("--history",help="JSONL history file for --monitor to accumulate across uploads (persists per-day)")
@@ -5538,7 +5566,7 @@ def main():
     print(f"Chrome: {CHROME or 'NONE (raw only)'}")
     def prog(phase,done,total,msg):
         print(f"  [{done}/{total}] {msg}" if phase=="crawl" else msg, flush=True)
-    data=run_audit(a.url,out=a.out,max_pages=a.max_pages,workers=a.workers,progress=prog,client=a.client,intro=a.intro,links=not a.no_links,queries=a.queries,logs=a.logs,agency=a.agency,logo=a.logo)
+    data=run_audit(a.url,out=a.out,max_pages=a.max_pages,workers=a.workers,progress=prog,client=a.client,intro=a.intro,links=not a.no_links,queries=a.queries,logs=a.logs,agency=a.agency,logo=a.logo,auth=_build_auth(a))
     print(f"\n=== Rubric: {data['domain']} === {data['overall']}/100 | {data['pages_crawled']} pages")
     print("Pillars: "+" | ".join(f"{k} {v}" for k,v in data['pillars'].items()))
     print("Engines: "+" | ".join(f"{e} {v}" for e,v in data['engines'].items()))
