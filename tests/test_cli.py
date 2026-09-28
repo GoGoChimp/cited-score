@@ -42,3 +42,44 @@ def test_unknown_command_does_not_echo_a_keylike_arg(capsys):
     cli.main(["cs_live_supersecretvalue0000"])
     out = capsys.readouterr().out
     assert "supersecretvalue0000" not in out
+
+import json as _json, os as _os
+
+def test_mcp_status_not_registered(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_claude_config_path", lambda: str(tmp_path / "cfg.json"))
+    assert cli.main(["mcp", "status"]) == 0
+    assert "not registered" in capsys.readouterr().out.lower()
+
+def test_mcp_install_then_status(tmp_path, monkeypatch, capsys):
+    cfg = tmp_path / "cfg.json"
+    monkeypatch.setattr(cli, "_claude_config_path", lambda: str(cfg))
+    assert cli.main(["mcp", "install"]) == 0
+    data = _json.loads(cfg.read_text(encoding="utf-8"))
+    assert "rubric" in data["mcpServers"] and data["mcpServers"]["rubric"]["command"]
+    capsys.readouterr()
+    assert cli.main(["mcp", "status"]) == 0
+    assert "registered" in capsys.readouterr().out.lower()
+
+def test_mcp_install_preserves_other_servers(tmp_path, monkeypatch):
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(_json.dumps({"mcpServers": {"other": {"command": "x"}}}), encoding="utf-8")
+    monkeypatch.setattr(cli, "_claude_config_path", lambda: str(cfg))
+    cli.main(["mcp", "install"])
+    data = _json.loads(cfg.read_text(encoding="utf-8"))
+    assert "other" in data["mcpServers"] and "rubric" in data["mcpServers"]  # merged, not clobbered
+    assert _os.path.exists(str(cfg) + ".rubric-backup")                       # backed up first
+
+def test_mcp_install_on_corrupt_config(tmp_path, monkeypatch):
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text("{not json", encoding="utf-8")
+    monkeypatch.setattr(cli, "_claude_config_path", lambda: str(cfg))
+    assert cli.main(["mcp", "install"]) == 0
+    data = _json.loads(cfg.read_text(encoding="utf-8"))
+    assert "rubric" in data["mcpServers"]  # recovered to a valid config
+
+def test_mcp_uninstall(tmp_path, monkeypatch):
+    cfg = tmp_path / "cfg.json"
+    monkeypatch.setattr(cli, "_claude_config_path", lambda: str(cfg))
+    cli.main(["mcp", "install"]); cli.main(["mcp", "uninstall"])
+    data = _json.loads(cfg.read_text(encoding="utf-8"))
+    assert "rubric" not in data.get("mcpServers", {})
