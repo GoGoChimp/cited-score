@@ -61,6 +61,28 @@ def test_activate_non_pro_refuses(tmp_path, monkeypatch):
     ok, _ = licence.activate("cs_live_abc123def456")
     assert ok is False and (tmp_path / "licence.json").exists() is False
 
+def test_refresh_transient_error_keeps_grace(tmp_path, monkeypatch):
+    # A server that is UP but erroring (5xx / 429) must be treated as offline, not as "you are not Pro".
+    # Otherwise a transient blip locks a paying user out on every `rubric audit`.
+    _write(tmp_path, monkeypatch, (NOW - datetime.timedelta(days=2)).isoformat(), is_pro=True)
+    for status in (500, 502, 503, 429):
+        monkeypatch.setattr(licence, "_post_entitlement", lambda base, key, s=status: (s, {"error": "server"}))
+        assert licence.refresh(now=NOW) == "offline"
+        assert licence.is_pro(now=NOW) is True
+
+def test_activate_save_failure_refuses(tmp_path, monkeypatch):
+    # If the licence file cannot be written, activate must NOT claim success.
+    monkeypatch.setattr(licence, "LICENCE_FILE", str(tmp_path / "licence.json"))
+    monkeypatch.setattr(licence, "_post_entitlement", lambda base, key: (200, {"is_pro": True, "plan": "pro"}))
+    monkeypatch.setattr(licence, "save", lambda *a, **k: False)
+    ok, msg = licence.activate("cs_live_abc123def456")
+    assert ok is False and "could not" in msg.lower()
+
+def test_key_prefix_handles_non_string():
+    # A hand-edited licence.json can carry a non-string key; key_prefix must not raise (status uses it).
+    assert licence.key_prefix(None) == "…"
+    assert isinstance(licence.key_prefix(123456789012345), str)
+
 def test_key_prefix_redacts():
     assert licence.key_prefix("cs_live_0123456789abcdef") == "cs_live_0123…"
     assert "9abcdef" not in licence.key_prefix("cs_live_0123456789abcdef")

@@ -28,6 +28,7 @@ def test_audit_gated_by_pro(monkeypatch):
     def fake_require():
         calls["require"] += 1
         raise SystemExit(2)
+    monkeypatch.setattr(licence, "refresh", lambda *a, **k: "no_key")  # hermetic: no real network
     monkeypatch.setattr(licence, "require_pro", fake_require)
     monkeypatch.setattr("aiseo_audit.main", lambda: calls.__setitem__("audit", calls["audit"] + 1))
     try:

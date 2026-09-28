@@ -1,6 +1,6 @@
 # Rubric desktop (Pro)
 
-Rubric desktop crawls sites the web app cannot reach — private, staging, pre-launch, localhost and intranet — locally, with no page cap and nothing leaving your machine. It is a Pro feature.
+Rubric desktop crawls sites the web app cannot reach (private, staging, pre-launch, localhost and intranet) locally, with no page cap and nothing leaving your machine. It is a Pro feature.
 
 ## Install (developer install)
 

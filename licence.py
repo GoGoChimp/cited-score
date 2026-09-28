@@ -13,7 +13,7 @@ def api_base():
     return (os.environ.get("RUBRIC_API_BASE") or DEFAULT_BASE).rstrip("/")
 
 def key_prefix(key):
-    k = (key or "").strip()
+    k = str(key or "").strip()   # tolerate a hand-edited non-string key without raising
     return (k[:12] + "…") if len(k) > 12 else "…"
 
 def _post_entitlement(base, key):
@@ -31,9 +31,11 @@ def _post_entitlement(base, key):
         return 0, {"error": "Could not reach the licence server."}
 
 def verify(key, base=None):
-    """(reachable, payload). reachable=False means the server could not be contacted (grace territory)."""
+    """(reachable, payload). reachable=False means we could NOT get a trustworthy answer: a connection
+    failure (status 0) OR an infrastructure error (5xx / 429). Those ride the offline grace window rather
+    than downgrade a paying user on a transient blip. A 4xx such as 401 (invalid/revoked key) IS trustworthy."""
     status, data = _post_entitlement(base or api_base(), key)
-    if status == 0:
+    if status == 0 or status >= 500 or status == 429:
         return False, data
     return True, data
 
@@ -92,7 +94,8 @@ def refresh(now=None):
         return "offline"
     ent = {"is_pro": bool(payload.get("is_pro")), "plan": payload.get("plan", "free"),
            "status": payload.get("status"), "current_period_end": payload.get("current_period_end")}
-    save(d["key"], ent)
+    if not save(d["key"], ent):
+        return "offline"   # got an answer but could not persist it; treat as no state change this run
     return "refreshed" if ent["is_pro"] else "downgraded"
 
 def activate(key):
@@ -105,8 +108,9 @@ def activate(key):
         return False, "Could not reach the licence server. Activation needs one online check; try again when connected."
     if not payload.get("is_pro"):
         return False, f"Key {key_prefix(key)} is valid but not on a Pro plan. Upgrade at {api_base()}/pricing."
-    save(key, {"is_pro": True, "plan": payload.get("plan", "pro"),
-               "status": payload.get("status"), "current_period_end": payload.get("current_period_end")})
+    if not save(key, {"is_pro": True, "plan": payload.get("plan", "pro"),
+                      "status": payload.get("status"), "current_period_end": payload.get("current_period_end")}):
+        return False, "Verified Pro, but could not write the licence file (check folder permissions). Try again."
     return True, f"Activated. Rubric Pro unlocked for key {key_prefix(key)}."
 
 def require_pro():

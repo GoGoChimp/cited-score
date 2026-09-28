@@ -17,7 +17,7 @@ def _cmd_status():
         print("Rubric desktop is not activated. Run: rubric activate <your cs_live_ key>")
         return 0
     state = "Pro (unlocked)" if licence.is_pro() else "not currently Pro (verify online or renew)"
-    print(f"Licence key {licence.key_prefix(d.get('key'))} — {state}.")
+    print(f"Licence key {licence.key_prefix(d.get('key'))}: {state}.")
     return 0
 
 def _cmd_audit(rest):
