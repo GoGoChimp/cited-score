@@ -404,6 +404,24 @@ def _auth_headers(auth, url):
         h[str(k)] = str(v)
     return h
 
+class _AuthSafeRedirect(urllib.request.HTTPRedirectHandler):
+    """Credentials must not follow a redirect to a host they were not gated to. Strips Authorization / Cookie /
+    the extra auth header names from the redirected request whenever the new URL is NOT the audited host or a
+    subdomain of it. Also honours the SSRF guard when it is on, so the authed opener is safe on both axes."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if _ssrf_on() and not ssrf_ok(newurl):
+            raise urllib.error.HTTPError(newurl, code, "blocked (redirect to non-public host)", headers, fp)
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None:
+            auth = _CRAWL_AUTH
+            if not (auth and _host_ok(auth.get("host"), newurl)):
+                strip = {"authorization", "cookie"} | {str(k).lower() for k in (auth or {}).get("headers", {})}
+                for k in [h for h in list(new.headers) if h.lower() in strip]:
+                    del new.headers[k]
+        return new
+
+_AUTH_OPENER = urllib.request.build_opener(_AuthSafeRedirect())
+
 def _decompress(raw, headers):
     ce = (headers.get("Content-Encoding") or "").lower()
     if "gzip" in ce:
@@ -421,11 +439,18 @@ def fetch_raw(url, ua=UA, timeout=25, capture=None, _retry=True, auth=None):
     if not ssrf_ok(url):
         return None, {}, "", int((time.time()-t0)*1000)
     try:
+        eff_auth = auth if auth is not None else _CRAWL_AUTH
         hdrs = {"User-Agent": ua}
-        if ua == UA: hdrs.update(_BROWSER_HEADERS)                      # full browser headers only for the crawl UA
-        hdrs.update(_auth_headers(auth if auth is not None else _CRAWL_AUTH, url))  # host-gated credentials (desktop)
+        if ua == UA:                                                   # browser headers + credentials only for the crawl UA
+            hdrs.update(_BROWSER_HEADERS)
+            hdrs.update(_auth_headers(eff_auth, url))                  # host-gated credentials (desktop)
         req = urllib.request.Request(url, headers=hdrs)
-        _open = _GUARD_OPENER.open if _ssrf_on() else urllib.request.urlopen
+        if eff_auth and ua == UA:
+            _open = _AUTH_OPENER.open                                  # strips credentials on any off-host redirect (C1)
+        elif _ssrf_on():
+            _open = _GUARD_OPENER.open
+        else:
+            _open = urllib.request.urlopen
         with _open(req, timeout=timeout) as r:
             data = _decompress(r.read(), r.headers); enc = r.headers.get_content_charset() or "utf-8"
             if capture is not None: capture["final_url"] = r.geturl()   # after redirects
@@ -437,7 +462,7 @@ def fetch_raw(url, ua=UA, timeout=25, capture=None, _retry=True, auth=None):
                 ra = (e.headers or {}).get("Retry-After")
                 if ra: wait = min(float(ra), 10.0)
             except Exception: pass
-            time.sleep(wait); return fetch_raw(url, ua, timeout, capture, _retry=False)
+            time.sleep(wait); return fetch_raw(url, ua, timeout, capture, _retry=False, auth=auth)
         return e.code, dict(e.headers or {}), "", int((time.time()-t0)*1000)
     except Exception:
         return None, {}, "", int((time.time()-t0)*1000)
@@ -5365,14 +5390,21 @@ def propose_queries(pages, domain, site_type=None, site_type_label=None):
     return {"queries": out[:5], "headings_seen": len(heads),
             "from_headings": sum(1 for q in out if q["source"] == "heading")}
 
-def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, client=None, intro=None, links=True, site_type=None, queries=None, logs=None, agency=None, logo=None, nav=None, max_seconds=0, benchmark_fn=None, debrand=False, auth=None):
+def run_audit(*args, **kwargs):
+    """Public crawl entry: scope the crawl credential to this call (reset is guaranteed even on an exception),
+    then delegate to _run_audit_impl. auth (desktop only) = {"host","basic","cookie","headers"}, host-gated."""
+    global _CRAWL_AUTH
+    _CRAWL_AUTH = kwargs.get("auth")
+    try:
+        return _run_audit_impl(*args, **kwargs)
+    finally:
+        _CRAWL_AUTH = None
+
+def _run_audit_impl(url, out="report", max_pages=0, workers=WORKERS, progress=None, client=None, intro=None, links=True, site_type=None, queries=None, logs=None, agency=None, logo=None, nav=None, max_seconds=0, benchmark_fn=None, debrand=False, auth=None):
     """Crawl + score a whole site and write out.html/.json/.csv. progress(phase, done,
     total, msg) is called through the run so a UI can show live status. Returns the data.
     max_seconds>0 caps wall-clock crawl time: at the deadline it stops gracefully and scores
-    the pages already crawled (data['partial']=True), instead of failing. 0 = no cap (default).
-    auth (desktop only) = {"host","basic","cookie","headers"} attached host-gated to the crawl fetch."""
-    global _CRAWL_AUTH
-    _CRAWL_AUTH = auth                                 # host-gated credentials for this crawl (None = normal)
+    the pages already crawled (data['partial']=True), instead of failing. 0 = no cap (default)."""
     if not url.startswith("http"): url="https://"+url
     _logo_uri=None
     if logo:                                          # white-label: embed the agency/client logo as a data URI
@@ -5487,7 +5519,6 @@ def run_audit(url, out="report", max_pages=0, workers=WORKERS, progress=None, cl
         for _p in pages: _p.pop("_text",None)                 # drop the transient page text (only needed for the ollama decision-facts call) before writing
         apply_diff(data,out); write_outputs(data,out)         # out=None -> crawl + score only, no files (used by benchmark)
     emit("done",total,total,f"{domain}: {data['overall']}/100, {data['pages_crawled']} pages")
-    _CRAWL_AUTH = None   # clear the crawl credential once the run completes
     return data
 
 def benchmark(urls, max_pages=25, workers=WORKERS, progress=None):
@@ -5519,8 +5550,8 @@ def _build_auth(a):
         parts["basic"] = a.basic
     if getattr(a, "cookie", None): parts["cookie"] = a.cookie
     hdrs = parts.get("headers") or {}
-    for item in (getattr(a, "auth_header", None) or []):
-        if ":" not in item: sys.exit(f"--auth-header must be 'Name: value' (got {item[:40]!r}).")
+    for i, item in enumerate(getattr(a, "auth_header", None) or []):
+        if ":" not in item: sys.exit(f"--auth-header #{i+1} must be 'Name: value' (missing ':'); the value is not shown.")
         k, v = item.split(":", 1); hdrs[k.strip()] = v.strip()
     if hdrs: parts["headers"] = hdrs
     if not (parts.get("basic") or parts.get("cookie") or parts.get("headers")):

@@ -43,7 +43,8 @@ def test_fetch_raw_attaches_auth_for_target(monkeypatch):
         def geturl(self): return "https://staging.example.com/"
         def __enter__(self): return self
         def __exit__(self, *a): return False
-    monkeypatch.setattr(A.urllib.request, "urlopen", lambda req, timeout=0: seen.setdefault("h", dict(req.headers)) or R())
+    # an authenticated crawl-UA fetch routes through _AUTH_OPENER (the redirect-stripping opener), not urlopen
+    monkeypatch.setattr(A._AUTH_OPENER, "open", lambda req, timeout=0: seen.setdefault("h", dict(req.headers)) or R())
     monkeypatch.setattr(A, "_ssrf_on", lambda: False)
     A.fetch_raw("https://staging.example.com/", auth=AUTH)
     keys = {k.lower() for k in seen["h"]}
@@ -72,6 +73,43 @@ def test_build_auth_file(tmp_path):
     p.write_text(json.dumps({"cookie": "sid=filecookie"}), encoding="utf-8")
     au = A._build_auth(_args(url="https://staging.example.com", auth_file=str(p)))
     assert au["cookie"] == "sid=filecookie" and au["host"] == "staging.example.com"
+
+def test_redirect_strips_auth_off_host():
+    import urllib.request
+    A._CRAWL_AUTH = {"host": "staging.example.com", "basic": "u:p", "cookie": "sid=x", "headers": {"X-Bypass": "1"}}
+    try:
+        req = urllib.request.Request("https://staging.example.com/",
+            headers={"Authorization": "Basic xxx", "Cookie": "sid=x", "X-Bypass": "1", "User-agent": "UA"})
+        new = A._AuthSafeRedirect().redirect_request(req, None, 302, "Found", {}, "https://evil.example.net/")
+        assert new is not None
+        keys = {k.lower() for k in new.headers}
+        assert "authorization" not in keys and "cookie" not in keys and "x-bypass" not in keys
+        assert "user-agent" in keys  # non-auth header survives the redirect
+    finally:
+        A._CRAWL_AUTH = None
+
+def test_redirect_keeps_auth_same_host():
+    import urllib.request
+    A._CRAWL_AUTH = {"host": "staging.example.com", "basic": "u:p"}
+    try:
+        req = urllib.request.Request("https://staging.example.com/a", headers={"Authorization": "Basic xxx", "User-agent": "UA"})
+        new = A._AuthSafeRedirect().redirect_request(req, None, 302, "Found", {}, "https://app.staging.example.com/b")
+        assert new is not None and any(k.lower() == "authorization" for k in new.headers)
+    finally:
+        A._CRAWL_AUTH = None
+
+def test_run_audit_resets_auth_global_on_exception(monkeypatch):
+    A._CRAWL_AUTH = None
+    def boom(*a, **k): raise RuntimeError("boom")
+    monkeypatch.setattr(A, "_run_audit_impl", boom)
+    with pytest.raises(RuntimeError):
+        A.run_audit("https://staging.example.com/", auth={"host": "staging.example.com", "basic": "u:p"})
+    assert A._CRAWL_AUTH is None  # reset even though the crawl raised
+
+def test_auth_header_error_does_not_echo_value():
+    with pytest.raises(SystemExit) as ei:
+        A._build_auth(_args(url="https://staging.example.com", auth_header=["Bearer sk-live-SUPERSECRETTOKEN123"]))
+    assert "SUPERSECRET" not in str(ei.value)
 
 def test_credentials_absent_from_report(tmp_path, monkeypatch):
     monkeypatch.setattr(A, "_ssrf_on", lambda: False)
