@@ -33,12 +33,16 @@ def _cmd_mcp(rest):
         cmd = shutil.which("rubric-mcp") or "rubric-mcp"
         cfg = _mcp_read(path)
         try:
+            existed = os.path.exists(path)
+            unparsed = existed and os.path.getsize(path) > 2 and not cfg   # a non-empty file that would not parse
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            if os.path.exists(path):
+            if existed:
                 try: shutil.copy(path, path + ".rubric-backup")   # never clobber a user file blind
                 except Exception: pass
             cfg.setdefault("mcpServers", {})[_MCP_KEY] = {"command": cmd, "args": []}
             with open(path, "w", encoding="utf-8") as f: json.dump(cfg, f, indent=2)
+            if unparsed:
+                print(f"Note: the existing Claude Desktop config could not be parsed; it was backed up to {path}.rubric-backup and replaced.")
             print(f"Registered the local Rubric MCP ({cmd}). Restart Claude Desktop to load it.")
             return 0
         except Exception as e:

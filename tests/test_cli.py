@@ -83,3 +83,14 @@ def test_mcp_uninstall(tmp_path, monkeypatch):
     cli.main(["mcp", "install"]); cli.main(["mcp", "uninstall"])
     data = _json.loads(cfg.read_text(encoding="utf-8"))
     assert "rubric" not in data.get("mcpServers", {})
+
+def test_mcp_install_warns_on_unparseable_config(tmp_path, monkeypatch, capsys):
+    # A hand-edited, non-empty but unparseable config gets replaced (backed up). The user must be TOLD,
+    # not silently have their other servers vanish from the live file.
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text("{not valid json at all, trailing comma,}", encoding="utf-8")
+    monkeypatch.setattr(cli, "_claude_config_path", lambda: str(cfg))
+    assert cli.main(["mcp", "install"]) == 0
+    out = capsys.readouterr().out.lower()
+    assert "could not be parsed" in out and "backed up" in out
+    assert "rubric" in _json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"]
