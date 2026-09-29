@@ -213,11 +213,16 @@ def main(argv=None):
         return _cmd_connect(rest)
     if cmd == "watch":
         return _cmd_watch(rest)
+    if cmd == "tray":
+        licence.refresh()          # downgrade a cancelled account before unlocking the tray
+        licence.require_pro()
+        import tray
+        return tray.run() or 0     # runs the system-tray app; blocks until Quit
     if cmd == "ui":
         licence.refresh()          # downgrade a cancelled account before unlocking the GUI (consistent with audit/mcp)
         licence.require_pro()
         import app
-        app.main()   # launches the local GUI server + opens the browser; blocks until closed
+        app.main()   # launches the full dashboard window (optional; the tray is the primary entry point)
         return 0
     safe_cmd = licence.key_prefix(cmd) if cmd.startswith("cs_live_") else cmd
     print(f"Unknown command: {safe_cmd}. Try: activate, status, audit, mcp, connect, watch, tray, ui.")
@@ -229,6 +234,13 @@ def mcp_main():
     licence.require_pro()
     import mcp_server
     mcp_server.mcp.run()
+
+def tray_main():
+    """The `rubric-tray` console script (the Startup shim + tray extra target): gate on Pro, run the tray."""
+    licence.refresh()
+    licence.require_pro()
+    import tray
+    raise SystemExit(tray.run() or 0)
 
 if __name__ == "__main__":
     raise SystemExit(main())

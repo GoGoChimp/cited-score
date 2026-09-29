@@ -9,9 +9,15 @@ description = "Rubric desktop: local AI-search citability auditor (CITED Score e
 requires-python = ">=3.10"
 dependencies = ["beautifulsoup4>=4.12", "lxml>=5.0", "mcp>=1.0"]
 
+[project.optional-dependencies]
+tray = ["pystray>=0.19", "Pillow>=10"]
+
 [project.scripts]
 rubric = "cli:main"
 rubric-mcp = "cli:mcp_main"
+rubric-tray = "cli:tray_main"
 
 [tool.setuptools]
-py-modules = ["aiseo_audit", "mcp_server", "licence", "cli"]
+py-modules = ["aiseo_audit", "mcp_server", "licence", "cli", "app", "connectors",
+              "watch_store", "audit_store", "startup", "tray", "tray_actions",
+              "cited_fonts", "cited_logo_data", "favicon_data"]
