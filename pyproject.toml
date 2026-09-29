@@ -17,6 +17,11 @@ rubric = "cli:main"
 rubric-mcp = "cli:mcp_main"
 rubric-tray = "cli:tray_main"
 
+# Windowless entry point (pythonw, no console) - used by start-with-Windows so the tray does
+# not pop a console window at every login.
+[project.gui-scripts]
+rubric-trayw = "cli:tray_main"
+
 [tool.setuptools]
 py-modules = ["aiseo_audit", "mcp_server", "licence", "cli", "app", "connectors",
               "watch_store", "audit_store", "startup", "tray", "tray_actions",

@@ -1043,6 +1043,7 @@ _CONNECT_BODY = r"""
 <h1 class="h1">Connect Rubric to your AI tool</h1>
 <div class="lede">One click wires the local Rubric MCP into your tool, so you can ask it to audit a site and reason on the result in context. Auditing a site and reading a report never need an AI, use Run audit and the reports directly.</div>
 <div id="grid" class="grid"></div>
+<div id="msg" class="muted" style="margin:16px 0"></div>
 <style>
 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
 @media(max-width:640px){.grid{grid-template-columns:1fr}}
@@ -1077,11 +1078,15 @@ async function load(){
     g.appendChild(d);
   }
 }
+function showMsg(text,warn){ const m=document.getElementById('msg'); m.textContent=text||''; m.className=warn?'err':'muted'; }
 async function connect(id,btn){
-  btn.disabled=true; btn.textContent='...';
-  const r=await fetch('/connect-tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tool:id})});
-  const d=await r.json();
+  btn.disabled=true; btn.textContent='...'; showMsg('');
+  let d={};
+  try{ const r=await fetch('/connect-tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tool:id})}); d=await r.json(); }
+  catch(e){ showMsg('Could not reach the local Rubric server.',true); btn.disabled=false; return; }
   if(d.snippet){ const g=document.getElementById('grid'); const s=document.createElement('div'); s.className='snip'; s.textContent=(d.message||'')+"\n\n"+d.snippet; g.appendChild(s); }
+  else if(d.error){ showMsg(d.error,true); }
+  else if(d.message){ showMsg(d.message, d.ok===false || !!d.replaced); }  // surface the backup/replaced warning, not just a silent green tile
   setTimeout(load,300);
 }
 load();
@@ -1100,14 +1105,15 @@ _AUDIT_BODY = r"""
 </div>
 <script>
 let job=null,timer=null;
+function setmsg(t,cls){ const m=document.getElementById('msg'); m.textContent=t||''; m.className=cls||'muted'; }
 async function run(){
   const url=document.getElementById('url').value.trim(); if(!url)return;
   const agency=document.getElementById('agency').value.trim();
-  document.getElementById('go').disabled=true; document.getElementById('msg').textContent='Starting...';
+  document.getElementById('go').disabled=true; setmsg('Starting...');
   document.getElementById('prog').style.display='block'; document.getElementById('done').style.display='none';
   const r=await fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,agency:agency})});
   const d=await r.json();
-  if(d.error){ document.getElementById('msg').innerHTML='<span class=err>'+d.error+'</span>'; document.getElementById('go').disabled=false; return; }
+  if(d.error){ setmsg(d.error,'err'); document.getElementById('go').disabled=false; return; }
   job=d.job; timer=setInterval(poll,900);
 }
 async function poll(){
@@ -1115,12 +1121,12 @@ async function poll(){
   const pct=j.total?Math.round(100*j.done/j.total):5;
   document.getElementById('pbar').style.width=Math.max(pct,5)+'%';
   document.getElementById('log').textContent=(j.lines||[]).join('\n');
-  document.getElementById('msg').textContent=j.phase||'';
+  setmsg(j.phase||'');
   if(j.finished){
     clearInterval(timer); document.getElementById('go').disabled=false;
-    if(j.error){ document.getElementById('msg').innerHTML='<span class=err>'+j.error+'</span>'; return; }
+    if(j.error){ setmsg(j.error,'err'); return; }
     if(j.report){ const o=document.getElementById('open'); o.href=j.report; document.getElementById('done').style.display='block';
-      const sc=(j.summary||{}).overall; document.getElementById('msg').innerHTML='<span class=ok>Done'+(sc!=null?', score '+sc:'')+'</span>'; window.open(j.report,'_blank'); }
+      const sc=(j.summary||{}).overall; setmsg('Done'+(sc!=null?', score '+sc:''),'ok'); window.open(j.report,'_blank'); }
   }
 }
 document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')run();});
@@ -1134,16 +1140,18 @@ _WATCHES_BODY = r"""
 <div class="card"><div id="list" class="muted">Loading...</div></div>
 <div class="card"><div style="font-weight:800;margin-bottom:8px">Recent alerts</div><div id="alerts" class="muted">None yet.</div></div>
 <script>
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 async function load(){
   const r=await fetch('/watches'); const d=await r.json();
   const l=document.getElementById('list');
-  if(!(d.watches||[]).length){ l.innerHTML='No watched sites yet.'; }
-  else{ l.innerHTML=d.watches.map(w=>'<div class="row" style="justify-content:space-between;padding:9px 0;border-top:1px solid var(--line)"><span>'+w.url+' <span class=muted>['+(w.cadence||'')+'] last '+(w.last_score!=null?w.last_score:'-')+'</span></span><a href="#" onclick="rm(\''+w.url.replace(/'/g,"")+'\');return false" class=muted>Remove</a></div>').join(''); }
+  if(!(d.watches||[]).length){ l.textContent='No watched sites yet.'; }
+  else{ l.innerHTML=d.watches.map(w=>'<div class="row" style="justify-content:space-between;padding:9px 0;border-top:1px solid var(--line)"><span>'+esc(w.url)+' <span class=muted>['+esc(w.cadence||'')+'] last '+esc(w.last_score!=null?w.last_score:'-')+'</span></span><a href="#" class="rmv muted" data-url="'+esc(w.url)+'">Remove</a></div>').join(''); }
   const a=document.getElementById('alerts');
-  a.innerHTML=(d.alerts||[]).length? d.alerts.map(x=>'<div style="padding:6px 0">'+x.url+': '+x.old+' &rarr; '+x.new+'</div>').join('') : 'None yet.';
+  a.innerHTML=(d.alerts||[]).length? d.alerts.map(x=>'<div style="padding:6px 0">'+esc(x.url)+': '+esc(x.old)+' &rarr; '+esc(x.new)+'</div>').join('') : 'None yet.';
 }
 async function add(){ const u=document.getElementById('wurl').value.trim(); if(!u)return; await fetch('/watch-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})}); document.getElementById('wurl').value=''; load(); }
 async function rm(u){ await fetch('/watch-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})}); load(); }
+document.getElementById('list').addEventListener('click',e=>{const a=e.target.closest('.rmv'); if(a){e.preventDefault(); rm(a.getAttribute('data-url'));}});
 load();
 </script>
 """

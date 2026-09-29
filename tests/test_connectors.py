@@ -35,10 +35,11 @@ def test_install_corrupt_config_recovers(tmp_path, monkeypatch):
     cfg.write_text("{not valid json", encoding="utf-8")
     _patch_path(monkeypatch, cfg)
     res = connectors.install("cursor")
-    assert res["ok"] is True
+    assert res["ok"] is True and res.get("replaced") is True
     data = json.loads(cfg.read_text(encoding="utf-8"))
     assert connectors.SERVER_KEY in data["mcpServers"]
-    assert "backup" in res["message"].lower()
+    assert "saved to" in res["message"].lower()
+    assert list(tmp_path.glob("mcp.json.rubric-backup-*")), "corrupt config should get a unique backup"
 
 
 def test_status_connected_after_install(tmp_path, monkeypatch):

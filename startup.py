@@ -17,8 +17,8 @@ def _shim_path():
 
 
 def _tray_command():
-    exe = shutil.which("rubric-tray") or "rubric-tray"
-    return exe
+    # Prefer the windowless gui-script (pythonw, no console popup at login); fall back to the console one.
+    return shutil.which("rubric-trayw") or shutil.which("rubric-tray") or "rubric-trayw"
 
 
 def is_enabled():

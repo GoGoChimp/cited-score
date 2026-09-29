@@ -13,7 +13,7 @@ Tool kinds:
   snippet - the tool needs a manual paste (Codex TOML, Cline VS Code settings); we return the exact
             block to add. These are the 'verify then ship' tools; snippet keeps us honest until then.
 """
-import os, json, shutil, subprocess
+import os, json, shutil, subprocess, time
 
 SERVER_KEY = "rubric"
 
@@ -80,17 +80,23 @@ def _install_json(path):
     d = os.path.dirname(path)
     if d:
         os.makedirs(d, exist_ok=True)
+    backup = None
     if existed:
+        # A corrupt config is REPLACED wholesale, so back it up to a UNIQUE name so a second click
+        # never overwrites an earlier good backup. A normal merge keeps the stable .rubric-backup.
+        backup = path + (".rubric-backup-" + time.strftime("%Y%m%d%H%M%S") if unparsed else ".rubric-backup")
         try:
-            shutil.copy(path, path + ".rubric-backup")             # never clobber a user file blind
+            shutil.copy(path, backup)                              # never clobber a user file blind
         except Exception:
-            pass
+            backup = None
     cfg.setdefault("mcpServers", {})[SERVER_KEY] = _block()
     with open(path, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
     if unparsed:
-        return {"ok": True, "message": f"The existing config could not be parsed; it was backed up to "
-                f"{os.path.basename(path)}.rubric-backup and replaced. Restart the app to load Rubric."}
+        where = os.path.basename(backup) if backup else "(the old content could not be backed up)"
+        return {"ok": True, "replaced": True,
+                "message": "The existing config could not be parsed and was replaced. Your previous "
+                           "config was saved to " + where + ". Restart the app to load Rubric."}
     return {"ok": True, "message": "Connected. Restart the app to load Rubric."}
 
 
