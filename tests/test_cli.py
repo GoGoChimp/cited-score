@@ -1,4 +1,25 @@
-import licence, cli
+import json as _json2
+import licence, cli, connectors
+
+
+def test_connect_list_prints_tools(capsys):
+    assert cli.main(["connect", "list"]) == 0
+    out = capsys.readouterr().out.lower()
+    assert "claude desktop" in out and "cursor" in out and "coming soon" in out
+
+
+def test_connect_tool_installs(tmp_path, monkeypatch):
+    cfg = tmp_path / "mcp.json"
+    monkeypatch.setattr(connectors, "config_path", lambda tid: str(cfg))
+    assert cli.main(["connect", "cursor"]) == 0
+    data = _json2.loads(cfg.read_text(encoding="utf-8"))
+    assert connectors.SERVER_KEY in data["mcpServers"]
+
+
+def test_connect_unknown_tool(capsys):
+    assert cli.main(["connect", "nope"]) == 1
+    assert "unknown tool" in capsys.readouterr().out.lower()
+
 
 def test_status_reports_locked(capsys, monkeypatch):
     monkeypatch.setattr(licence, "is_pro", lambda *a, **k: False)

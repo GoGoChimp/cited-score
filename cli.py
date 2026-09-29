@@ -63,6 +63,26 @@ def _cmd_mcp(rest):
     print("Usage: rubric mcp [install | status | uninstall]")
     return 1
 
+def _cmd_connect(rest):
+    """Connect the local Rubric MCP into an AI tool (the Connect grid, from the command line).
+    `rubric connect list` shows the tools + state; `rubric connect <tool>` wires one up."""
+    import connectors
+    sub = (rest[0] if rest else "list").lower()
+    if sub in ("list", "status"):
+        for t in connectors.list_tools():
+            print(f"{t['id']:<15} {t['name']:<16} {t['status']}")
+        print(f"{'chatgpt':<15} {'ChatGPT':<16} coming soon")
+        return 0
+    if sub in connectors.TOOLS:
+        res = connectors.install(sub)
+        print(res.get("message") or ("Connected." if res.get("ok") else "Could not connect."))
+        if res.get("snippet"):
+            print("\n" + res["snippet"])
+        return 0 if res.get("ok") else 1
+    valid = ", ".join(connectors.TOOLS.keys())
+    print(f"Unknown tool: {sub}. Try one of: {valid} (or: rubric connect list)")
+    return 1
+
 def _cmd_activate(key):
     ok, msg = licence.activate(key)
     print(msg)
@@ -175,7 +195,7 @@ def _cmd_watch(rest):
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
-        print("Usage: rubric [activate <key> | status | audit --url <url> ... | mcp install | watch add <url> | ui]")
+        print("Usage: rubric [activate <key> | status | audit --url <url> ... | mcp install | connect <tool> | watch add <url> | tray | ui]")
         return 0
     cmd, rest = argv[0], argv[1:]
     if cmd == "activate":
@@ -189,6 +209,8 @@ def main(argv=None):
         return _cmd_audit(rest)
     if cmd == "mcp":
         return _cmd_mcp(rest)
+    if cmd == "connect":
+        return _cmd_connect(rest)
     if cmd == "watch":
         return _cmd_watch(rest)
     if cmd == "ui":
@@ -198,7 +220,7 @@ def main(argv=None):
         app.main()   # launches the local GUI server + opens the browser; blocks until closed
         return 0
     safe_cmd = licence.key_prefix(cmd) if cmd.startswith("cs_live_") else cmd
-    print(f"Unknown command: {safe_cmd}. Try: activate, status, audit, mcp, watch.")
+    print(f"Unknown command: {safe_cmd}. Try: activate, status, audit, mcp, connect, watch, tray, ui.")
     return 1
 
 def mcp_main():
