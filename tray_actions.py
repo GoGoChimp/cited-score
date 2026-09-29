@@ -38,7 +38,8 @@ def open_window(path):
 
 
 def reports_dir():
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+    # Same persistent per-user reports dir as app.py REPORTS (survives a frozen onefile restart).
+    return os.path.join(os.environ.get("RUBRIC_HOME") or os.path.join(os.path.expanduser("~"), ".rubric"), "reports")
 
 
 def server_base():

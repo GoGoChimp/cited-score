@@ -4,8 +4,17 @@ We verify it once online against /api/entitlement, cache the entitlement locally
 never logged or printed beyond its prefix. Additive: nothing else in the engine imports this."""
 import os, json, datetime, urllib.request, urllib.error
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-LICENCE_FILE = os.path.join(_HERE, "licence.json")
+def _data_home():
+    # Persistent per-user data dir (matches audit_store / watch_store). Module-relative paths break in a
+    # frozen onefile build, where the module lives in an ephemeral temp dir; this dir survives restarts.
+    base = os.environ.get("RUBRIC_HOME") or os.path.join(os.path.expanduser("~"), ".rubric")
+    try:
+        os.makedirs(base, exist_ok=True)
+    except Exception:
+        pass
+    return base
+
+LICENCE_FILE = os.path.join(_data_home(), "licence.json")
 DEFAULT_BASE = "https://cited.gogochimp.com"   # one constant; flips to rubric.gogochimp.com in one edit
 GRACE_DAYS = 14
 

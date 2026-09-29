@@ -43,7 +43,7 @@ def app_dir():
     if getattr(sys, "frozen", False): return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 HERE = app_dir()
-REPORTS = os.path.join(HERE, "reports"); os.makedirs(REPORTS, exist_ok=True)
+REPORTS = os.path.join(os.environ.get("RUBRIC_HOME") or os.path.join(os.path.expanduser("~"), ".rubric"), "reports"); os.makedirs(REPORTS, exist_ok=True)   # persistent per-user dir (survives a frozen onefile restart)
 JOBS = {}
 PORT = 5000
 
