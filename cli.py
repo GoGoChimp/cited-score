@@ -83,6 +83,30 @@ def _cmd_connect(rest):
     print(f"Unknown tool: {sub}. Try one of: {valid} (or: rubric connect list)")
     return 1
 
+def _cmd_skills(rest):
+    """Install the bundled Rubric skill pack into an AI tool's skills directory (default ~/.claude/skills),
+    so a connected Claude gets the fix loop and the focused workflows, not just the MCP."""
+    import skills_install, skills_data
+    sub = (rest[0] if rest else "status").lower()
+    args = rest[1:]
+    def _opt(name, default):
+        return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else default
+    if sub == "install":
+        res = skills_install.install(_opt("--dir", None))
+        print(f"Installed {len(res['installed'])} Rubric skills to {res['dir']}:")
+        for n in res["installed"]:
+            print("  " + n)
+        print("Restart your AI tool to load them.")
+        return 0
+    if sub == "status":
+        d = skills_install.default_dir()
+        have = skills_install.installed()
+        print(f"Rubric skills in {d}: " + (", ".join(have) if have else "none installed"))
+        print(f"Bundled: {len(skills_data.SKILLS)} skills. Install with: rubric skills install")
+        return 0
+    print("Usage: rubric skills [install [--dir <path>] | status]")
+    return 1
+
 def _cmd_activate(key):
     ok, msg = licence.activate(key)
     print(msg)
@@ -195,7 +219,7 @@ def _cmd_watch(rest):
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
-        print("Usage: rubric [activate <key> | status | audit --url <url> ... | mcp install | connect <tool> | watch add <url> | tray | ui]")
+        print("Usage: rubric [activate <key> | status | audit --url <url> ... | mcp install | connect <tool> | skills install | watch add <url> | tray | ui]")
         return 0
     cmd, rest = argv[0], argv[1:]
     if cmd == "activate":
@@ -211,6 +235,8 @@ def main(argv=None):
         return _cmd_mcp(rest)
     if cmd == "connect":
         return _cmd_connect(rest)
+    if cmd == "skills":
+        return _cmd_skills(rest)
     if cmd == "watch":
         return _cmd_watch(rest)
     if cmd == "tray":
@@ -225,7 +251,7 @@ def main(argv=None):
         app.main()   # launches the full dashboard window (optional; the tray is the primary entry point)
         return 0
     safe_cmd = licence.key_prefix(cmd) if cmd.startswith("cs_live_") else cmd
-    print(f"Unknown command: {safe_cmd}. Try: activate, status, audit, mcp, connect, watch, tray, ui.")
+    print(f"Unknown command: {safe_cmd}. Try: activate, status, audit, mcp, connect, skills, watch, tray, ui.")
     return 1
 
 def mcp_main():

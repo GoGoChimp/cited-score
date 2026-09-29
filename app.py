@@ -744,6 +744,11 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/startup-status":
             import startup
             return self._json(200, {"on": startup.is_enabled()})
+        if u.path == "/skills-status":
+            import skills_install
+            return self._json(200, {"installed": skills_install.installed(),
+                                    "bundled": skills_install.bundled_count(),
+                                    "dir": skills_install.default_dir()})
         if u.path == "/open-reports":
             try: os.startfile(REPORTS)                              # Windows; opens the local report folder
             except Exception: pass
@@ -813,6 +818,14 @@ class Handler(BaseHTTPRequestHandler):
             on = bool(body.get("on"))
             ok = startup.enable() if on else startup.disable()
             return self._json(200, {"ok": ok, "on": startup.is_enabled()})
+        if self.path == "/skills-install":
+            import skills_install
+            try:
+                res = skills_install.install()
+                record_usage("feature", f="skills_install")
+                return self._json(200, res)
+            except Exception as e:
+                return self._json(200, {"ok": False, "error": str(e)[:160]})
         if self.path == "/schedule": record_usage("feature", f="schedule"); return self._json(200, schedule_crawl((body.get("url") or "").strip()))
         if self.path == "/watch-add":
             import watch_store; wu = (body.get("url") or "").strip()
@@ -1212,6 +1225,10 @@ def _wshell(title, body, active=""):
 _WCONNECT = r"""
 <h1 class="h1">Connect Rubric to your AI tool</h1>
 <div class="lede">One click wires Rubric's local engine into your tool. Then ask it to audit a site and reason on the result in context. Reports open under Reports, no AI needed.</div>
+<div class="card" style="display:flex;align-items:center;gap:14px">
+  <div style="flex:1"><div style="font-weight:800">Rubric skills</div><div class="muted" id="skmsg">Install the skill pack so Claude runs the fix loop and the focused workflows.</div></div>
+  <button class="btn" id="skbtn" onclick="installSkills()">Install skills</button>
+</div>
 <div class="seclabel">Apps</div>
 <div id="grid" class="grid"></div>
 <div id="msg" class="muted" style="margin-top:16px"></div>
@@ -1261,7 +1278,20 @@ async function connect(id,btn){
   else if(d.message){ showMsg(d.message, d.ok===false || !!d.replaced); }
   setTimeout(load,300);
 }
-load();
+async function skillsStatus(){
+  try{ const r=await fetch('/skills-status'); const d=await r.json(); const have=d.installed||[];
+    document.getElementById('skmsg').textContent = have.length ? ('Installed '+have.length+' of '+d.bundled+' skills in '+d.dir) : ('Install '+d.bundled+' skills into '+d.dir+' so Claude runs the fix loop and the focused workflows.');
+    if(have.length){ document.getElementById('skbtn').textContent='Reinstall'; }
+  }catch(e){}
+}
+async function installSkills(){
+  const b=document.getElementById('skbtn'); b.disabled=true; b.textContent='...';
+  try{ const r=await fetch('/skills-install',{method:'POST'}); const d=await r.json();
+    document.getElementById('skmsg').textContent = d.ok ? ('Installed '+(d.installed||[]).length+' skills to '+d.dir+'. Restart your AI tool to load them.') : 'Could not install the skills.';
+  }catch(e){ document.getElementById('skmsg').textContent='Could not reach the local Rubric server.'; }
+  b.disabled=false; b.textContent='Reinstall'; skillsStatus();
+}
+load(); skillsStatus();
 </script>
 """
 
