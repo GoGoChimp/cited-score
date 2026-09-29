@@ -10,7 +10,11 @@ pipx install git+https://github.com/GoGoChimp/rubric-desktop
 pipx install .
 ```
 
-This puts two commands on your PATH: `rubric` (crawl) and `rubric-mcp` (the local MCP for Claude).
+This puts these commands on your PATH: `rubric` (crawl and manage), `rubric-mcp` (the local MCP for Claude), and `rubric-tray` (the tray launcher). For the tray, also install its extra:
+
+```bash
+pipx inject rubric-desktop pystray Pillow
+```
 
 ## Unlock with your account
 
@@ -23,7 +27,31 @@ rubric status
 
 Activation checks your Pro status online once, then works offline for 14 days.
 
-## Use
+## The tray launcher (primary entry point)
+
+The tray launcher is the main way to use desktop Rubric. It lives in your system tray and, modelled on Ollama's app launcher, connects the local engine to whichever AI tool you work in. Start it (and set it to start with Windows from Settings):
+
+```bash
+rubric tray
+```
+
+Click the tray icon for a menu:
+
+- **Run audit…** paste a URL (private, staging and localhost included), it crawls in the background and opens the report in your browser. No AI needed.
+- **Open recent report** opens a finished report in your browser. No AI needed.
+- **Watches** schedule re-crawls of a site and get flagged on a score change.
+- **Connect to…** a one-click grid that wires the local Rubric MCP into your AI tool. Claude Desktop, Claude Code and Cursor connect automatically; Codex and Cline show the exact config to paste (being verified); ChatGPT is greyed as "coming soon" because its connectors need an internet-reachable server, not a local one.
+- **Licence & settings** your Pro status, start-with-Windows, and open the reports folder.
+
+Auditing a site and reading a report never require an AI to be connected. The Connect grid is only about using Rubric from inside your AI tool.
+
+The full-window dashboard is still available and optional:
+
+```bash
+rubric ui
+```
+
+## Use (command line)
 
 ```bash
 rubric audit --url https://staging.internal.example.com   # any flag aiseo_audit accepts

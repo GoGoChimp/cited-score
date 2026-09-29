@@ -1178,8 +1178,9 @@ def start_server(port=PORT):
 def main():
     port = start_server(PORT)
     url = f"http://127.0.0.1:{port}/"
-    print(f"Rubric is running at {url}")
-    print("Leave this window open. Close it (Ctrl+C) to stop the app.")
+    print(f"Rubric dashboard is running at {url}")
+    print("This full window is optional. The primary way to use Rubric is the tray: rubric tray")
+    print("Leave this window open. Close it (Ctrl+C) to stop the dashboard.")
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     try: threading.Event().wait()
     except KeyboardInterrupt: print("\nStopped.")
