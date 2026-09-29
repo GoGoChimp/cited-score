@@ -76,9 +76,13 @@ def run():
         print("  pipx inject rubric-desktop pystray Pillow")
         print("Meanwhile you can use the CLI (rubric audit ..., rubric connect, rubric watch) or the dashboard: rubric ui")
         return 1
-    # Warm the local server so the first menu click opens instantly.
+    # Warm the local server so the first menu click opens instantly. If Pro is not unlocked yet, open
+    # the in-app activation window so a non-technical user can paste their key (no terminal needed).
     try:
         tray_actions.server_base()
+        import licence
+        if not licence.is_pro():
+            tray_actions.open_window("/activate-pro")
     except Exception:
         pass
     # The recent-report submenu is a snapshot at launch; new crawls appear next launch. Kept simple

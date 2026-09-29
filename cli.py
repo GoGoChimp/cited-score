@@ -107,6 +107,26 @@ def _cmd_skills(rest):
     print("Usage: rubric skills [install [--dir <path>] | status]")
     return 1
 
+def _cmd_shortcut(rest):
+    """Create (or remove) a clickable Rubric launcher on the desktop and Start menu."""
+    import shortcut
+    sub = (rest[0] if rest else "install").lower()
+    if sub == "install":
+        res = shortcut.create()
+        if res.get("ok"):
+            print("Created the Rubric launcher (double-click to start it):")
+            for p in res["created"]:
+                print("  " + p)
+            return 0
+        print("Could not create the shortcut: " + res.get("error", ""))
+        return 1
+    if sub == "remove":
+        res = shortcut.remove()
+        print("Removed the Rubric launcher." if res["removed"] else "No Rubric launcher found.")
+        return 0
+    print("Usage: rubric shortcut [install | remove]")
+    return 1
+
 def _cmd_activate(key):
     ok, msg = licence.activate(key)
     print(msg)
@@ -237,11 +257,12 @@ def main(argv=None):
         return _cmd_connect(rest)
     if cmd == "skills":
         return _cmd_skills(rest)
+    if cmd == "shortcut":
+        return _cmd_shortcut(rest)
     if cmd == "watch":
         return _cmd_watch(rest)
     if cmd == "tray":
-        licence.refresh()          # downgrade a cancelled account before unlocking the tray
-        licence.require_pro()
+        licence.refresh()          # best-effort re-verify; the tray opens either way and prompts for a key in-app
         import tray
         return tray.run() or 0     # runs the system-tray app; blocks until Quit
     if cmd == "ui":
@@ -262,9 +283,9 @@ def mcp_main():
     mcp_server.mcp.run()
 
 def tray_main():
-    """The `rubric-tray` console script (the Startup shim + tray extra target): gate on Pro, run the tray."""
+    """The `rubric-tray` console script (the Startup shim + tray extra target). The tray opens even
+    without Pro and prompts for the key in-app (no terminal), so a non-technical user can unlock it."""
     licence.refresh()
-    licence.require_pro()
     import tray
     raise SystemExit(tray.run() or 0)
 

@@ -725,6 +725,7 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/mcp-config": return self._json(200, {"snippet": mcp_config_snippet()})
         if u.path == "/connect": return self._send(200, _wshell("Rubric", _WCONNECT, "connect"))
         if u.path == "/reports-view": return self._send(200, _wshell("Reports - Rubric", _WREPORTS, "reports"))
+        if u.path == "/activate-pro": return self._send(200, _wshell("Unlock Rubric", _ACTIVATE_WIN, ""))
         if u.path == "/connect-status":
             import connectors
             tools = connectors.list_tools()
@@ -818,6 +819,10 @@ class Handler(BaseHTTPRequestHandler):
             on = bool(body.get("on"))
             ok = startup.enable() if on else startup.disable()
             return self._json(200, {"ok": ok, "on": startup.is_enabled()})
+        if self.path == "/activate-key":
+            import licence
+            ok, msg = licence.activate((body.get("key") or "").strip())   # verifies online, never logs the key
+            return self._json(200, {"ok": bool(ok), "message": msg})
         if self.path == "/skills-install":
             import skills_install
             try:
@@ -1180,7 +1185,7 @@ _SETTINGS_BODY = r"""
 <div class="card"><div style="font-weight:800;margin-bottom:6px">Reports</div><div class="muted">Your crawl reports live on this machine.</div>
   <div style="margin-top:10px"><button class="btn ghost" onclick="fetch('/open-reports')">Open reports folder</button></div></div>
 <script>
-async function lic(){ const r=await fetch('/licence-status'); const d=await r.json(); document.getElementById('lic').innerHTML = d.is_pro? ('<span class=ok>Pro unlocked</span> - key '+(d.key_prefix||'')) : 'Not Pro. Run: rubric activate &lt;your cs_live_ key&gt;'; }
+async function lic(){ const r=await fetch('/licence-status'); const d=await r.json(); document.getElementById('lic').innerHTML = d.is_pro? ('<span class=ok>Pro unlocked</span> - key '+(d.key_prefix||'')) : '<a href="/activate-pro">Unlock Rubric Pro</a> to enable crawling and connections.'; }
 async function st(){ const r=await fetch('/startup-status'); const d=await r.json(); document.getElementById('startup').checked=!!d.on; document.getElementById('stlab').textContent=d.on?'On':'Off'; }
 async function toggle(){ const on=document.getElementById('startup').checked; await fetch('/startup-toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:on})}); st(); }
 lic(); st();
@@ -1317,6 +1322,31 @@ async function load(){
 }
 function open2(n){ location.href='/report/'+n; }
 load();
+</script>
+"""
+
+_ACTIVATE_WIN = r"""
+<h1 class="h1">Unlock Rubric Pro</h1>
+<div class="lede">Paste your Rubric Pro key to unlock this machine. You will find it in your account at cited.gogochimp.com. It unlocks private and staging crawling, the local MCP, and the skill pack, all running locally.</div>
+<div class="card">
+  <div class="field"><label>Pro key</label><input id="key" placeholder="cs_live_..." autofocus autocomplete="off"></div>
+  <div class="row" style="margin-top:14px"><button class="btn" id="go" onclick="activate()">Unlock</button><span class="muted" id="msg"></span></div>
+</div>
+<div class="muted" style="margin-top:8px">No key yet? Get one at <a href="https://cited.gogochimp.com/pricing" target="_blank">cited.gogochimp.com/pricing</a>.</div>
+<script>
+async function activate(){
+  const key=document.getElementById('key').value.trim(); if(!key) return;
+  const b=document.getElementById('go'), m=document.getElementById('msg');
+  b.disabled=true; m.className='muted'; m.textContent='Checking...';
+  try{
+    const r=await fetch('/activate-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key})});
+    const d=await r.json();
+    m.textContent=d.message||''; m.className=d.ok?'ok':'err';
+    if(d.ok){ setTimeout(()=>location.href='/connect', 900); }
+  }catch(e){ m.className='err'; m.textContent='Could not reach the local Rubric server.'; }
+  b.disabled=false;
+}
+document.getElementById('key').addEventListener('keydown',e=>{if(e.key==='Enter')activate();});
 </script>
 """
 
