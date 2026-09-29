@@ -57,16 +57,13 @@ def build_menu(ps, spec):
 
 
 def _icon_image(Image, ImageDraw):
-    """A small Rubric-red tile with a white R. Deliberately simple and dependency-light."""
-    img = Image.new("RGBA", (64, 64), (219, 6, 50, 255))
+    """The Rubric brand mark (the red R, embedded as a PNG). Falls back to a plain red tile only if
+    the embedded image cannot be decoded."""
     try:
-        d = ImageDraw.Draw(img)
-        d.rectangle([16, 14, 26, 50], fill=(255, 255, 255, 255))      # R stem
-        d.ellipse([20, 14, 46, 34], outline=(255, 255, 255, 255), width=6)  # R bowl
-        d.line([30, 32, 46, 50], fill=(255, 255, 255, 255), width=6)  # R leg
+        import base64, io, rubric_icon
+        return Image.open(io.BytesIO(base64.b64decode(rubric_icon.RUBRIC_ICON_PNG_B64))).convert("RGBA")
     except Exception:
-        pass
-    return img
+        return Image.new("RGBA", (64, 64), (219, 6, 50, 255))
 
 
 def run():

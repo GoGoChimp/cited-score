@@ -25,5 +25,5 @@ rubric-trayw = "cli:tray_main"
 [tool.setuptools]
 py-modules = ["aiseo_audit", "mcp_server", "licence", "cli", "app", "connectors",
               "watch_store", "audit_store", "startup", "tray", "tray_actions",
-              "skills_data", "skills_install",
+              "skills_data", "skills_install", "rubric_icon",
               "cited_fonts", "cited_logo_data", "favicon_data"]
