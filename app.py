@@ -723,6 +723,12 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/update-check": return self._json(200, {**check_update(), "current": APP_VERSION})
         if u.path == "/mcp-status": return self._json(200, mcp_status())
         if u.path == "/mcp-config": return self._json(200, {"snippet": mcp_config_snippet()})
+        if u.path == "/connect": return self._send(200, _shell("Connect - Rubric", _CONNECT_BODY, "connect"))
+        if u.path == "/connect-status":
+            import connectors
+            tools = connectors.list_tools()
+            tools.append({"id": "chatgpt", "name": "ChatGPT", "kind": "remote", "status": "coming_soon"})
+            return self._json(200, tools)
         if u.path == "/telemetry-status": return self._json(200, {"consent": telemetry_consent()})
         if u.path == "/open-update":
             try: webbrowser.open(f"https://github.com/{GITHUB_REPO}/releases/latest/download/CITED-Score.exe")
@@ -776,6 +782,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/request-code": return self._request_code(body)
         if self.path == "/connect-mcp": record_usage("feature", f="mcp_connect"); return self._json(200, connect_mcp())
         if self.path == "/disconnect-mcp": return self._json(200, disconnect_mcp())
+        if self.path == "/connect-tool":
+            import connectors
+            tool = (body.get("tool") or "").strip()
+            if tool not in connectors.TOOLS:                       # rejects chatgpt (grey) + unknown ids
+                return self._json(400, {"ok": False, "error": "That tool cannot be connected here."})
+            record_usage("feature", f="connect_" + tool)
+            return self._json(200, connectors.install(tool))
         if self.path == "/schedule": record_usage("feature", f="schedule"); return self._json(200, schedule_crawl((body.get("url") or "").strip()))
         if self.path == "/watch-add":
             import watch_store; wu = (body.get("url") or "").strip()
@@ -960,6 +973,97 @@ class Handler(BaseHTTPRequestHandler):
             JOBS[job]["finished"] = True
         threading.Thread(target=worker, daemon=True).start()
         return self._json(200, {"job": job})
+
+# ============================================================================
+# Launcher pages (tray-opened focused surfaces). Small, shared shell reusing the
+# Rubric web palette + logo. These are what the tray menu items open in the browser,
+# so auditing and reading a report never need an AI, and the Connect grid (Ollama
+# style) wires the local MCP into each AI tool. See the tray-launcher design spec.
+# ============================================================================
+_LOGO = ("<div class='logo'><svg viewBox='0 0 97 100' width='17' height='18' style='flex:none'>"
+         "<path fill-rule='evenodd' d='M0 0 H61.8 A35 35 0 0 1 74.8 67.5 L96.6 100 H68.6 Z "
+         "M30.5 23 H55.3 A12.5 12.5 0 0 1 55.3 48 H30.5 Z' fill='#db0632'/></svg>"
+         "<span class='wm'><span class='lw'>ubric</span></span></div>")
+
+_HEAD = r"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>__T__</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>:root{--bg:#14140f;--panel:#191914;--panel2:#1e1e18;--line:#2a2a24;--muted:#a8a495;--txt:#f2f0e4;--grn:#db0632;--grn2:#ef1a48;--ok:#3DD68C;--red:#db0632;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;--display:'Archivo',sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 'Archivo',-apple-system,Segoe UI,Arial,sans-serif}
+.wrap{max-width:820px;margin:0 auto;padding:26px 26px 60px}
+a{color:var(--grn);text-decoration:none}
+.logo{display:inline-flex;align-items:baseline;gap:0;margin-bottom:6px}
+.logo .wm{display:inline-flex;align-items:baseline;gap:8px}.logo .lw{font-family:'Archivo',sans-serif;font-weight:800;font-size:25px;letter-spacing:-.056em;color:var(--txt);line-height:1;margin-left:-1px}
+.h1{font-family:var(--display);font-weight:800;font-size:30px;line-height:1.02;letter-spacing:-.02em;margin:10px 0 6px}
+.lede{color:var(--muted);margin:0 0 22px;max-width:600px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;margin-bottom:18px}
+.inp{display:flex;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:0 14px}.inp .pfx{color:var(--muted)}.inp input{flex:1;background:none;border:0;color:var(--txt);font-size:16px;padding:14px 6px;outline:none}
+.btn{background:var(--grn);color:#0a0a0a;border:0;border-radius:10px;padding:12px 18px;font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.4px;font-size:14px;cursor:pointer}.btn:hover:not(:disabled){background:var(--grn2)}.btn:disabled{opacity:.5;cursor:default}
+.ghost{background:none;border:1px solid var(--line);color:var(--txt)}
+.muted{color:var(--muted);font-size:13px}.err{color:var(--red)}.ok{color:var(--ok)}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.nav{display:flex;gap:18px;margin-bottom:22px;font-size:14px}.nav a{color:var(--muted)}.nav a.on{color:var(--txt);font-weight:700}
+.field{margin-top:12px}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+.field input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:11px 12px;font-size:14px;outline:none}
+.bar{height:9px;background:#2a2320;border-radius:6px;overflow:hidden;margin:14px 0}.bar i{display:block;height:100%;background:var(--grn);width:0;transition:width .3s}
+.log{font:12px/1.5 var(--mono);color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;max-height:160px;overflow:auto;white-space:pre-wrap}
+</style></head><body><div class="wrap">__LOGO__
+<div class="nav"><a href="/audit" __A_audit__>Run audit</a><a href="/connect" __A_connect__>Connect</a><a href="/watches-page" __A_watches__>Watches</a><a href="/settings" __A_settings__>Settings</a></div>
+"""
+
+def _shell(title, body, active=""):
+    head = _HEAD.replace("__T__", title).replace("__LOGO__", _LOGO)
+    for k in ("audit", "connect", "watches", "settings"):
+        head = head.replace("__A_" + k + "__", "class='on'" if k == active else "")
+    return head + body + "</div></body></html>"
+
+_CONNECT_BODY = r"""
+<h1 class="h1">Connect Rubric to your AI tool</h1>
+<div class="lede">One click wires the local Rubric MCP into your tool, so you can ask it to audit a site and reason on the result in context. Auditing a site and reading a report never need an AI, use Run audit and the reports directly.</div>
+<div id="grid" class="grid"></div>
+<style>
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+@media(max-width:640px){.grid{grid-template-columns:1fr}}
+.gt{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.gt .ic{width:40px;height:40px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:800;font-size:15px;color:var(--txt);flex:none}
+.gt .nm{font-weight:800}.gt .st{font-size:12px;color:var(--muted);margin-top:2px}
+.gt .sp{flex:1}
+.gt button{background:var(--grn);color:#0a0a0a;border:0;border-radius:9px;padding:9px 15px;font-family:var(--display);font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer}
+.gt button:hover:not(:disabled){background:var(--grn2)}
+.gt.soon{opacity:.5}.gt.soon button{background:none;border:1px solid var(--line);color:var(--muted);cursor:default}
+.gt.connected button{background:none;border:1px solid var(--line);color:var(--ok);cursor:default}
+.gt.connected .ic{color:var(--ok)}
+.snip{grid-column:1/-1;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;font:12px/1.5 var(--mono);color:var(--muted);white-space:pre-wrap}
+</style>
+<script>
+const ICON={'claude-desktop':'CD','claude-code':'CC','cursor':'Cu','codex':'Cx','cline':'Cn','chatgpt':'GP'};
+function statusText(t){
+  if(t.status==='coming_soon')return 'Needs an internet-reachable server';
+  if(t.status==='connected')return 'Rubric is connected';
+  if(t.status==='manual')return 'Manual paste (verify)';
+  if(t.status==='unknown')return 'Click to connect';
+  return 'Not connected';
+}
+async function load(){
+  const r=await fetch('/connect-status'); const tools=await r.json();
+  const g=document.getElementById('grid'); g.innerHTML='';
+  for(const t of tools){
+    const soon=t.status==='coming_soon', conn=t.status==='connected', manual=t.status==='manual';
+    const d=document.createElement('div'); d.className='gt'+(soon?' soon':'')+(conn?' connected':'');
+    const label=soon?'Coming soon':(conn?'Connected':(manual?'Show config':'Connect'));
+    d.innerHTML='<div class="ic">'+(ICON[t.id]||'?')+'</div><div><div class="nm">'+t.name+'</div><div class="st">'+statusText(t)+'</div></div><div class="sp"></div><button '+((soon||conn)?'disabled':'')+' onclick="connect(\''+t.id+'\',this)">'+label+'</button>';
+    g.appendChild(d);
+  }
+}
+async function connect(id,btn){
+  btn.disabled=true; btn.textContent='...';
+  const r=await fetch('/connect-tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tool:id})});
+  const d=await r.json();
+  if(d.snippet){ const g=document.getElementById('grid'); const s=document.createElement('div'); s.className='snip'; s.textContent=(d.message||'')+"\n\n"+d.snippet; g.appendChild(s); }
+  setTimeout(load,300);
+}
+load();
+</script>
+"""
 
 def start_server(port=PORT):
     """Start the HTTP server on a daemon thread; return the actual bound port (0 = OS picks)."""
