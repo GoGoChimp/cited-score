@@ -2,10 +2,39 @@
 testable without a display. tray.py (the glue) translates menu_spec() into a real pystray menu
 and calls open_url/open_report. The local HTTP server (app.start_server) is started lazily, once,
 on an OS-picked loopback port with no auto-open; the tray then opens focused pages in the browser."""
-import os, glob, time, threading, webbrowser
+import os, glob, time, threading, webbrowser, subprocess, shutil
 
 _BASE = None
 _LOCK = threading.Lock()
+
+
+def _app_browser():
+    """Path to Edge or Chrome, for opening a page as a chromeless app WINDOW (--app), not a tab."""
+    pf = os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"
+    pf2 = os.environ.get("ProgramFiles") or r"C:\Program Files"
+    la = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    for c in [os.path.join(pf, "Microsoft", "Edge", "Application", "msedge.exe"),
+              os.path.join(pf2, "Microsoft", "Edge", "Application", "msedge.exe"),
+              shutil.which("msedge"),
+              os.path.join(pf, "Google", "Chrome", "Application", "chrome.exe"),
+              os.path.join(pf2, "Google", "Chrome", "Application", "chrome.exe"),
+              os.path.join(la, "Google", "Chrome", "Application", "chrome.exe"),
+              shutil.which("chrome")]:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+
+def open_window(path):
+    """Open a Rubric page as a chromeless app WINDOW (Edge/Chrome --app), not a browser tab.
+    Falls back to the default browser only if neither is installed."""
+    url = server_base() + path
+    exe = _app_browser()
+    if exe:
+        subprocess.Popen([exe, "--app=" + url, "--window-size=1120,780"],
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return
+    webbrowser.open(url)
 
 
 def reports_dir():
@@ -30,7 +59,7 @@ def open_url(path):
 
 
 def open_report(name):
-    open_url("/report/" + name)
+    open_window("/report/" + name)
 
 
 def recent_reports(n=8):
@@ -52,20 +81,14 @@ def recent_report():
 
 
 def menu_spec():
-    """The tray menu as plain data (translated to pystray in tray.py). Items carry one of:
-    url (open a focused browser page), report (open a stored report), submenu, separator, quit."""
-    reports = recent_reports(8)
-    if reports:
-        recent_items = [{"label": r["name"] + "   " + r["when"], "report": r["name"]} for r in reports]
-    else:
-        recent_items = [{"label": "No reports yet", "enabled": False}]
+    """The tray menu as plain data (translated to pystray in tray.py). Kept to four items on Chris's
+    direction, matching Ollama: Open (the connections/apps window), Open recent reports, Licence
+    settings, Quit. 'Open' is the default action, so a LEFT-click opens the window. Items open a
+    native app window (window key), not a browser tab. Auditing happens inside the connected AI tool."""
     return [
-        {"label": "Run audit…", "url": "/audit"},
-        {"label": "Open recent report", "submenu": recent_items},
-        {"label": "Watches", "url": "/watches-page"},
-        {"label": "Connect to…", "url": "/connect"},
-        {"separator": True},
-        {"label": "Licence & settings", "url": "/settings"},
+        {"label": "Open", "window": "/connect", "default": True},
+        {"label": "Open recent reports", "window": "/reports-view"},
+        {"label": "Licence settings", "window": "/settings"},
         {"separator": True},
         {"label": "Quit", "quit": True},
     ]

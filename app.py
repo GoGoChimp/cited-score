@@ -723,7 +723,8 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/update-check": return self._json(200, {**check_update(), "current": APP_VERSION})
         if u.path == "/mcp-status": return self._json(200, mcp_status())
         if u.path == "/mcp-config": return self._json(200, {"snippet": mcp_config_snippet()})
-        if u.path == "/connect": return self._send(200, _shell("Connect - Rubric", _CONNECT_BODY, "connect"))
+        if u.path == "/connect": return self._send(200, _wshell("Rubric", _WCONNECT, "connect"))
+        if u.path == "/reports-view": return self._send(200, _wshell("Reports - Rubric", _WREPORTS, "reports"))
         if u.path == "/connect-status":
             import connectors
             tools = connectors.list_tools()
@@ -731,7 +732,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, tools)
         if u.path == "/audit": return self._send(200, _shell("Run audit - Rubric", _AUDIT_BODY, "audit"))
         if u.path == "/watches-page": return self._send(200, _shell("Watches - Rubric", _WATCHES_BODY, "watches"))
-        if u.path == "/settings": return self._send(200, _shell("Settings - Rubric", _SETTINGS_BODY, "settings"))
+        if u.path == "/settings": return self._send(200, _wshell("Settings - Rubric", _SETTINGS_BODY, "settings"))
         if u.path == "/licence-status":
             import licence
             try:
@@ -1170,6 +1171,122 @@ async function lic(){ const r=await fetch('/licence-status'); const d=await r.js
 async function st(){ const r=await fetch('/startup-status'); const d=await r.json(); document.getElementById('startup').checked=!!d.on; document.getElementById('stlab').textContent=d.on?'On':'Off'; }
 async function toggle(){ const on=document.getElementById('startup').checked; await fetch('/startup-toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:on})}); st(); }
 lic(); st();
+</script>
+"""
+
+# ============================================================================
+# Ollama-style launcher WINDOWS (light). The tray opens these as chromeless app windows
+# (Edge/Chrome --app), not browser tabs. Connect is the home (left-click / "Open"); Reports and
+# Settings are reachable from the top nav. Clean light design modelled on Ollama's app launcher.
+# ============================================================================
+_WHEAD = r"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>__T__</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&display=swap" rel="stylesheet">
+<style>:root{--bg:#f6f5f1;--panel:#fff;--panel2:#faf9f6;--line:#e7e5dd;--muted:#8b8878;--txt:#1b1b17;--red:#db0632;--red2:#ef1a48;--ok:#1a9d5a;--display:'Archivo',sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.55 'Archivo',-apple-system,Segoe UI,Arial,sans-serif}
+.top{display:flex;align-items:center;gap:12px;padding:15px 24px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.logo{display:inline-flex;align-items:baseline;gap:0}.logo .wm{display:inline-flex;align-items:baseline}.logo .lw{font-family:'Archivo',sans-serif;font-weight:800;font-size:22px;letter-spacing:-.056em;color:var(--txt);line-height:1;margin-left:-1px}
+.nav{display:flex;gap:4px;margin-left:auto}
+.nav a{color:var(--muted);padding:7px 13px;border-radius:9px;font-size:14px;font-weight:600;text-decoration:none}
+.nav a.on{background:#efeee8;color:var(--txt)}.nav a:hover{background:#f2f1eb}
+.wrap{max-width:880px;margin:0 auto;padding:30px 24px 60px}
+.h1{font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:-.02em;margin:0 0 6px}
+.lede{color:var(--muted);margin:0 0 12px;max-width:580px}
+.seclabel{font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.14em;font-size:11px;color:var(--muted);margin:24px 0 14px}
+.muted{color:var(--muted);font-size:13px}.err{color:var(--red)}.ok{color:var(--ok)}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
+.btn{background:var(--red);color:#fff;border:0;border-radius:9px;padding:10px 16px;font-family:var(--display);font-weight:800;font-size:13px;cursor:pointer}.btn:hover{background:var(--red2)}
+.ghost{background:#fff;border:1px solid var(--line);color:var(--txt)}
+.field{margin-top:12px}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+.field input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:11px 12px;font-size:14px}
+</style></head><body>
+<div class="top">__LOGO__<div class="nav"><a href="/connect" __A_connect__>Connect</a><a href="/reports-view" __A_reports__>Reports</a><a href="/settings" __A_settings__>Settings</a></div></div>
+<div class="wrap">"""
+
+def _wshell(title, body, active=""):
+    head = _WHEAD.replace("__T__", title).replace("__LOGO__", _LOGO)
+    for k in ("connect", "reports", "settings"):
+        head = head.replace("__A_" + k + "__", "class='on'" if k == active else "")
+    return head + body + "</div></body></html>"
+
+_WCONNECT = r"""
+<h1 class="h1">Connect Rubric to your AI tool</h1>
+<div class="lede">One click wires Rubric's local engine into your tool. Then ask it to audit a site and reason on the result in context. Reports open under Reports, no AI needed.</div>
+<div class="seclabel">Apps</div>
+<div id="grid" class="grid"></div>
+<div id="msg" class="muted" style="margin-top:16px"></div>
+<style>
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(max-width:620px){.grid{grid-template-columns:1fr}}
+.gt{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px 16px;transition:box-shadow .12s}
+.gt:hover{box-shadow:0 2px 14px rgba(0,0,0,.05)}
+.gt .ic{width:40px;height:40px;border-radius:10px;background:#efeee8;display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:800;font-size:14px;color:var(--txt);flex:none}
+.gt .nm{font-weight:800;font-size:15px}.gt .st{font-size:12px;color:var(--muted);margin-top:1px}
+.gt .sp{flex:1}
+.gt button{background:var(--red);color:#fff;border:0;border-radius:9px;padding:9px 15px;font-family:var(--display);font-weight:800;font-size:12px;cursor:pointer}
+.gt button:hover:not(:disabled){background:var(--red2)}
+.gt.soon{opacity:.5}.gt.soon button{background:#efeee8;color:var(--muted);cursor:default}
+.gt.connected button{background:#eaf6ef;color:var(--ok);cursor:default}
+.gt.connected .ic{background:#eaf6ef;color:var(--ok)}
+.snip{grid-column:1/-1;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:13px;font:12px/1.5 ui-monospace,Consolas,monospace;color:#555;white-space:pre-wrap}
+</style>
+<script>
+const ICON={'claude-desktop':'CD','claude-code':'CC','cursor':'Cu','codex':'Cx','cline':'Cn','chatgpt':'GP'};
+function statusText(t){
+  if(t.status==='coming_soon')return 'Needs an internet-reachable server';
+  if(t.status==='connected')return 'Rubric is connected';
+  if(t.status==='manual')return 'Manual paste (verify)';
+  if(t.status==='unknown')return 'Click to connect';
+  return 'Not connected';
+}
+function showMsg(text,warn){ const m=document.getElementById('msg'); m.textContent=text||''; m.className=warn?'err':'muted'; }
+async function load(){
+  const r=await fetch('/connect-status'); const tools=await r.json();
+  const g=document.getElementById('grid'); g.innerHTML='';
+  for(const t of tools){
+    const soon=t.status==='coming_soon', conn=t.status==='connected', manual=t.status==='manual';
+    const d=document.createElement('div'); d.className='gt'+(soon?' soon':'')+(conn?' connected':'');
+    const label=soon?'Coming soon':(conn?'Connected':(manual?'Show config':'Connect'));
+    d.innerHTML='<div class="ic">'+(ICON[t.id]||'?')+'</div><div><div class="nm">'+t.name+'</div><div class="st">'+statusText(t)+'</div></div><div class="sp"></div><button '+((soon||conn)?'disabled':'')+' onclick="connect(\''+t.id+'\',this)">'+label+'</button>';
+    g.appendChild(d);
+  }
+}
+async function connect(id,btn){
+  btn.disabled=true; btn.textContent='...'; showMsg('');
+  let d={};
+  try{ const r=await fetch('/connect-tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tool:id})}); d=await r.json(); }
+  catch(e){ showMsg('Could not reach the local Rubric server.',true); btn.disabled=false; return; }
+  if(d.snippet){ const g=document.getElementById('grid'); const s=document.createElement('div'); s.className='snip'; s.textContent=(d.message||'')+"\n\n"+d.snippet; g.appendChild(s); }
+  else if(d.error){ showMsg(d.error,true); }
+  else if(d.message){ showMsg(d.message, d.ok===false || !!d.replaced); }
+  setTimeout(load,300);
+}
+load();
+</script>
+"""
+
+_WREPORTS = r"""
+<h1 class="h1">Recent reports</h1>
+<div class="lede">Every crawl Rubric has run on this machine. Click to open a report.</div>
+<div id="list" class="muted">Loading...</div>
+<style>
+.rrow{display:flex;align-items:center;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:box-shadow .12s}
+.rrow:hover{box-shadow:0 2px 14px rgba(0,0,0,.05)}
+.rrow .sc{font-family:var(--display);font-weight:800;font-size:30px;color:var(--red);width:56px;flex:none;text-align:center}
+.rrow .nm{font-weight:800}.rrow .mt{color:var(--muted);font-size:12px;margin-top:2px}
+.rrow .op{margin-left:auto;color:var(--red);font-weight:800;font-size:13px;white-space:nowrap}
+</style>
+<script>
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+async function load(){
+  const r=await fetch('/reports'); const items=await r.json();
+  const l=document.getElementById('list');
+  if(!items.length){ l.textContent='No reports yet. Ask a connected AI tool to audit a site, or run one from the CLI (rubric audit --url ...).'; return; }
+  l.className='';
+  l.innerHTML=items.map(it=>'<div class="rrow" onclick="open2(\''+encodeURIComponent(it.name)+'\')"><div class="sc">'+(it.score!=null?it.score:'-')+'</div><div><div class="nm">'+esc(it.name)+'</div><div class="mt">'+esc(it.when||'')+(it.pages!=null?' | '+it.pages+' pages':'')+'</div></div><div class="op">Open &rarr;</div></div>').join('');
+}
+function open2(n){ location.href='/report/'+n; }
+load();
 </script>
 """
 

@@ -21,29 +21,36 @@ def _open_url_cb(u):
     return lambda icon, item: _safe(icon, lambda: tray_actions.open_url(u))
 
 
+def _open_window_cb(p):
+    return lambda icon, item: _safe(icon, lambda: tray_actions.open_window(p))
+
+
 def _open_report_cb(name):
     return lambda icon, item: _safe(icon, lambda: tray_actions.open_report(name))
 
 
 def build_menu(ps, spec):
     """Translate a menu_spec() list into pystray menu items. `ps` is the pystray module (injected so
-    this is testable with a fake). Returns a list of items suitable for ps.Menu(*items)."""
+    this is testable with a fake). An item with default=True becomes the LEFT-click action on Windows."""
     items = []
     for s in spec:
         if s.get("separator"):
             items.append(ps.Menu.SEPARATOR)
             continue
         label = s.get("label", "")
+        default = bool(s.get("default"))
         if s.get("submenu"):
-            items.append(ps.MenuItem(label, ps.Menu(*build_menu(ps, s["submenu"]))))
+            items.append(ps.MenuItem(label, ps.Menu(*build_menu(ps, s["submenu"])), default=default))
         elif s.get("quit"):
             items.append(ps.MenuItem(label, lambda icon, item: icon.stop()))
         elif s.get("enabled") is False:
             items.append(ps.MenuItem(label, None, enabled=False))
+        elif "window" in s:
+            items.append(ps.MenuItem(label, _open_window_cb(s["window"]), default=default))
         elif "report" in s:
-            items.append(ps.MenuItem(label, _open_report_cb(s["report"])))
+            items.append(ps.MenuItem(label, _open_report_cb(s["report"]), default=default))
         elif "url" in s:
-            items.append(ps.MenuItem(label, _open_url_cb(s["url"])))
+            items.append(ps.MenuItem(label, _open_url_cb(s["url"]), default=default))
         else:
             items.append(ps.MenuItem(label, None))
     return items

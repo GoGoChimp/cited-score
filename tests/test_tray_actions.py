@@ -4,15 +4,14 @@ import os, time
 import tray_actions
 
 
-def test_menu_spec_has_core_items_in_order(monkeypatch, tmp_path):
+def test_menu_spec_is_four_items(monkeypatch, tmp_path):
     monkeypatch.setattr(tray_actions, "reports_dir", lambda: str(tmp_path))
-    labels = [i.get("label", "") for i in tray_actions.menu_spec()]
-    joined = " | ".join(labels)
-    for need in ("Run audit", "Open recent report", "Watches", "Connect", "Licence & settings", "Quit"):
-        assert need in joined, f"missing {need}"
-    # order: Run audit before Connect before Settings before Quit
-    idx = {n: next(i for i, l in enumerate(labels) if n in l) for n in ("Run audit", "Connect", "Licence & settings", "Quit")}
-    assert idx["Run audit"] < idx["Connect"] < idx["Licence & settings"] < idx["Quit"]
+    spec = tray_actions.menu_spec()
+    labels = [i.get("label", "") for i in spec if i.get("label")]
+    assert labels == ["Open", "Open recent reports", "Licence settings", "Quit"]
+    # 'Open' is the default (left-click) action and opens the connections window
+    openit = [i for i in spec if i.get("label") == "Open"][0]
+    assert openit.get("default") is True and openit.get("window") == "/connect"
 
 
 def test_recent_report_picks_newest(monkeypatch, tmp_path):
@@ -30,18 +29,29 @@ def test_recent_report_none_when_empty(monkeypatch, tmp_path):
     assert tray_actions.recent_report() is None
 
 
-def test_open_report_hits_report_route(monkeypatch):
+def test_open_report_opens_report_window(monkeypatch):
     monkeypatch.setattr(tray_actions, "server_base", lambda: "http://127.0.0.1:9")
+    monkeypatch.setattr(tray_actions, "_app_browser", lambda: None)   # force the browser fallback path
     seen = {}
     monkeypatch.setattr(tray_actions.webbrowser, "open", lambda url: seen.setdefault("url", url))
     tray_actions.open_report("mysite-com")
     assert seen["url"] == "http://127.0.0.1:9/report/mysite-com"
 
 
-def test_recent_report_submenu_populates(monkeypatch, tmp_path):
-    monkeypatch.setattr(tray_actions, "reports_dir", lambda: str(tmp_path))
-    (tmp_path / "site-com.html").write_text("x", encoding="utf-8")
-    spec = tray_actions.menu_spec()
-    recent = next(i for i in spec if i.get("label") == "Open recent report")
-    names = [s.get("report") for s in recent["submenu"]]
-    assert "site-com" in names
+def test_open_window_uses_app_mode(monkeypatch):
+    monkeypatch.setattr(tray_actions, "server_base", lambda: "http://127.0.0.1:9")
+    monkeypatch.setattr(tray_actions, "_app_browser", lambda: r"C:\fake\msedge.exe")
+    seen = {}
+    monkeypatch.setattr(tray_actions.subprocess, "Popen", lambda args, **kw: seen.setdefault("args", args))
+    tray_actions.open_window("/connect")
+    assert seen["args"][0].endswith("msedge.exe")
+    assert any(a == "--app=http://127.0.0.1:9/connect" for a in seen["args"])
+
+
+def test_open_window_falls_back_to_browser(monkeypatch):
+    monkeypatch.setattr(tray_actions, "server_base", lambda: "http://127.0.0.1:9")
+    monkeypatch.setattr(tray_actions, "_app_browser", lambda: None)
+    seen = {}
+    monkeypatch.setattr(tray_actions.webbrowser, "open", lambda url: seen.setdefault("url", url))
+    tray_actions.open_window("/connect")
+    assert seen["url"] == "http://127.0.0.1:9/connect"
