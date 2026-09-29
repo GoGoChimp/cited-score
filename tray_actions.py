@@ -24,10 +24,9 @@ def server_base():
 
 
 def open_url(path):
-    try:
-        webbrowser.open(server_base() + path)
-    except Exception:
-        pass
+    # No try/except here: if the local server cannot start (e.g. a broken install), the caller in
+    # tray.py surfaces it as a notification instead of a menu click that silently does nothing.
+    webbrowser.open(server_base() + path)
 
 
 def open_report(name):

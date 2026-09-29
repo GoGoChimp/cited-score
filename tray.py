@@ -5,12 +5,24 @@ action opens a focused page in the browser or a stored report, so nothing here n
 import tray_actions
 
 
+def _safe(icon, fn):
+    """Run a menu action; if it fails (e.g. the local server could not start), tell the user with a
+    tray notification instead of silently doing nothing."""
+    try:
+        fn()
+    except Exception as e:
+        try:
+            icon.notify("Rubric could not open its local server. Please try again in a moment.\n" + str(e)[:120], "Rubric")
+        except Exception:
+            pass
+
+
 def _open_url_cb(u):
-    return lambda icon, item: tray_actions.open_url(u)
+    return lambda icon, item: _safe(icon, lambda: tray_actions.open_url(u))
 
 
 def _open_report_cb(name):
-    return lambda icon, item: tray_actions.open_report(name)
+    return lambda icon, item: _safe(icon, lambda: tray_actions.open_report(name))
 
 
 def build_menu(ps, spec):
