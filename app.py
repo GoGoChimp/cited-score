@@ -1026,8 +1026,13 @@ _LOGO = ("<div class='logo'><svg viewBox='0 0 97 100' width='17' height='18' sty
          "<path fill-rule='evenodd' d='M0 0 H61.8 A35 35 0 0 1 74.8 67.5 L96.6 100 H68.6 Z "
          "M30.5 23 H55.3 A12.5 12.5 0 0 1 55.3 48 H30.5 Z' fill='#db0632'/></svg>"
          "<span class='wm'><span class='lw'>ubric</span></span></div>")
+try:
+    import rubric_icon as _ri
+    _RFAV = "data:image/png;base64," + _ri.RUBRIC_ICON_PNG_B64   # favicon so app windows show the R, not a globe
+except Exception:
+    _RFAV = ""
 
-_HEAD = r"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>__T__</title>
+_HEAD = r"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>__T__</title><link rel="icon" href="__RFAV__">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>:root{--bg:#14140f;--panel:#191914;--panel2:#1e1e18;--line:#2a2a24;--muted:#a8a495;--txt:#f2f0e4;--grn:#db0632;--grn2:#ef1a48;--ok:#3DD68C;--red:#db0632;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;--display:'Archivo',sans-serif}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 'Archivo',-apple-system,Segoe UI,Arial,sans-serif}
@@ -1053,7 +1058,7 @@ a{color:var(--grn);text-decoration:none}
 """
 
 def _shell(title, body, active=""):
-    head = _HEAD.replace("__T__", title).replace("__LOGO__", _LOGO)
+    head = _HEAD.replace("__T__", title).replace("__LOGO__", _LOGO).replace("__RFAV__", _RFAV)
     for k in ("audit", "connect", "watches", "settings"):
         head = head.replace("__A_" + k + "__", "class='on'" if k == active else "")
     return head + body + "</div></body></html>"
@@ -1197,7 +1202,7 @@ lic(); st();
 # (Edge/Chrome --app), not browser tabs. Connect is the home (left-click / "Open"); Reports and
 # Settings are reachable from the top nav. Clean light design modelled on Ollama's app launcher.
 # ============================================================================
-_WHEAD = r"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>__T__</title>
+_WHEAD = r"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>__T__</title><link rel="icon" href="__RFAV__">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..900&display=swap" rel="stylesheet">
 <style>:root{--bg:#f6f5f1;--panel:#fff;--panel2:#faf9f6;--line:#e7e5dd;--muted:#8b8878;--txt:#1b1b17;--red:#db0632;--red2:#ef1a48;--ok:#1a9d5a;--display:'Archivo',sans-serif}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.55 'Archivo',-apple-system,Segoe UI,Arial,sans-serif}
@@ -1222,7 +1227,7 @@ _WHEAD = r"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewpo
 <div class="wrap">"""
 
 def _wshell(title, body, active=""):
-    head = _WHEAD.replace("__T__", title).replace("__LOGO__", _LOGO)
+    head = _WHEAD.replace("__T__", title).replace("__LOGO__", _LOGO).replace("__RFAV__", _RFAV)
     for k in ("connect", "reports", "settings"):
         head = head.replace("__A_" + k + "__", "class='on'" if k == active else "")
     return head + body + "</div></body></html>"
@@ -1327,12 +1332,12 @@ load();
 
 _ACTIVATE_WIN = r"""
 <h1 class="h1">Unlock Rubric Pro</h1>
-<div class="lede">Paste your Rubric Pro key to unlock this machine. You will find it in your account at cited.gogochimp.com. It unlocks private and staging crawling, the local MCP, and the skill pack, all running locally.</div>
+<div class="lede">Paste your Rubric Pro key. It is the <b>cs_live_</b> key from your account at <a href="https://cited.gogochimp.com/mcp" target="_blank">cited.gogochimp.com/mcp</a>, the same key you use to connect the MCP. It unlocks private and staging crawling, the local MCP, and the skill pack, all running locally.</div>
 <div class="card">
-  <div class="field"><label>Pro key</label><input id="key" placeholder="cs_live_..." autofocus autocomplete="off"></div>
+  <div class="field"><label>Pro key (starts with cs_live_)</label><input id="key" placeholder="cs_live_..." autofocus autocomplete="off"></div>
   <div class="row" style="margin-top:14px"><button class="btn" id="go" onclick="activate()">Unlock</button><span class="muted" id="msg"></span></div>
 </div>
-<div class="muted" style="margin-top:8px">No key yet? Get one at <a href="https://cited.gogochimp.com/pricing" target="_blank">cited.gogochimp.com/pricing</a>.</div>
+<div class="muted" style="margin-top:8px">No Pro plan yet? Upgrade at <a href="https://cited.gogochimp.com/pricing" target="_blank">cited.gogochimp.com/pricing</a>.</div>
 <script>
 async function activate(){
   const key=document.getElementById('key').value.trim(); if(!key) return;
