@@ -729,6 +729,24 @@ class Handler(BaseHTTPRequestHandler):
             tools = connectors.list_tools()
             tools.append({"id": "chatgpt", "name": "ChatGPT", "kind": "remote", "status": "coming_soon"})
             return self._json(200, tools)
+        if u.path == "/audit": return self._send(200, _shell("Run audit - Rubric", _AUDIT_BODY, "audit"))
+        if u.path == "/watches-page": return self._send(200, _shell("Watches - Rubric", _WATCHES_BODY, "watches"))
+        if u.path == "/settings": return self._send(200, _shell("Settings - Rubric", _SETTINGS_BODY, "settings"))
+        if u.path == "/licence-status":
+            import licence
+            try:
+                d = licence.load() or {}
+                return self._json(200, {"is_pro": bool(licence.is_pro()),
+                                        "key_prefix": licence.key_prefix(d.get("key")) if d.get("key") else None})
+            except Exception as e:
+                return self._json(200, {"is_pro": False, "error": str(e)[:120]})
+        if u.path == "/startup-status":
+            import startup
+            return self._json(200, {"on": startup.is_enabled()})
+        if u.path == "/open-reports":
+            try: os.startfile(REPORTS)                              # Windows; opens the local report folder
+            except Exception: pass
+            return self._json(200, {"ok": True})
         if u.path == "/telemetry-status": return self._json(200, {"consent": telemetry_consent()})
         if u.path == "/open-update":
             try: webbrowser.open(f"https://github.com/{GITHUB_REPO}/releases/latest/download/CITED-Score.exe")
@@ -789,6 +807,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"ok": False, "error": "That tool cannot be connected here."})
             record_usage("feature", f="connect_" + tool)
             return self._json(200, connectors.install(tool))
+        if self.path == "/startup-toggle":
+            import startup
+            on = bool(body.get("on"))
+            ok = startup.enable() if on else startup.disable()
+            return self._json(200, {"ok": ok, "on": startup.is_enabled()})
         if self.path == "/schedule": record_usage("feature", f="schedule"); return self._json(200, schedule_crawl((body.get("url") or "").strip()))
         if self.path == "/watch-add":
             import watch_store; wu = (body.get("url") or "").strip()
@@ -1062,6 +1085,83 @@ async function connect(id,btn){
   setTimeout(load,300);
 }
 load();
+</script>
+"""
+
+_AUDIT_BODY = r"""
+<h1 class="h1">Run an audit</h1>
+<div class="lede">Paste a URL. Rubric crawls every page locally and scores how citable it is for six AI engines. Private, staging and localhost sites work too, nothing leaves this machine.</div>
+<div class="card">
+  <div class="inp"><span class="pfx">https://</span><input id="url" placeholder="www.example.com" autofocus></div>
+  <div class="field"><label>Agency name (optional, white-labels the report)</label><input id="agency" placeholder="Your agency"></div>
+  <div class="row" style="margin-top:16px"><button class="btn" id="go" onclick="run()">Run audit</button><span class="muted" id="msg"></span></div>
+  <div id="prog" style="display:none"><div class="bar"><i id="pbar"></i></div><div class="log" id="log"></div></div>
+  <div id="done" style="display:none;margin-top:16px"><a class="btn" id="open" href="#" target="_blank">Open report</a></div>
+</div>
+<script>
+let job=null,timer=null;
+async function run(){
+  const url=document.getElementById('url').value.trim(); if(!url)return;
+  const agency=document.getElementById('agency').value.trim();
+  document.getElementById('go').disabled=true; document.getElementById('msg').textContent='Starting...';
+  document.getElementById('prog').style.display='block'; document.getElementById('done').style.display='none';
+  const r=await fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,agency:agency})});
+  const d=await r.json();
+  if(d.error){ document.getElementById('msg').innerHTML='<span class=err>'+d.error+'</span>'; document.getElementById('go').disabled=false; return; }
+  job=d.job; timer=setInterval(poll,900);
+}
+async function poll(){
+  const r=await fetch('/status/'+job); const j=await r.json();
+  const pct=j.total?Math.round(100*j.done/j.total):5;
+  document.getElementById('pbar').style.width=Math.max(pct,5)+'%';
+  document.getElementById('log').textContent=(j.lines||[]).join('\n');
+  document.getElementById('msg').textContent=j.phase||'';
+  if(j.finished){
+    clearInterval(timer); document.getElementById('go').disabled=false;
+    if(j.error){ document.getElementById('msg').innerHTML='<span class=err>'+j.error+'</span>'; return; }
+    if(j.report){ const o=document.getElementById('open'); o.href=j.report; document.getElementById('done').style.display='block';
+      const sc=(j.summary||{}).overall; document.getElementById('msg').innerHTML='<span class=ok>Done'+(sc!=null?', score '+sc:'')+'</span>'; window.open(j.report,'_blank'); }
+  }
+}
+document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')run();});
+</script>
+"""
+
+_WATCHES_BODY = r"""
+<h1 class="h1">Watches</h1>
+<div class="lede">Rubric re-crawls a watched site on a schedule and flags a score change. Re-crawls only, never an AI-answer capture.</div>
+<div class="card"><div class="row"><div class="inp" style="flex:1"><span class="pfx">https://</span><input id="wurl" placeholder="www.example.com"></div><button class="btn" onclick="add()">Watch</button></div></div>
+<div class="card"><div id="list" class="muted">Loading...</div></div>
+<div class="card"><div style="font-weight:800;margin-bottom:8px">Recent alerts</div><div id="alerts" class="muted">None yet.</div></div>
+<script>
+async function load(){
+  const r=await fetch('/watches'); const d=await r.json();
+  const l=document.getElementById('list');
+  if(!(d.watches||[]).length){ l.innerHTML='No watched sites yet.'; }
+  else{ l.innerHTML=d.watches.map(w=>'<div class="row" style="justify-content:space-between;padding:9px 0;border-top:1px solid var(--line)"><span>'+w.url+' <span class=muted>['+(w.cadence||'')+'] last '+(w.last_score!=null?w.last_score:'-')+'</span></span><a href="#" onclick="rm(\''+w.url.replace(/'/g,"")+'\');return false" class=muted>Remove</a></div>').join(''); }
+  const a=document.getElementById('alerts');
+  a.innerHTML=(d.alerts||[]).length? d.alerts.map(x=>'<div style="padding:6px 0">'+x.url+': '+x.old+' &rarr; '+x.new+'</div>').join('') : 'None yet.';
+}
+async function add(){ const u=document.getElementById('wurl').value.trim(); if(!u)return; await fetch('/watch-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})}); document.getElementById('wurl').value=''; load(); }
+async function rm(u){ await fetch('/watch-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})}); load(); }
+load();
+</script>
+"""
+
+_SETTINGS_BODY = r"""
+<h1 class="h1">Licence &amp; settings</h1>
+<div class="card"><div style="font-weight:800;margin-bottom:6px">Licence</div><div id="lic" class="muted">Checking...</div></div>
+<div class="card"><div class="row" style="justify-content:space-between">
+  <div><div style="font-weight:800">Start Rubric with Windows</div><div class="muted">Keeps the tray running so watches fire and Connect is one click.</div></div>
+  <label class="row" style="gap:8px"><input type="checkbox" id="startup" onchange="toggle()"> <span id="stlab" class="muted">Off</span></label>
+</div></div>
+<div class="card"><div style="font-weight:800;margin-bottom:6px">Reports</div><div class="muted">Your crawl reports live on this machine.</div>
+  <div style="margin-top:10px"><button class="btn ghost" onclick="fetch('/open-reports')">Open reports folder</button></div></div>
+<script>
+async function lic(){ const r=await fetch('/licence-status'); const d=await r.json(); document.getElementById('lic').innerHTML = d.is_pro? ('<span class=ok>Pro unlocked</span> - key '+(d.key_prefix||'')) : 'Not Pro. Run: rubric activate &lt;your cs_live_ key&gt;'; }
+async function st(){ const r=await fetch('/startup-status'); const d=await r.json(); document.getElementById('startup').checked=!!d.on; document.getElementById('stlab').textContent=d.on?'On':'Off'; }
+async function toggle(){ const on=document.getElementById('startup').checked; await fetch('/startup-toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:on})}); st(); }
+lic(); st();
 </script>
 """
 
