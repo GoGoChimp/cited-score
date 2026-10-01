@@ -3335,6 +3335,60 @@ def mcp_audit(d):
     }
 
 
+# Compact "Proof loop" panel for the audit report (secondary surface; the full render is the web Proof view).
+# `proof` is a site_proof.summary dict plus the row's own "tier" (the summary does not repeat it) and, optionally,
+# "computed_at". It is the LAST-KNOWN proof, computed before this crawl (the report is written during the crawl, the
+# proof is recomputed after it), so the panel says so and always points at the live Proof view. The honesty labels are
+# read FROM the summary; the fallback wording is the same text the engine stamps (proof_loop.LABELS) and only covers a
+# summary somehow missing them, so a label can never silently go missing. No per-site numbers are shown here: the
+# figures live in the (Pro-gated) Proof view, never in the report page.
+_PROOF_LABEL_FALLBACK = {"source": "Bing/Copilot data only", "causation": "correlation, not proof of cause"}
+_PROOF_HEADLINES = {
+    "empty": "No citation data yet. Upload your Bing AI Performance export to measure what your fixes change.",
+    "cold_start": "Your Bing citations are matched to your crawl. Fix a page that is cited, then re-crawl, to start your proof.",
+    "tier_b": "Whole-site change since your first audit. This is not the effect of any single fix.",
+    "tier_a": "Your fixes have a dated before-and-after result, measured against pages you did not touch.",
+    "waiting": "Fixes detected, waiting for enough data to measure them.",
+}
+_PROOF_HEADLINE_DEFAULT = "See what your fixes changed in your Bing/Copilot citations."
+
+def _proof_panel_html(proof, proof_url=None):
+    """Server-rendered compact proof panel, or "" when there is no proof (the report is then byte-for-byte unchanged)."""
+    if not proof or not isinstance(proof, dict): return ""
+    e = H.escape
+    labels = proof.get("labels") if isinstance(proof.get("labels"), dict) else {}
+    chips = [labels.get("source") or _PROOF_LABEL_FALLBACK["source"],
+             labels.get("causation") or _PROOF_LABEL_FALLBACK["causation"]]
+    headline = _PROOF_HEADLINES.get(proof.get("tier"), _PROOF_HEADLINE_DEFAULT)
+    w = proof.get("waiting") if isinstance(proof.get("waiting"), dict) else {}
+    def _n(v):
+        try: return max(0, int(v or 0))
+        except (TypeError, ValueError): return 0
+    prov, awaiting = _n(w.get("provisional_count")), _n(w.get("awaiting_period"))
+    wait = []
+    if prov: wait.append(f"{prov} {'fix' if prov == 1 else 'fixes'} detected, awaiting the confirming crawl.")
+    if awaiting: wait.append(f"{awaiting} confirmed {'fix' if awaiting == 1 else 'fixes'} cannot be measured yet.")
+    when = ""
+    try: when = datetime.date.fromisoformat(str(proof.get("computed_at") or "")[:10]).strftime("%d %b %Y").lstrip("0")
+    except ValueError: pass
+    MM = "font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;font-weight:600;color:#8b8b81"
+    link = ""
+    if isinstance(proof_url, str) and proof_url.startswith(("https://", "http://", "/")):
+        link = (f"<a href=\"{e(proof_url, quote=True)}\" style='align-self:flex-start;font-size:13px;font-weight:800;"
+                f"color:#f2f0e4;border:1px solid #2a2a24;padding:7px 12px'>See the full proof &rarr;</a>")
+    return (
+        "<div class='wrap' style='padding-top:0'><section class='proof-panel' aria-label='Proof loop' "
+        "style='background:#191914;border:1px solid #2a2a24;padding:18px 22px;display:flex;flex-direction:column;gap:10px'>"
+        "<div style='display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap'>"
+        "<div style='font-size:12px;font-weight:800;letter-spacing:2.4px;text-transform:uppercase;color:#f2f0e4'>Proof loop</div>"
+        + (f"<div style=\"{MM}\">Last updated {e(when)}. Open the full proof for the current state.</div>" if when else "")
+        + "</div>"
+        f"<div style='font-size:15px;font-weight:700;line-height:1.45;color:#f2f0e4;max-width:880px'>{e(headline)}</div>"
+        + (f"<div style='font-size:13px;line-height:1.5;color:#a8a495'>{e(' '.join(wait))}</div>" if wait else "")
+        + "<div style='display:flex;flex-wrap:wrap;gap:8px;font-family:\"IBM Plex Mono\",ui-monospace,monospace;font-size:12.5px;font-weight:600'>"
+        + "".join(f"<span style='color:#a8a495;border:1px solid #2a2a24;padding:5px 10px'>{e(str(c))}</span>" for c in chips)
+        + "</div>" + link + "</section></div>")
+
 def write_html(d, path, anon=False):
     if anon:
         # The teaser is retired. Anonymous users land in the FULL 25-page report - the real product, every
@@ -3353,7 +3407,10 @@ def write_html(d, path, anon=False):
         d["_more_pages"] = max(0, _total - _crawled, _sm_uncrawled)
         d["_locked_pages"] = list(_sm.get("in_sitemap_not_crawled") or [])[:40]  # real page paths, greyed (not padlocks)
         d["diff"] = None    # anon users are first-time: clean "First crawl" state, not a "- since <date>" delta
-    payload=json.dumps(d,ensure_ascii=False).replace("</","<\\/")
+    # The proof summary is rendered server-side into the compact panel only; it is NOT embedded in the page payload
+    # (the full numbers live in the Pro-gated Proof view). Absent keys leave the payload byte-for-byte unchanged.
+    _proof_panel=_proof_panel_html(d.get("proof"), d.get("proof_url"))
+    payload=json.dumps({k:v for k,v in d.items() if k not in ("proof","proof_url")},ensure_ascii=False).replace("</","<\\/")
     css=r"""
 :root{--bg:#14140f;--panel:#191914;--panel2:#1e1e18;--line:#2a2a24;--line2:#242420;--muted:#a8a495;--dim:#6b6b65;--txt:#f2f0e4;--white:#FFFFFF;
  --grn:#db0632;--grn2:#ef1a48;--deep:#db0632;--g1:#db0632;--g2:#db0632;--amber:#ff4d6d;--red:#db0632;--chip:#db0632;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace}
@@ -4929,7 +4986,7 @@ tabsbar();render();updExp();
          f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--txt);font-weight:600'>{H.escape(d['domain'])}</a> &middot; {_pagecount} &middot; {d['generated']}</span>"
          f"{_btns_html}</header>"
          + ((f"<div style='padding:14px 24px;background:rgba(242,240,228,.06);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#8b8b81'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#8b8b81'>by {H.escape(d.get('agency') or 'GoGoChimp')}</span>" + (f"<div style='color:#a8a495;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
-       + "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view'></div>"
+       + "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view'></div>" + _proof_panel
        + ("<div class='foot'><b>Why citability matters:</b> AI Overviews cut organic clicks ~40% where they appear (Agarwal &amp; Sen field RCT, 2026), and pages cited in the AI Overview earn ~35% higher CTR (Seer, 2025). This report <b>estimates citability</b> for AI search from on-page, structural and technical signals. It does <b>not</b> measure citations. llms.txt and Grok are shown for reference only and are not scored.</div></div>" if _wl
           else "<div class='foot'><b>Why citability matters:</b> AI Overviews cut organic clicks ~40% where they appear (Agarwal &amp; Sen field RCT, 2026), and pages cited in the AI Overview earn ~35% higher CTR (Seer, 2025) - so this score is your odds of being the cited page. Rubric <b>estimates citability</b> from on-page, structural and technical signals. It does <b>not</b> measure citations. For measured citations, calibrate the model against your Bing Webmaster Tools AI Performance export (<code>--calibrate citations.csv</code>). Every check carries a source (engine documentation, first-party citation data, or a CITED chapter). llms.txt and Grok are shown for reference only and are not scored (Ch5): llms.txt shows no citation correlation, and Grok has no citation export to calibrate against.</div></div>")
        + "<div id='printroot'></div>" + _anon_modal + _sticky
@@ -5431,7 +5488,7 @@ def run_audit(*args, **kwargs):
     finally:
         _CRAWL_AUTH = None
 
-def _run_audit_impl(url, out="report", max_pages=0, workers=WORKERS, progress=None, client=None, intro=None, links=True, site_type=None, queries=None, logs=None, agency=None, logo=None, nav=None, max_seconds=0, benchmark_fn=None, debrand=False, auth=None):
+def _run_audit_impl(url, out="report", max_pages=0, workers=WORKERS, progress=None, client=None, intro=None, links=True, site_type=None, queries=None, logs=None, agency=None, logo=None, nav=None, max_seconds=0, benchmark_fn=None, debrand=False, auth=None, proof=None, proof_url=None):
     """Crawl + score a whole site and write out.html/.json/.csv. progress(phase, done,
     total, msg) is called through the run so a UI can show live status. Returns the data.
     max_seconds>0 caps wall-clock crawl time: at the deadline it stops gracefully and scores
@@ -5548,7 +5605,10 @@ def _run_audit_impl(url, out="report", max_pages=0, workers=WORKERS, progress=No
             try: data["benchmark"]=benchmark_fn(data)          # in the corpus + returns the median for its site_type
             except Exception: pass                             # (None -> the report falls back to the static 491 median)
         for _p in pages: _p.pop("_text",None)                 # drop the transient page text (only needed for the ollama decision-facts call) before writing
-        apply_diff(data,out); write_outputs(data,out)         # out=None -> crawl + score only, no files (used by benchmark)
+        apply_diff(data,out)
+        if proof: data["proof"]=proof                        # proof loop: the LAST-KNOWN site_proof (summary + tier) the caller loaded, computed before this
+        if proof and proof_url: data["proof_url"]=proof_url  # crawl. write_html renders the compact panel only when present and links to the live Proof view.
+        write_outputs(data,out)                               # out=None -> crawl + score only, no files (used by benchmark)
     emit("done",total,total,f"{domain}: {data['overall']}/100, {data['pages_crawled']} pages")
     return data
 

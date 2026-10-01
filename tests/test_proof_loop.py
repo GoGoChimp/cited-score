@@ -449,3 +449,143 @@ def test_tier_b_summary_carries_first_and_latest_snapshot_periods():
     assert tb["period_first"] == {"start": "2026-08-01", "end": "2026-08-28"}
     assert tb["period_latest"] == {"start": "2026-09-10", "end": "2026-10-07"}
     assert "citations_first" in tb and "citations_latest" in tb
+
+
+# ---------------------------------------------------------------------------
+# Compact proof panel in the audit HTML report (write_html). Guarded: only when data["proof"] is present.
+# The proof dict is a site_proof.summary plus the row's own tier (the summary does not repeat it).
+# ---------------------------------------------------------------------------
+import re as _re
+
+
+def _minimal_report_dict():
+    return {"domain": "example.com", "origin": "https://example.com", "generated": "2026-10-01",
+            "pages_crawled": 1, "overall": 50, "nav": {"new_crawl": "/", "logout": "/logout"}}
+
+
+def _render(data, tmp_path, name="r.html", **kw):
+    from aiseo_audit import write_html
+    out = tmp_path / name
+    write_html(data, str(out), **kw)
+    return out.read_text(encoding="utf-8")
+
+
+def _panel(html):
+    m = _re.search(r"<section class='proof-panel'.*?</section>", html, _re.S)
+    assert m, "no proof panel in the report"
+    return m.group(0)
+
+
+_PROOF_URL = "https://cited.gogochimp.com/proof/example.com"
+
+
+def _tier_a_proof(**over):
+    p = {"tier": "tier_a", "computed_at": "2026-09-12T10:00:00+00:00",
+         "labels": {"source": "Bing/Copilot data only", "causation": "correlation, not proof of cause", "dated": True},
+         "waiting": {"provisional_count": 0, "awaiting_period": 0},
+         "events": [{"pages": 8, "compare": {"shown": True,
+                     "fixed": {"before_per_day": 1.4, "after_per_day": 3.9}}}]}
+    p.update(over)
+    return p
+
+
+def test_write_html_includes_proof_panel_when_present(tmp_path):
+    data = _minimal_report_dict()
+    data["proof"] = _tier_a_proof()
+    data["proof_url"] = _PROOF_URL
+    html = _render(data, tmp_path)
+    panel = _panel(html)
+    assert "Bing/Copilot data only" in panel and "correlation, not proof of cause" in panel   # labels, from the summary
+    assert "dated before-and-after result" in panel                                            # the tier headline
+    assert f"href=\"{_PROOF_URL}\"" in panel and "See the full proof" in panel                 # link to the full Proof view
+    assert "Last updated 12 Sep 2026" in panel                                                 # last-known, dated
+
+
+def test_write_html_unchanged_without_proof(tmp_path):
+    data = _minimal_report_dict()
+    html = _render(data, tmp_path)
+    assert "proof-panel" not in html and "Proof loop" not in html
+    # absent / empty / None proof all render the identical report (byte-for-byte), and a lone link never makes a panel
+    for extra in ({"proof": None}, {"proof": {}}, {"proof_url": _PROOF_URL}, {"proof": None, "proof_url": _PROOF_URL}):
+        assert _render({**data, **extra}, tmp_path, "x.html") == html
+    anon = _render(data, tmp_path, "a.html", anon=True)
+    assert "proof-panel" not in anon
+
+
+def test_proof_panel_labels_come_from_the_summary_and_fall_back_when_missing(tmp_path):
+    custom = {"source": "Bing data only (custom)", "causation": "correlation only (custom)", "dated": True}
+    html = _render({**_minimal_report_dict(), "proof": _tier_a_proof(labels=custom)}, tmp_path)
+    p = _panel(html)
+    assert "Bing data only (custom)" in p and "correlation only (custom)" in p
+    assert "Bing/Copilot data only" not in p
+    # a summary somehow missing its labels still carries the honesty wording, never silently none
+    bare = {"tier": "cold_start"}
+    p2 = _panel(_render({**_minimal_report_dict(), "proof": bare}, tmp_path, "b.html"))
+    assert "Bing/Copilot data only" in p2 and "correlation, not proof of cause" in p2
+
+
+@pytest.mark.parametrize("tier,needle", [
+    ("empty", "No citation data yet"),
+    ("cold_start", "matched to your crawl"),
+    ("tier_b", "Whole-site change since your first audit"),
+    ("tier_a", "dated before-and-after result"),
+    ("waiting", "waiting for enough data"),
+])
+def test_proof_panel_headline_per_tier_carries_the_labels_too(tmp_path, tier, needle):
+    p = _panel(_render({**_minimal_report_dict(), "proof": {"tier": tier}, "proof_url": _PROOF_URL}, tmp_path))
+    assert needle in p
+    assert "Bing/Copilot data only" in p and "correlation, not proof of cause" in p
+
+
+def test_proof_panel_tier_b_headline_is_never_a_per_fix_claim(tmp_path):
+    p = _panel(_render({**_minimal_report_dict(), "proof": {"tier": "tier_b"}}, tmp_path))
+    assert "not the effect of any single fix" in p
+
+
+def test_proof_panel_shows_waiting_line_when_fixes_are_pending(tmp_path):
+    proof = {"tier": "cold_start", "waiting": {"provisional_count": 2, "awaiting_period": 1}}
+    p = _panel(_render({**_minimal_report_dict(), "proof": proof}, tmp_path))
+    assert "2 fixes detected, awaiting the confirming crawl" in p
+    assert "1 confirmed fix cannot be measured yet" in p
+    quiet = _panel(_render({**_minimal_report_dict(), "proof": {"tier": "cold_start"}}, tmp_path, "q.html"))
+    assert "awaiting the confirming crawl" not in quiet
+
+
+def test_proof_panel_link_only_when_the_url_is_safe_and_values_are_escaped(tmp_path):
+    base = {**_minimal_report_dict(), "proof": _tier_a_proof(labels={"source": "<b>x</b>", "causation": "a&b"})}
+    p = _panel(_render({**base, "proof_url": 'https://x.test/proof/a"b'}, tmp_path))
+    assert "<b>x</b>" not in p and "&lt;b&gt;x&lt;/b&gt;" in p and "a&amp;b" in p
+    assert 'href="https://x.test/proof/a&quot;b"' in p                              # attribute-escaped
+    for bad in (None, "", "javascript:alert(1)", "data:text/html,x"):
+        q = _panel(_render({**base, "proof_url": bad}, tmp_path, "n.html"))
+        assert "See the full proof" not in q and "href" not in q
+
+
+def test_proof_panel_is_server_rendered_and_the_summary_is_not_embedded_in_the_page(tmp_path):
+    proof = _tier_a_proof(cold_start={"top_cited": [{"url": "https://example.com/secret-page-xyz", "citations": 987}]})
+    html = _render({**_minimal_report_dict(), "proof": proof, "proof_url": _PROOF_URL}, tmp_path)
+    assert "secret-page-xyz" not in html and "window.__DATA__" in html     # full summary stays in the Proof view only
+
+
+def test_run_audit_threads_proof_into_the_report(tmp_path, monkeypatch):
+    import json
+    import aiseo_audit as A
+    monkeypatch.setattr(A, "_ssrf_on", lambda: False)
+
+    class R:
+        status = 200; headers = {}
+        def read(self): return b"<html><head><title>Site</title></head><body><h1>Hi</h1><p>content here for the page.</p></body></html>"
+        def geturl(self): return "https://threading-test.example.com/"
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    monkeypatch.setattr(A.urllib.request, "urlopen", lambda req, timeout=0: R())
+    out = str(tmp_path / "rep")
+    A.run_audit("https://threading-test.example.com/", out=out, max_pages=1, links=False,
+                proof=_tier_a_proof(), proof_url=_PROOF_URL)
+    html = open(out + ".html", encoding="utf-8").read()
+    assert f"href=\"{_PROOF_URL}\"" in _panel(html)
+    saved = json.load(open(out + ".json", encoding="utf-8"))
+    assert saved["proof"]["tier"] == "tier_a" and saved["proof_url"] == _PROOF_URL
+    out2 = str(tmp_path / "rep2")
+    A.run_audit("https://threading-test.example.com/", out=out2, max_pages=1, links=False)
+    assert "proof-panel" not in open(out2 + ".html", encoding="utf-8").read()
