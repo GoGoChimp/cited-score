@@ -140,6 +140,7 @@ def _midpoint(p):
 
 
 def _cohort(period, urls):
+    urls = list(dict.fromkeys(urls))     # de-duplicate: a repeated page must not inflate n_pages or totals
     counts = period["counts"]
     present = [u for u in urls if u in counts]
     total = sum(counts.get(u, 0) for u in urls)

@@ -209,3 +209,51 @@ def test_tier_a_floor_applies_to_after_period_and_control_flags_insufficient():
     after_ok = _period("2026-09-01", "2026-09-28", {u: 15 for u in fixed})
     out = proof_loop.tier_a_compare(before, after_ok, fixed, [])
     assert out["shown"] is True and out["untouched"]["insufficient"] is True
+
+
+def test_tier_a_hidden_when_fixed_cohort_below_min_pages():
+    fixed = [f"example.com/p{i}" for i in range(7)]            # 7 < COHORT_MIN_PAGES
+    before = _period("2026-08-01", "2026-08-28", {u: 20 for u in fixed})
+    after = _period("2026-09-01", "2026-09-28", {u: 20 for u in fixed})
+    out = proof_loop.tier_a_compare(before, after, fixed, [])
+    assert out["shown"] is False
+    assert "not enough fixed pages" in (out["reason"] or "")
+
+
+def test_tier_a_caveat_on_midpoint_gap_with_equal_length_periods():
+    fixed = [f"example.com/p{i}" for i in range(8)]
+    before = _period("2026-01-01", "2026-01-28", {u: 10 for u in fixed})   # 28 days
+    after = _period("2026-06-01", "2026-06-28", {u: 10 for u in fixed})    # 28 days, midpoints ~151 days apart
+    out = proof_loop.tier_a_compare(before, after, fixed, [])
+    assert out["fixed"]["days_before"] == out["fixed"]["days_after"]       # length-ratio branch not in play
+    assert out["shown"] is True
+    assert out["caveat"] and "care" in out["caveat"]
+
+
+def test_tier_a_untouched_control_below_period_floor_is_insufficient():
+    fixed = [f"example.com/p{i}" for i in range(8)]
+    unt = [f"example.com/u{i}" for i in range(8)]
+    before = _period("2026-08-01", "2026-08-28", {**{u: 10 for u in fixed}, **{u: 5 for u in unt}})
+    after = _period("2026-09-01", "2026-09-28", {**{u: 10 for u in fixed}, **{u: 3 for u in unt}})  # control after = 24 < 30
+    out = proof_loop.tier_a_compare(before, after, fixed, unt)
+    assert out["shown"] is True
+    assert out["untouched"]["insufficient"] is True
+    assert out["untouched"]["before_total"] == 40 and out["untouched"]["after_total"] == 24
+
+
+def test_tier_a_hidden_when_after_period_too_short():
+    fixed = [f"example.com/p{i}" for i in range(8)]
+    before = _period("2026-08-01", "2026-08-28", {u: 50 for u in fixed})   # 28 days, fine
+    after = _period("2026-09-01", "2026-09-07", {u: 50 for u in fixed})    # 7 days, too short
+    out = proof_loop.tier_a_compare(before, after, fixed, [])
+    assert out["shown"] is False and "14" in (out["reason"] or "")
+
+
+def test_tier_a_duplicate_fixed_urls_do_not_defeat_cohort_gate():
+    one_page = ["https://example.com/p0"] * 8                  # one real page repeated
+    key = canon_key(one_page[0])
+    before = _period("2026-08-01", "2026-08-28", {key: 500})
+    after = _period("2026-09-01", "2026-09-28", {key: 500})
+    out = proof_loop.tier_a_compare(before, after, [key] * 8, [])
+    assert out["shown"] is False
+    assert "not enough fixed pages" in (out["reason"] or "")
