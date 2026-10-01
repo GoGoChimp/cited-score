@@ -36,6 +36,12 @@ ASSET_RE = re.compile(r"\.(?:jpg|jpeg|png|gif|webp|svg|avif|css|js|mjs|json|xml|
 QSTART = re.compile(r"^\s*(what|how|why|when|which|who|where|does|do|can|is|are|should|will|has|have)\b", re.I)
 NUM_RE = re.compile(r"(?<![\w-])\d[\d,.]*\s?%?")
 WORKERS = 6
+# Identifies this revision of the scoring (the set of checks and their weights). run_audit stamps it on every result as
+# data["scoring_version"]; the worker records it on each crawl_page_checks row (so the proof loop only diffs like with
+# like) and on site_proof (so a change here makes the scheduler recompute every stored proof). BUMP IT whenever a check is
+# added, removed, renamed or re-weighted, or the scoring otherwise changes; leave it alone for copy, layout or other
+# changes that cannot move a score.
+SCORING_VERSION = "2026-10-01"
 
 # ------------------------------------------------------------------ SSRF guard (online worker only)
 # When CITED_SSRF_GUARD=1 (set by the public online worker), every fetch/render target must resolve to a
@@ -5575,6 +5581,7 @@ def _run_audit_impl(url, out="report", max_pages=0, workers=WORKERS, progress=No
     aicrawler=ai_crawler_matrix(origin) if (out and not unreachable) else {}  # AI-bot access matrix (advisory monitor)
     data=build(domain,origin,pages,sitecx,sitemap_paths,linkstatus,client,intro,protocols,aicrawler,site_type_override=site_type,agency=agency,logo=_logo_uri)
     data["_debrand"]=bool(debrand)   # Pro de-brand: suppress Rubric marks in the report + exports (set from the job by the worker)
+    data["scoring_version"]=SCORING_VERSION   # proof loop: which scoring revision produced this result (worker stamps it on crawl_page_checks)
     data["partial"]=bool(partial)
     data["total_discovered"]=total    # URLs discovered at crawl start; anon uses (total - crawled) for the "N more pages" bar
     data["pages_fetched"]=len(urls)   # pages the crawler actually fetched; pages_crawled is the SCORED subset (some are non-HTML / machine files)

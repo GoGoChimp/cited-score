@@ -654,3 +654,27 @@ def test_no_proof_panel_on_white_labelled_debranded_or_anon_reports(tmp_path):
         assert "proof-panel" not in html and "Proof loop" not in html, name
         assert _PROOF_URL not in html and "/proof/example.com" not in html, name        # no Rubric link leaks into the client's copy
         assert "Your fixes have a dated" not in html, name                              # the summary is still not embedded either
+
+
+
+def test_scoring_version_is_exposed_and_run_audit_stamps_it(tmp_path, monkeypatch):
+    # The worker's crawl_page_checks stamp reads data["scoring_version"]; without it every crawl is "unversioned" and
+    # a check/weight change can never be told apart from a real fix (spec 3.2 / 3.4).
+    import json
+    import aiseo_audit as A
+    assert isinstance(A.SCORING_VERSION, str) and A.SCORING_VERSION.strip() and A.SCORING_VERSION != "unversioned"
+    monkeypatch.setattr(A, "_ssrf_on", lambda: False)
+
+    class R:
+        status = 200; headers = {}
+        def read(self): return b"<html><head><title>Site</title></head><body><h1>Hi</h1><p>content here for the page.</p></body></html>"
+        def geturl(self): return "https://versioned.example.com/"
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    monkeypatch.setattr(A.urllib.request, "urlopen", lambda req, timeout=0: R())
+    out = str(tmp_path / "rep")
+    data = A.run_audit("https://versioned.example.com/", out=out, max_pages=1, links=False)
+    assert data["scoring_version"] == A.SCORING_VERSION
+    assert json.load(open(out + ".json", encoding="utf-8"))["scoring_version"] == A.SCORING_VERSION
+    bare = A.run_audit("https://versioned.example.com/", out=None, max_pages=1, links=False)    # crawl + score only (benchmark path)
+    assert bare["scoring_version"] == A.SCORING_VERSION
