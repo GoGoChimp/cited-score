@@ -155,14 +155,17 @@ def tier_a_compare(before, after, fixed_urls, untouched_urls):
     (shown=False + reason) when a period is too short, the fixed cohort is too
     small, or either period's fixed citations are below the floor."""
     db, da = _days(before), _days(after)
+    # Calendar dates of both periods, so a consumer can show the ranges even when hidden.
+    periods = {"before_period": {"start": before["period_start"], "end": before["period_end"]},
+               "after_period": {"start": after["period_start"], "end": after["period_end"]}}
     if db < MIN_PERIOD_DAYS or da < MIN_PERIOD_DAYS:
-        return {"shown": False, "reason": f"a period is shorter than the {MIN_PERIOD_DAYS}-day minimum", "caveat": None}
+        return {"shown": False, "reason": f"a period is shorter than the {MIN_PERIOD_DAYS}-day minimum", "caveat": None, **periods}
     fb = _cohort(before, fixed_urls)
     fa = _cohort(after, fixed_urls)
     if min(fb["n_pages"], fa["n_pages"]) < COHORT_MIN_PAGES:
-        return {"shown": False, "reason": "not enough fixed pages with citation data yet", "caveat": None}
+        return {"shown": False, "reason": "not enough fixed pages with citation data yet", "caveat": None, **periods}
     if fb["total"] < PERIOD_CITATION_FLOOR or fa["total"] < PERIOD_CITATION_FLOOR:
-        return {"shown": False, "reason": "not enough citations yet on these pages", "caveat": None}
+        return {"shown": False, "reason": "not enough citations yet on these pages", "caveat": None, **periods}
     ub = _cohort(before, untouched_urls)
     ua = _cohort(after, untouched_urls)
     untouched = {"before_total": ub["total"], "after_total": ua["total"],
@@ -178,7 +181,7 @@ def tier_a_compare(before, after, fixed_urls, untouched_urls):
             "fixed": {"before_total": fb["total"], "after_total": fa["total"],
                       "before_per_day": fb["per_day"], "after_per_day": fa["per_day"],
                       "days_before": db, "days_after": da, "n_pages": min(fb["n_pages"], fa["n_pages"])},
-            "untouched": untouched}
+            "untouched": untouched, **periods}
 
 
 # The honesty strings every proof summary carries (Global Constraints).
@@ -223,6 +226,7 @@ def compute_site_proof(ctx):
             "match_rate": _match_rate(snaps, crawls),
             "waiting": {"provisional_count": len(ctx.get("provisional_fixes") or []), "awaiting_period": 0},
             "regressions": ctx.get("confirmed_regressions") or []}
+    base["events"] = []        # tier-A events; set below once computed, so every tier carries the key
     if not snaps:
         return {"tier": "empty", "summary": base}
     # Tier A: a confirmed fix with a whole period before prev_crawl_at and after detected_at.
@@ -243,8 +247,9 @@ def compute_site_proof(ctx):
             events.append({"fix_date": f0["detected_at"], "pages": len(fixed_urls),
                            "checks": sorted({c for f in confirmed for c in f["checks"]}),
                            "compare": cmp})
+            base["events"] = events     # carried in every tier, so a hidden comparison's reason still reaches the summary
             if cmp["shown"]:
-                return {"tier": "tier_a", "summary": {**base, "events": events}}
+                return {"tier": "tier_a", "summary": base}
         # Confirmed fixes exist but tier A is not showable yet (period incomplete or
         # below a floor): count them as awaiting.
         base["waiting"]["awaiting_period"] = len(fixed_urls)
@@ -260,7 +265,9 @@ def compute_site_proof(ctx):
               "version_changed": version_changed,
               "checks_compared": sorted(common),
               "citations_first": sum(s_first["counts"].values()),
-              "citations_latest": sum(s_last["counts"].values())}
+              "citations_latest": sum(s_last["counts"].values()),
+              "period_first": {"start": s_first["period_start"], "end": s_first["period_end"]},
+              "period_latest": {"start": s_last["period_start"], "end": s_last["period_end"]}}
         return {"tier": "tier_b", "summary": {**base, "tier_b": tb}}
     # Cold start: correlate the latest crawl with the newest snapshot. ctx pages are
     # {url, score} stamps of fetched pages, so treat a missing status as 200 (the

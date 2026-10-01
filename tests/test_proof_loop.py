@@ -389,3 +389,63 @@ def test_two_crawls_but_one_snapshot_is_cold_start_not_tier_b():
     assert out["tier"] == "cold_start"
     assert "tier_b" not in out["summary"]
     assert out["summary"]["cold_start"]["joined"] == 1
+
+
+# --- follow-up: events in every tier, calendar period dates in the output ---
+
+def _hidden_fix_ctx(n_snaps=2):
+    """A confirmed fix whose before/after periods exist but sit below the citation floor."""
+    fixed = [f"example.com/p{i}" for i in range(8)]
+    crawl = {"scoring_version": "v1", "page_fails": {}, "checks_evaluated": ["x"], "pages": []}
+    snaps = [
+        {"period_start": "2026-08-01", "period_end": "2026-08-28", "counts": {u: 1 for u in fixed}},   # 8 < floor
+        {"period_start": "2026-09-10", "period_end": "2026-10-07", "counts": {u: 1 for u in fixed}},
+    ][:n_snaps]
+    return {
+        "crawls": [{**crawl, "crawled_at": "2026-08-30T00:00:00Z"}, {**crawl, "crawled_at": "2026-09-05T00:00:00Z"}],
+        "snapshots": snaps,
+        "confirmed_fixes": [{"url": u, "checks": ["x"], "prev_crawl_at": "2026-08-30T00:00:00Z",
+                             "detected_at": "2026-09-05T00:00:00Z"} for u in fixed],
+        "confirmed_regressions": [], "provisional_fixes": [],
+    }
+
+
+def test_hidden_confirmed_fix_event_still_reaches_a_non_tier_a_summary():
+    out = proof_loop.compute_site_proof(_hidden_fix_ctx())
+    assert out["tier"] != "tier_a"
+    events = out["summary"]["events"]
+    assert len(events) == 1
+    assert events[0]["compare"]["shown"] is False
+    assert events[0]["compare"]["reason"]
+    assert "not enough citations" in events[0]["compare"]["reason"]
+
+
+def test_events_key_present_and_empty_in_every_tier_without_a_confirmed_fix():
+    cold = {"crawls": [{"crawled_at": "2026-09-01T00:00:00Z", "scoring_version": "v1", "page_fails": {},
+                        "checks_evaluated": ["x"], "pages": [{"url": "https://example.com/a", "score": 80}]}],
+            "snapshots": [{"period_start": "2026-09-01", "period_end": "2026-09-28", "counts": {"example.com/a": 12}}],
+            "confirmed_fixes": [], "confirmed_regressions": [], "provisional_fixes": []}
+    out = proof_loop.compute_site_proof(cold)
+    assert out["tier"] == "cold_start" and out["summary"]["events"] == []
+    empty = proof_loop.compute_site_proof({"crawls": [], "snapshots": [], "confirmed_fixes": [],
+                                           "confirmed_regressions": [], "provisional_fixes": []})
+    assert empty["tier"] == "empty" and empty["summary"]["events"] == []
+
+
+def test_tier_a_compare_returns_the_calendar_dates_of_both_periods():
+    fixed = [f"example.com/p{i}" for i in range(8)]
+    before = _period("2026-08-01", "2026-08-28", {u: 5 for u in fixed})
+    after = _period("2026-09-01", "2026-09-28", {u: 15 for u in fixed})
+    out = proof_loop.tier_a_compare(before, after, fixed, [])
+    assert out["shown"] is True
+    assert out["before_period"] == {"start": "2026-08-01", "end": "2026-08-28"}
+    assert out["after_period"] == {"start": "2026-09-01", "end": "2026-09-28"}
+
+
+def test_tier_b_summary_carries_first_and_latest_snapshot_periods():
+    out = proof_loop.compute_site_proof(_hidden_fix_ctx())
+    assert out["tier"] == "tier_b"
+    tb = out["summary"]["tier_b"]
+    assert tb["period_first"] == {"start": "2026-08-01", "end": "2026-08-28"}
+    assert tb["period_latest"] == {"start": "2026-09-10", "end": "2026-10-07"}
+    assert "citations_first" in tb and "citations_latest" in tb
