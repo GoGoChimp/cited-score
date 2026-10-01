@@ -335,8 +335,9 @@ def test_confirmed_fix_without_a_complete_period_counts_as_awaiting_and_falls_to
             {"crawled_at": "2026-08-30T00:00:00Z", "scoring_version": "v1", "page_fails": {}, "checks_evaluated": ["x", "y"], "pages": []},
             {"crawled_at": "2026-09-05T00:00:00Z", "scoring_version": "v2", "page_fails": {}, "checks_evaluated": ["x"], "pages": []},
         ],
-        # only a before-period exists: no whole period after the fix yet
-        "snapshots": [{"period_start": "2026-08-01", "period_end": "2026-08-28", "counts": {"example.com/a": 9}}],
+        # two snapshots (so tier B has something to compare) but none starts after the fix yet
+        "snapshots": [{"period_start": "2026-07-01", "period_end": "2026-07-28", "counts": {"example.com/a": 4}},
+                      {"period_start": "2026-08-01", "period_end": "2026-08-28", "counts": {"example.com/a": 9}}],
         "confirmed_fixes": [{"url": "example.com/a", "checks": ["x"], "prev_crawl_at": "2026-08-30T00:00:00Z",
                              "detected_at": "2026-09-05T00:00:00Z"}],
         "confirmed_regressions": [{"url": "example.com/b", "checks": ["x"], "detected_at": "2026-09-05T00:00:00Z"}],
@@ -369,3 +370,22 @@ def test_tier_a_regression_url_is_excluded_from_the_untouched_control():
     assert out["tier"] == "tier_a"
     control = out["summary"]["events"][0]["compare"]["untouched"]
     assert control["before_total"] == 40 and control["after_total"] == 40   # "calm" only, "reg" excluded
+
+
+def test_two_crawls_but_one_snapshot_is_cold_start_not_tier_b():
+    # tier B compares first vs latest snapshot; with a single snapshot that is a
+    # self-comparison, so it must fall through to cold_start.
+    ctx = {
+        "crawls": [
+            {"crawled_at": "2026-08-30T00:00:00Z", "scoring_version": "v1", "page_fails": {}, "checks_evaluated": ["x"],
+             "pages": [{"url": "https://example.com/a", "score": 70}]},
+            {"crawled_at": "2026-09-05T00:00:00Z", "scoring_version": "v1", "page_fails": {}, "checks_evaluated": ["x"],
+             "pages": [{"url": "https://example.com/a", "score": 80}]},
+        ],
+        "snapshots": [{"period_start": "2026-09-01", "period_end": "2026-09-28", "counts": {"example.com/a": 12}}],
+        "confirmed_fixes": [], "confirmed_regressions": [], "provisional_fixes": [],
+    }
+    out = proof_loop.compute_site_proof(ctx)
+    assert out["tier"] == "cold_start"
+    assert "tier_b" not in out["summary"]
+    assert out["summary"]["cold_start"]["joined"] == 1

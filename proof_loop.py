@@ -213,8 +213,8 @@ def _match_rate(snaps, crawls):
 def compute_site_proof(ctx):
     """Pick the render tier and build the summary for one site.
     Tier order: empty (no snapshot) -> tier_a (a confirmed fix with a whole uploaded
-    period on each side and a showable comparison) -> tier_b (>=2 crawls: first vs
-    latest, version-change flagged) -> cold_start (latest crawl joined to the newest
+    period on each side and a showable comparison) -> tier_b (>=2 crawls and >=2
+    snapshots: first vs latest, version-change flagged) -> cold_start (latest crawl joined to the newest
     snapshot). Confirmed fixes whose comparison is not showable yet are counted in
     waiting.awaiting_period so the render can still emit the waiting telemetry."""
     snaps = ctx.get("snapshots") or []
@@ -248,8 +248,10 @@ def compute_site_proof(ctx):
         # Confirmed fixes exist but tier A is not showable yet (period incomplete or
         # below a floor): count them as awaiting.
         base["waiting"]["awaiting_period"] = len(fixed_urls)
-    # Tier B: first vs latest crawl, same scoring version or labelled.
-    if len(crawls) >= 2:
+    # Tier B: first vs latest crawl, same scoring version or labelled. Needs two
+    # snapshots too: with one, first vs latest is the snapshot against itself (a
+    # vacuous delta), so fall through to cold_start.
+    if len(crawls) >= 2 and len(snaps) >= 2:
         first, latest = crawls[0], crawls[-1]
         version_changed = first.get("scoring_version") != latest.get("scoring_version")
         common = set(first.get("checks_evaluated") or []) & set(latest.get("checks_evaluated") or [])
