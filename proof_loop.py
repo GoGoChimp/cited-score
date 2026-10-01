@@ -127,3 +127,54 @@ def cluster_fixes(events, window_days=CLUSTER_WINDOW_DAYS):
                        "detected_at": e["detected_at"], "prev_crawl_at": e.get("prev_crawl_at")}
                 out.append(cur)
     return out
+
+
+def _days(p):
+    return (datetime.date.fromisoformat(p["period_end"]) - datetime.date.fromisoformat(p["period_start"])).days + 1
+
+
+def _midpoint(p):
+    s = datetime.date.fromisoformat(p["period_start"])
+    e = datetime.date.fromisoformat(p["period_end"])
+    return s + (e - s) / 2
+
+
+def _cohort(period, urls):
+    counts = period["counts"]
+    present = [u for u in urls if u in counts]
+    total = sum(counts.get(u, 0) for u in urls)
+    days = _days(period)
+    return {"n_pages": len(present), "total": total, "days": days,
+            "per_day": (total / days) if days else 0.0}
+
+
+def tier_a_compare(before, after, fixed_urls, untouched_urls):
+    """Compare citations-per-day over a before-period vs an after-period for the
+    fixed cohort, with an untouched control over the identical periods. Hidden
+    (shown=False + reason) when a period is too short, the fixed cohort is too
+    small, or either period's fixed citations are below the floor."""
+    db, da = _days(before), _days(after)
+    if db < MIN_PERIOD_DAYS or da < MIN_PERIOD_DAYS:
+        return {"shown": False, "reason": f"a period is shorter than the {MIN_PERIOD_DAYS}-day minimum", "caveat": None}
+    fb = _cohort(before, fixed_urls)
+    fa = _cohort(after, fixed_urls)
+    if min(fb["n_pages"], fa["n_pages"]) < COHORT_MIN_PAGES:
+        return {"shown": False, "reason": "not enough fixed pages with citation data yet", "caveat": None}
+    if fb["total"] < PERIOD_CITATION_FLOOR or fa["total"] < PERIOD_CITATION_FLOOR:
+        return {"shown": False, "reason": "not enough citations yet on these pages", "caveat": None}
+    ub = _cohort(before, untouched_urls)
+    ua = _cohort(after, untouched_urls)
+    untouched = {"before_total": ub["total"], "after_total": ua["total"],
+                 "before_per_day": ub["per_day"], "after_per_day": ua["per_day"],
+                 "days_before": db, "days_after": da, "n_pages": min(ub["n_pages"], ua["n_pages"])}
+    untouched["insufficient"] = (untouched["n_pages"] < COHORT_MIN_PAGES
+                                 or ub["total"] < PERIOD_CITATION_FLOOR or ua["total"] < PERIOD_CITATION_FLOOR)
+    ratio = max(db, da) / max(1, min(db, da))
+    gap = abs((_midpoint(after) - _midpoint(before)).days)
+    caveat = ("periods differ in length; compare with care."
+              if (ratio > CAVEAT_LENGTH_RATIO or gap > CAVEAT_MIDPOINT_GAP_DAYS) else None)
+    return {"shown": True, "reason": None, "caveat": caveat,
+            "fixed": {"before_total": fb["total"], "after_total": fa["total"],
+                      "before_per_day": fb["per_day"], "after_per_day": fa["per_day"],
+                      "days_before": db, "days_after": da, "n_pages": min(fb["n_pages"], fa["n_pages"])},
+            "untouched": untouched}

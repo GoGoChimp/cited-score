@@ -156,3 +156,56 @@ def test_cluster_merges_same_page_within_window():
     assert len(out) == 2
     assert out[0]["detected_at"] == "2026-09-01T00:00:00Z"
     assert sorted(out[0]["checks"]) == ["a", "b"]
+
+
+def _period(s, e, counts):
+    return {"period_start": s, "period_end": e, "counts": counts}
+
+
+def test_tier_a_per_day_rate_and_control():
+    fixed = [f"example.com/p{i}" for i in range(8)]
+    unt = [f"example.com/u{i}" for i in range(8)]
+    before = _period("2026-08-01", "2026-08-28", {u: 5 for u in fixed + unt})   # 28 days
+    after = _period("2026-09-01", "2026-09-28", {**{u: 15 for u in fixed}, **{u: 5 for u in unt}})
+    out = proof_loop.tier_a_compare(before, after, fixed, unt)
+    assert out["shown"] is True and out["caveat"] is None
+    assert out["fixed"]["before_total"] == 40 and out["fixed"]["after_total"] == 120
+    assert round(out["fixed"]["after_per_day"], 2) == round(120 / 28, 2)
+    assert out["untouched"]["after_total"] == 40      # control stayed flat
+
+
+def test_tier_a_hidden_when_period_too_short():
+    fixed = [f"example.com/p{i}" for i in range(8)]
+    before = _period("2026-08-01", "2026-08-07", {u: 50 for u in fixed})  # 7 days
+    after = _period("2026-09-01", "2026-09-28", {u: 99 for u in fixed})
+    out = proof_loop.tier_a_compare(before, after, fixed, [])
+    assert out["shown"] is False and "14" in (out["reason"] or "")
+
+
+def test_tier_a_hidden_when_citations_below_floor_in_a_period():
+    fixed = [f"example.com/p{i}" for i in range(8)]
+    before = _period("2026-08-01", "2026-08-28", {u: 0 for u in fixed})     # 0 citations before
+    after = _period("2026-09-01", "2026-09-28", {u: 10 for u in fixed})
+    out = proof_loop.tier_a_compare(before, after, fixed, [])
+    assert out["shown"] is False and "citation" in (out["reason"] or "").lower()
+
+
+def test_tier_a_caveat_on_uneven_periods():
+    fixed = [f"example.com/p{i}" for i in range(8)]
+    before = _period("2026-08-01", "2026-08-15", {u: 50 for u in fixed})    # 14 days
+    after = _period("2026-09-01", "2026-10-15", {u: 300 for u in fixed})    # 44 days (> 2x)
+    out = proof_loop.tier_a_compare(before, after, fixed, [])
+    assert out["caveat"] and "care" in out["caveat"]
+
+
+def test_tier_a_floor_applies_to_after_period_and_control_flags_insufficient():
+    fixed = [f"example.com/p{i}" for i in range(8)]
+    # after-period fixed citations (8 x 1 = 8) below the floor even though before is healthy
+    before = _period("2026-08-01", "2026-08-28", {u: 50 for u in fixed})
+    after = _period("2026-09-01", "2026-09-28", {u: 1 for u in fixed})
+    out = proof_loop.tier_a_compare(before, after, fixed, [])
+    assert out["shown"] is False and "citation" in (out["reason"] or "").lower()
+    # healthy fixed cohort but an empty control -> shown, control flagged insufficient
+    after_ok = _period("2026-09-01", "2026-09-28", {u: 15 for u in fixed})
+    out = proof_loop.tier_a_compare(before, after_ok, fixed, [])
+    assert out["shown"] is True and out["untouched"]["insufficient"] is True
