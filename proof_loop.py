@@ -65,3 +65,24 @@ def parse_period(text: str, filename: str = ""):
         except ValueError:
             return None, None
     return None, None
+
+
+def diff_crawls(prev: dict, cur: dict) -> dict:
+    """Per-page fix (fail->pass) and regression (pass->fail) detection between two
+    crawl_page_checks stamps, like-with-like: only checks evaluated in BOTH crawls
+    and only pages present in BOTH crawls count."""
+    common_checks = set(prev.get("checks_evaluated") or []) & set(cur.get("checks_evaluated") or [])
+    pf_prev, pf_cur = prev.get("page_fails") or {}, cur.get("page_fails") or {}
+    common_urls = set(pf_prev) & set(pf_cur)
+    fixes, regressions = [], []
+    for u in sorted(common_urls):
+        was = set(pf_prev[u]) & common_checks
+        now = set(pf_cur[u]) & common_checks
+        fixed = sorted(was - now)        # failing before, passing now
+        regressed = sorted(now - was)    # passing before, failing now
+        base = {"url": u, "prev_crawl_at": prev.get("crawled_at"), "detected_at": cur.get("crawled_at")}
+        if fixed:
+            fixes.append({**base, "checks": fixed})
+        if regressed:
+            regressions.append({**base, "checks": regressed})
+    return {"fixes": fixes, "regressions": regressions}

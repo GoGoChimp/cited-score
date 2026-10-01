@@ -95,3 +95,32 @@ def test_parse_period_reads_iso_range_from_filename_or_preamble_else_none():
     assert proof_loop.parse_period("Page,Citations\n", "ai_2026-08-01_2026-08-28.csv") == (d(2026, 8, 1), d(2026, 8, 28))
     assert proof_loop.parse_period("Period: 2026-09-01 to 2026-09-28\nPage,Citations\n") == (d(2026, 9, 1), d(2026, 9, 28))
     assert proof_loop.parse_period("Page,Citations\nhttps://example.com/a,1\n", "export.csv") == (None, None)
+
+
+# --- Task 5: diff_crawls (fixes and regressions, like-with-like) -------------
+def _stamp(ver, evaluated, fails, at):
+    return {"scoring_version": ver, "checks_evaluated": evaluated, "page_fails": fails, "crawled_at": at}
+
+def test_diff_detects_fix_and_regression_like_with_like():
+    prev = _stamp("v1", ["a", "b", "c"], {"example.com/p": ["a", "b"], "example.com/q": []}, "2026-09-01T00:00:00Z")
+    cur  = _stamp("v1", ["a", "b", "c"], {"example.com/p": ["b"],      "example.com/q": ["a"]}, "2026-09-08T00:00:00Z")
+    out = proof_loop.diff_crawls(prev, cur)
+    fixes = {f["url"]: f for f in out["fixes"]}
+    regs = {r["url"]: r for r in out["regressions"]}
+    assert fixes["example.com/p"]["checks"] == ["a"]          # a: fail->pass
+    assert regs["example.com/q"]["checks"] == ["a"]           # a: pass->fail
+    assert fixes["example.com/p"]["prev_crawl_at"] == "2026-09-01T00:00:00Z"
+    assert fixes["example.com/p"]["detected_at"] == "2026-09-08T00:00:00Z"
+
+def test_diff_ignores_checks_not_in_both_versions():
+    prev = _stamp("v1", ["a"], {"example.com/p": ["a"]}, "2026-09-01T00:00:00Z")
+    cur  = _stamp("v2", ["a", "d"], {"example.com/p": ["d"]}, "2026-09-08T00:00:00Z")
+    out = proof_loop.diff_crawls(prev, cur)
+    # a went fail->pass and counts; d is new this version -> never a fix
+    assert out["fixes"][0]["checks"] == ["a"]
+
+def test_diff_ignores_pages_not_in_both_crawls():
+    prev = _stamp("v1", ["a"], {"example.com/p": ["a"]}, "2026-09-01T00:00:00Z")
+    cur  = _stamp("v1", ["a"], {"example.com/other": []}, "2026-09-08T00:00:00Z")
+    out = proof_loop.diff_crawls(prev, cur)
+    assert out["fixes"] == [] and out["regressions"] == []
