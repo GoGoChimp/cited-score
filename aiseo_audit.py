@@ -2228,6 +2228,34 @@ def click_resilience(page):
     return {"tool":"Rubric click_resilience","url":page.get("url"),"type":typ,"words":wc,
             "band":band,"signal_score":score,"reasons":reasons,"advice":advice}
 
+_TRACKING_PREFIXES = ("utm_",)
+_TRACKING_EXACT = {"fbclid", "gclid", "mc_eid", "mc_cid", "gclsrc", "_hsenc", "_hsmi", "igshid"}
+
+def canon_url(u: str):
+    """One canonical form for every URL join in the proof loop. Returns (key, display).
+    key: scheme-insensitive, www stripped, host lowercased, trailing slash removed,
+    tracking params stripped, path case and meaningful query preserved."""
+    display = (u or "").strip()
+    try:
+        p = urllib.parse.urlsplit(display if "//" in display else "https://" + display)
+        host = (p.hostname or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+        if p.port:
+            host = f"{host}:{p.port}"
+        path = p.path.rstrip("/") or ""
+        q = [(k, v) for k, v in urllib.parse.parse_qsl(p.query, keep_blank_values=True)
+             if not (k.lower() in _TRACKING_EXACT or k.lower().startswith(_TRACKING_PREFIXES))]
+        q.sort()
+        query = urllib.parse.urlencode(q)
+        key = host + path + (("?" + query) if query else "")
+    except Exception:
+        key = display.lower().rstrip("/")
+    return key, display
+
+def canon_key(u: str) -> str:
+    return canon_url(u)[0]
+
 def correlate_data(pages, cites=None, logrows=None):
     """Deterministic per-URL JOIN of a crawl with citation counts (cites: {url:count}) and server-log AI-bot
     activity (logrows from load_access_log). Reliable join so the analysis doesn't depend on the model
@@ -2240,14 +2268,14 @@ def correlate_data(pages, cites=None, logrows=None):
         for ua,u,status,day in logrows:
             for name,pat in matchers:
                 if pat.search(ua):
-                    h=log_hits.setdefault(u.rstrip("/"),{"ai":0,"cite":0}); h["ai"]+=1
+                    h=log_hits.setdefault(canon_key(u),{"ai":0,"cite":0}); h["ai"]+=1
                     if name in CITE_TIME: h["cite"]+=1
                     break
     rows=[]
     have_cites=bool(cites)
     for p in pages:
         if p.get("status")!=200: continue
-        k=p["url"].rstrip("/"); lh=log_hits.get(k) or {}
+        k=canon_key(p["url"]); lh=log_hits.get(k) or {}
         cval=cites.get(k)
         if cval is None and have_cites: cval=0   # a citation export lists every page that earned citations; absent => 0 reported (not "unknown")
         rows.append({"url":p["url"],"type":p.get("type"),"score":p.get("score"),
@@ -3181,16 +3209,16 @@ def parse_cites(text):
     cites={}
     for row in csv.reader(text.splitlines()):
         if len(row)<2: continue
-        try: cites[row[0].strip().rstrip("/")]=float(str(row[1]).replace(",","").strip())
+        try: cites[canon_key(row[0])]=float(str(row[1]).replace(",","").strip())
         except ValueError: continue
     return cites
 
 def calibrate_data(d, cites):
     """Spearman-correlate the report's scores vs real per-URL citations. Returns a dict for UI/CLI."""
-    rows=[p for p in d["pages"] if p["url"].rstrip("/") in cites]
+    rows=[p for p in d["pages"] if canon_key(p["url"]) in cites]
     if len(rows)<8:
         return {"error":f"Only {len(rows)} of {len(d['pages'])} crawled pages matched the citations file (need at least 8 for a stable correlation).","matched":len(rows)}
-    y=[cites[p["url"].rstrip("/")] for p in rows]
+    y=[cites[canon_key(p["url"])] for p in rows]
     out={"matched":len(rows),"total":len(d["pages"]),
          "overall":spearman([p["score"] for p in rows],y),
          "pillars":{pl:spearman([p["pillars"][pl] for p in rows],y) for pl in PILLARS},
