@@ -124,3 +124,35 @@ def test_diff_ignores_pages_not_in_both_crawls():
     cur  = _stamp("v1", ["a"], {"example.com/other": []}, "2026-09-08T00:00:00Z")
     out = proof_loop.diff_crawls(prev, cur)
     assert out["fixes"] == [] and out["regressions"] == []
+
+
+def test_confirm_transitions_confirms_held_fix_cancels_flipback():
+    provisional = [
+        {"id": "1", "url": "example.com/p", "kind": "fixed", "checks": ["a"]},
+        {"id": "2", "url": "example.com/q", "kind": "fixed", "checks": ["b"]},
+    ]
+    cur_fails = {"example.com/p": [], "example.com/q": ["b"]}  # p held, q flipped back
+    out = proof_loop.confirm_transitions(provisional, cur_fails, common_checks={"a", "b"})
+    assert out["confirm"] == ["1"] and out["cancel"] == ["2"]
+
+
+def test_confirm_transitions_regressed_confirms_when_still_failing():
+    provisional = [
+        {"id": "3", "url": "example.com/p", "kind": "regressed", "checks": ["a"]},
+        {"id": "4", "url": "example.com/q", "kind": "regressed", "checks": ["b"]},
+    ]
+    cur_fails = {"example.com/p": ["a"], "example.com/q": []}  # p still failing, q recovered
+    out = proof_loop.confirm_transitions(provisional, cur_fails, common_checks={"a", "b"})
+    assert out["confirm"] == ["3"] and out["cancel"] == ["4"]
+
+
+def test_cluster_merges_same_page_within_window():
+    events = [
+        {"url": "example.com/p", "checks": ["a"], "detected_at": "2026-09-01T00:00:00Z"},
+        {"url": "example.com/p", "checks": ["b"], "detected_at": "2026-09-10T00:00:00Z"},  # within 28d
+        {"url": "example.com/p", "checks": ["c"], "detected_at": "2026-11-01T00:00:00Z"},  # new cluster
+    ]
+    out = proof_loop.cluster_fixes(events)
+    assert len(out) == 2
+    assert out[0]["detected_at"] == "2026-09-01T00:00:00Z"
+    assert sorted(out[0]["checks"]) == ["a", "b"]

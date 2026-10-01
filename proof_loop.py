@@ -86,3 +86,44 @@ def diff_crawls(prev: dict, cur: dict) -> dict:
         if regressed:
             regressions.append({**base, "checks": regressed})
     return {"fixes": fixes, "regressions": regressions}
+
+
+def _dt(s):
+    return datetime.datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+
+
+def confirm_transitions(provisional, cur_page_fails, common_checks):
+    """Settle provisional fixed/regressed events against the current crawl.
+    A fixed event confirms when none of its checks are failing now, cancels when
+    any is failing again. A regressed event confirms while its checks are still
+    all failing, cancels otherwise."""
+    confirm, cancel = [], []
+    for e in provisional:
+        now_failing = set(cur_page_fails.get(e["url"], [])) & set(common_checks)
+        checks = set(e["checks"])
+        if e["kind"] == "fixed":
+            held = checks.isdisjoint(now_failing)       # none failing again -> held
+        else:  # regressed: "held" means still failing
+            held = checks.issubset(now_failing)
+        (confirm if held else cancel).append(e["id"])
+    return {"confirm": confirm, "cancel": cancel}
+
+
+def cluster_fixes(events, window_days=CLUSTER_WINDOW_DAYS):
+    """Merge same-url events detected within window_days of the cluster's first
+    event into one: earliest detected_at, union of checks."""
+    by_url = {}
+    for e in events:
+        by_url.setdefault(e["url"], []).append(e)
+    out = []
+    for url, evs in by_url.items():
+        evs = sorted(evs, key=lambda x: _dt(x["detected_at"]))
+        cur = None
+        for e in evs:
+            if cur and (_dt(e["detected_at"]) - _dt(cur["detected_at"])).days <= window_days:
+                cur["checks"] = sorted(set(cur["checks"]) | set(e["checks"]))
+            else:
+                cur = {"url": url, "checks": sorted(set(e["checks"])),
+                       "detected_at": e["detected_at"], "prev_crawl_at": e.get("prev_crawl_at")}
+                out.append(cur)
+    return out
