@@ -5,7 +5,7 @@ import datetime
 import io
 import re
 
-from aiseo_audit import canon_key
+from aiseo_audit import canon_key, correlate_data
 
 # Tunable defaults, defined once (Global Constraints).
 CLUSTER_WINDOW_DAYS = 28
@@ -179,3 +179,92 @@ def tier_a_compare(before, after, fixed_urls, untouched_urls):
                       "before_per_day": fb["per_day"], "after_per_day": fa["per_day"],
                       "days_before": db, "days_after": da, "n_pages": min(fb["n_pages"], fa["n_pages"])},
             "untouched": untouched}
+
+
+# The honesty strings every proof summary carries (Global Constraints).
+LABELS = {"source": "Bing/Copilot data only",
+          "causation": "correlation, not proof of cause",
+          "dated": True}
+
+
+def _period_before(snaps, when_iso):
+    """Newest snapshot whose whole period ended on or before when_iso."""
+    d = _dt(when_iso).date()
+    cands = [s for s in snaps if datetime.date.fromisoformat(s["period_end"]) <= d]
+    return max(cands, key=lambda s: s["period_end"], default=None)
+
+
+def _period_after(snaps, when_iso):
+    """Earliest snapshot whose whole period started on or after when_iso."""
+    d = _dt(when_iso).date()
+    cands = [s for s in snaps if datetime.date.fromisoformat(s["period_start"]) >= d]
+    return min(cands, key=lambda s: s["period_start"], default=None)
+
+
+def _match_rate(snaps, crawls):
+    """How many uploaded Bing URLs matched a page in the latest crawl."""
+    if not snaps or not crawls:
+        return {"uploaded": 0, "matched": 0}
+    uploaded = set().union(*[set(s["counts"]) for s in snaps])
+    crawled = {canon_key(p["url"]) for p in (crawls[-1].get("pages") or [])}
+    return {"uploaded": len(uploaded), "matched": len(uploaded & crawled)}
+
+
+def compute_site_proof(ctx):
+    """Pick the render tier and build the summary for one site.
+    Tier order: empty (no snapshot) -> tier_a (a confirmed fix with a whole uploaded
+    period on each side and a showable comparison) -> tier_b (>=2 crawls: first vs
+    latest, version-change flagged) -> cold_start (latest crawl joined to the newest
+    snapshot). Confirmed fixes whose comparison is not showable yet are counted in
+    waiting.awaiting_period so the render can still emit the waiting telemetry."""
+    snaps = ctx.get("snapshots") or []
+    crawls = ctx.get("crawls") or []
+    base = {"labels": dict(LABELS), "source": "bing",
+            "match_rate": _match_rate(snaps, crawls),
+            "waiting": {"provisional_count": len(ctx.get("provisional_fixes") or []), "awaiting_period": 0},
+            "regressions": ctx.get("confirmed_regressions") or []}
+    if not snaps:
+        return {"tier": "empty", "summary": base}
+    # Tier A: a confirmed fix with a whole period before prev_crawl_at and after detected_at.
+    confirmed = ctx.get("confirmed_fixes") or []
+    fixed_urls = sorted({f["url"] for f in confirmed})
+    events = []
+    if fixed_urls:
+        f0 = confirmed[0]
+        before = _period_before(snaps, f0["prev_crawl_at"])
+        after = _period_after(snaps, f0["detected_at"])
+        if before and after:
+            touched = set(fixed_urls) | {r["url"] for r in base["regressions"]}
+            crawled_urls = {canon_key(p["url"]) for p in (crawls[-1].get("pages") or [])} if crawls else set()
+            # untouched: fetched in both crawls, no fix/regression
+            first_urls = {canon_key(p["url"]) for p in (crawls[0].get("pages") or [])} if crawls else set()
+            untouched = sorted((crawled_urls & first_urls) - touched)
+            cmp = tier_a_compare(before, after, fixed_urls, untouched)
+            events.append({"fix_date": f0["detected_at"], "pages": len(fixed_urls),
+                           "checks": sorted({c for f in confirmed for c in f["checks"]}),
+                           "compare": cmp})
+            if cmp["shown"]:
+                return {"tier": "tier_a", "summary": {**base, "events": events}}
+        # Confirmed fixes exist but tier A is not showable yet (period incomplete or
+        # below a floor): count them as awaiting.
+        base["waiting"]["awaiting_period"] = len(fixed_urls)
+    # Tier B: first vs latest crawl, same scoring version or labelled.
+    if len(crawls) >= 2:
+        first, latest = crawls[0], crawls[-1]
+        version_changed = first.get("scoring_version") != latest.get("scoring_version")
+        common = set(first.get("checks_evaluated") or []) & set(latest.get("checks_evaluated") or [])
+        s_first, s_last = snaps[0], snaps[-1]
+        tb = {"label": "overall change since your first audit",
+              "version_changed": version_changed,
+              "checks_compared": sorted(common),
+              "citations_first": sum(s_first["counts"].values()),
+              "citations_latest": sum(s_last["counts"].values())}
+        return {"tier": "tier_b", "summary": {**base, "tier_b": tb}}
+    # Cold start: correlate the latest crawl with the newest snapshot. ctx pages are
+    # {url, score} stamps of fetched pages, so treat a missing status as 200 (the
+    # join skips non-200 pages).
+    latest_snap = snaps[-1]
+    pages = [{**p, "status": p.get("status", 200)} for p in (crawls[-1].get("pages") or [])] if crawls else []
+    corr = correlate_data(pages, cites=latest_snap["counts"]) if crawls else {}
+    return {"tier": "cold_start", "summary": {**base, "cold_start": corr,
+            "period": {"start": latest_snap["period_start"], "end": latest_snap["period_end"]}}}

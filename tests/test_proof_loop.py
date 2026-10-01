@@ -257,3 +257,115 @@ def test_tier_a_duplicate_fixed_urls_do_not_defeat_cohort_gate():
     out = proof_loop.tier_a_compare(before, after, [key] * 8, [])
     assert out["shown"] is False
     assert "not enough fixed pages" in (out["reason"] or "")
+
+
+# --- compute_site_proof (tier selection) ---
+
+def test_cold_start_when_snapshot_but_no_confirmed_fix():
+    ctx = {
+        "crawls": [{"crawled_at": "2026-09-01T00:00:00Z", "scoring_version": "v1",
+                    "page_fails": {"example.com/a": []}, "checks_evaluated": ["x"],
+                    "pages": [{"url": "https://example.com/a", "score": 80}]}],
+        "snapshots": [{"period_start": "2026-09-01", "period_end": "2026-09-28",
+                       "counts": {"example.com/a": 12}}],
+        "confirmed_fixes": [], "confirmed_regressions": [], "provisional_fixes": [],
+    }
+    out = proof_loop.compute_site_proof(ctx)
+    assert out["tier"] == "cold_start"
+    assert out["summary"]["labels"]["source"] == "Bing/Copilot data only"
+    assert out["summary"]["match_rate"]["matched"] == 1
+
+
+def test_waiting_block_when_provisional_fix_pending():
+    ctx = {"crawls": [{"crawled_at": "2026-09-08T00:00:00Z", "scoring_version": "v1",
+                       "page_fails": {}, "checks_evaluated": ["x"], "pages": []}],
+           "snapshots": [{"period_start": "2026-09-01", "period_end": "2026-09-28", "counts": {}}],
+           "confirmed_fixes": [], "confirmed_regressions": [],
+           "provisional_fixes": [{"url": "example.com/a", "detected_at": "2026-09-08T00:00:00Z"}]}
+    out = proof_loop.compute_site_proof(ctx)
+    assert out["summary"]["waiting"]["provisional_count"] == 1
+
+
+def test_tier_a_when_confirmed_fix_has_before_and_after_periods():
+    fixed = [f"example.com/p{i}" for i in range(8)]
+    ctx = {
+        "crawls": [
+            {"crawled_at": "2026-08-30T00:00:00Z", "scoring_version": "v1", "page_fails": {}, "checks_evaluated": ["x"], "pages": []},
+            {"crawled_at": "2026-09-05T00:00:00Z", "scoring_version": "v1", "page_fails": {}, "checks_evaluated": ["x"], "pages": []},
+        ],
+        "snapshots": [
+            {"period_start": "2026-08-01", "period_end": "2026-08-28", "counts": {u: 5 for u in fixed}},
+            {"period_start": "2026-09-10", "period_end": "2026-10-07", "counts": {u: 15 for u in fixed}},
+        ],
+        "confirmed_fixes": [{"url": u, "checks": ["x"], "prev_crawl_at": "2026-08-30T00:00:00Z",
+                             "detected_at": "2026-09-05T00:00:00Z"} for u in fixed],
+        "confirmed_regressions": [], "provisional_fixes": [],
+    }
+    out = proof_loop.compute_site_proof(ctx)
+    assert out["tier"] == "tier_a"
+    assert out["summary"]["events"][0]["compare"]["shown"] is True
+
+
+def test_empty_tier_when_no_snapshot():
+    out = proof_loop.compute_site_proof({"crawls": [], "snapshots": [], "confirmed_fixes": [],
+                                         "confirmed_regressions": [], "provisional_fixes": []})
+    assert out["tier"] == "empty"
+    assert out["summary"]["source"] == "bing"
+    assert out["summary"]["match_rate"] == {"uploaded": 0, "matched": 0}
+
+
+def test_cold_start_joins_latest_crawl_pages_that_carry_no_status():
+    # ctx pages are {url, score} only; the cold-start join must still see them.
+    ctx = {"crawls": [{"crawled_at": "2026-09-01T00:00:00Z", "scoring_version": "v1",
+                       "page_fails": {}, "checks_evaluated": ["x"],
+                       "pages": [{"url": "https://example.com/a", "score": 80},
+                                 {"url": "https://example.com/b", "score": 60}]}],
+           "snapshots": [{"period_start": "2026-09-01", "period_end": "2026-09-28",
+                          "counts": {"example.com/a": 12}}],
+           "confirmed_fixes": [], "confirmed_regressions": [], "provisional_fixes": []}
+    out = proof_loop.compute_site_proof(ctx)
+    assert out["tier"] == "cold_start"
+    assert out["summary"]["cold_start"]["joined"] == 2
+    assert out["summary"]["period"] == {"start": "2026-09-01", "end": "2026-09-28"}
+
+
+def test_confirmed_fix_without_a_complete_period_counts_as_awaiting_and_falls_to_tier_b():
+    ctx = {
+        "crawls": [
+            {"crawled_at": "2026-08-30T00:00:00Z", "scoring_version": "v1", "page_fails": {}, "checks_evaluated": ["x", "y"], "pages": []},
+            {"crawled_at": "2026-09-05T00:00:00Z", "scoring_version": "v2", "page_fails": {}, "checks_evaluated": ["x"], "pages": []},
+        ],
+        # only a before-period exists: no whole period after the fix yet
+        "snapshots": [{"period_start": "2026-08-01", "period_end": "2026-08-28", "counts": {"example.com/a": 9}}],
+        "confirmed_fixes": [{"url": "example.com/a", "checks": ["x"], "prev_crawl_at": "2026-08-30T00:00:00Z",
+                             "detected_at": "2026-09-05T00:00:00Z"}],
+        "confirmed_regressions": [{"url": "example.com/b", "checks": ["x"], "detected_at": "2026-09-05T00:00:00Z"}],
+        "provisional_fixes": [],
+    }
+    out = proof_loop.compute_site_proof(ctx)
+    assert out["tier"] == "tier_b"
+    assert out["summary"]["waiting"]["awaiting_period"] == 1
+    assert out["summary"]["tier_b"]["version_changed"] is True
+    assert out["summary"]["tier_b"]["checks_compared"] == ["x"]
+    assert out["summary"]["regressions"] == ctx["confirmed_regressions"]
+
+
+def test_tier_a_regression_url_is_excluded_from_the_untouched_control():
+    fixed = [f"example.com/p{i}" for i in range(8)]
+    pages = [{"url": f"https://example.com/{n}", "score": 50} for n in [f"p{i}" for i in range(8)] + ["reg", "calm"]]
+    crawl = {"scoring_version": "v1", "page_fails": {}, "checks_evaluated": ["x"], "pages": pages}
+    ctx = {
+        "crawls": [{**crawl, "crawled_at": "2026-08-30T00:00:00Z"}, {**crawl, "crawled_at": "2026-09-05T00:00:00Z"}],
+        "snapshots": [
+            {"period_start": "2026-08-01", "period_end": "2026-08-28", "counts": {**{u: 5 for u in fixed}, "example.com/reg": 40, "example.com/calm": 40}},
+            {"period_start": "2026-09-10", "period_end": "2026-10-07", "counts": {**{u: 15 for u in fixed}, "example.com/reg": 40, "example.com/calm": 40}},
+        ],
+        "confirmed_fixes": [{"url": u, "checks": ["x"], "prev_crawl_at": "2026-08-30T00:00:00Z",
+                             "detected_at": "2026-09-05T00:00:00Z"} for u in fixed],
+        "confirmed_regressions": [{"url": "example.com/reg", "checks": ["x"], "detected_at": "2026-09-05T00:00:00Z"}],
+        "provisional_fixes": [],
+    }
+    out = proof_loop.compute_site_proof(ctx)
+    assert out["tier"] == "tier_a"
+    control = out["summary"]["events"][0]["compare"]["untouched"]
+    assert control["before_total"] == 40 and control["after_total"] == 40   # "calm" only, "reg" excluded
