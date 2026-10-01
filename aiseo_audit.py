@@ -3205,12 +3205,15 @@ def spearman(xs, ys):
     return num/den if den else 0.0
 
 def parse_cites(text):
-    """Parse 'url,citations' rows (Bing WMT AI Performance export) -> {url_no_slash: float}."""
+    """Parse 'url,citations' rows (Bing WMT AI Performance export) -> {canon_key(url): float}.
+    Rows whose URLs collapse to the same canonical key (scheme, www, trailing slash, tracking params)
+    are summed, not overwritten."""
     cites={}
     for row in csv.reader(text.splitlines()):
         if len(row)<2: continue
-        try: cites[canon_key(row[0])]=float(str(row[1]).replace(",","").strip())
+        try: val=float(str(row[1]).replace(",","").strip())
         except ValueError: continue
+        k=canon_key(row[0]); cites[k]=cites.get(k,0.0)+val
     return cites
 
 def calibrate_data(d, cites):
