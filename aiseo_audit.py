@@ -3346,11 +3346,31 @@ _PROOF_LABEL_FALLBACK = {"source": "Bing/Copilot data only", "causation": "corre
 _PROOF_HEADLINES = {
     "empty": "No citation data yet. Upload your Bing AI Performance export to measure what your fixes change.",
     "cold_start": "Your Bing citations are matched to your crawl. Fix a page that is cited, then re-crawl, to start your proof.",
-    "tier_b": "Whole-site change since your first audit. This is not the effect of any single fix.",
-    "tier_a": "Your fixes have a dated before-and-after result, measured against pages you did not touch.",
     "waiting": "Fixes detected, waiting for enough data to measure them.",
 }
 _PROOF_HEADLINE_DEFAULT = "See what your fixes changed in your Bing/Copilot citations."
+_PROOF_TIER_B_LABEL = "overall change since your first audit"   # spec section 9 wording; the summary's tier_b.label wins when present
+
+def _proof_headline(proof):
+    """The one plain line per tier. Two tiers need the summary, so they cannot overclaim:
+    tier_b carries the spec's exact label (summary tier_b.label, never a paraphrase) and is never a per-fix claim;
+    tier_a only says "measured against pages you did not touch" when an event positively shows a SUFFICIENT untouched
+    control (compare.untouched present and not flagged insufficient). A missing control or one the summary itself
+    calls insufficient gets the plain dated before-and-after line, so the report never asserts a fair control it lacks."""
+    tier = proof.get("tier")
+    if tier == "tier_b":
+        tb = proof.get("tier_b") if isinstance(proof.get("tier_b"), dict) else {}
+        label = str(tb.get("label") or _PROOF_TIER_B_LABEL).strip().rstrip(".")
+        return f"Whole site: {label}. This is not the effect of any single fix."
+    if tier == "tier_a":
+        events = proof.get("events") if isinstance(proof.get("events"), list) else []
+        def _cmp(ev): return (ev.get("compare") if isinstance(ev, dict) else None) or {}
+        def _ctl(ev): return _cmp(ev).get("untouched") if isinstance(_cmp(ev).get("untouched"), dict) else None
+        shown = [ev for ev in events if _cmp(ev).get("shown")]
+        controlled = bool(shown) and all(_ctl(ev) is not None and not _ctl(ev).get("insufficient") for ev in shown)
+        return ("Your fixes have a dated before-and-after result, measured against pages you did not touch." if controlled
+                else "Your fixes have a dated before-and-after result.")
+    return _PROOF_HEADLINES.get(tier, _PROOF_HEADLINE_DEFAULT)
 
 def _proof_panel_html(proof, proof_url=None):
     """Server-rendered compact proof panel, or "" when there is no proof (the report is then byte-for-byte unchanged)."""
@@ -3359,7 +3379,7 @@ def _proof_panel_html(proof, proof_url=None):
     labels = proof.get("labels") if isinstance(proof.get("labels"), dict) else {}
     chips = [labels.get("source") or _PROOF_LABEL_FALLBACK["source"],
              labels.get("causation") or _PROOF_LABEL_FALLBACK["causation"]]
-    headline = _PROOF_HEADLINES.get(proof.get("tier"), _PROOF_HEADLINE_DEFAULT)
+    headline = _proof_headline(proof)
     w = proof.get("waiting") if isinstance(proof.get("waiting"), dict) else {}
     def _n(v):
         try: return max(0, int(v or 0))
@@ -3409,7 +3429,10 @@ def write_html(d, path, anon=False):
         d["diff"] = None    # anon users are first-time: clean "First crawl" state, not a "- since <date>" delta
     # The proof summary is rendered server-side into the compact panel only; it is NOT embedded in the page payload
     # (the full numbers live in the Pro-gated Proof view). Absent keys leave the payload byte-for-byte unchanged.
-    _proof_panel=_proof_panel_html(d.get("proof"), d.get("proof_url"))
+    # No panel on an anonymous report (no proof exists for anon) or a white-labelled / de-branded one (the agency's
+    # client cannot open the owner-only Rubric /proof link, and it would break the de-brand): same fields the report's
+    # own white-label banner and de-brand logic key off (d["client"], d["_debrand"]).
+    _proof_panel="" if (anon or d.get("client") or d.get("_debrand")) else _proof_panel_html(d.get("proof"), d.get("proof_url"))
     payload=json.dumps({k:v for k,v in d.items() if k not in ("proof","proof_url")},ensure_ascii=False).replace("</","<\\/")
     css=r"""
 :root{--bg:#14140f;--panel:#191914;--panel2:#1e1e18;--line:#2a2a24;--line2:#242420;--muted:#a8a495;--dim:#6b6b65;--txt:#f2f0e4;--white:#FFFFFF;

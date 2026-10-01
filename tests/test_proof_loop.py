@@ -484,7 +484,8 @@ def _tier_a_proof(**over):
          "labels": {"source": "Bing/Copilot data only", "causation": "correlation, not proof of cause", "dated": True},
          "waiting": {"provisional_count": 0, "awaiting_period": 0},
          "events": [{"pages": 8, "compare": {"shown": True,
-                     "fixed": {"before_per_day": 1.4, "after_per_day": 3.9}}}]}
+                     "fixed": {"before_per_day": 1.4, "after_per_day": 3.9},
+                     "untouched": {"before_per_day": 2.0, "after_per_day": 2.1, "n_pages": 41, "insufficient": False}}}]}
     p.update(over)
     return p
 
@@ -497,6 +498,7 @@ def test_write_html_includes_proof_panel_when_present(tmp_path):
     panel = _panel(html)
     assert "Bing/Copilot data only" in panel and "correlation, not proof of cause" in panel   # labels, from the summary
     assert "dated before-and-after result" in panel                                            # the tier headline
+    assert "measured against pages you did not touch" in panel                                 # a sufficient control is shown
     assert f"href=\"{_PROOF_URL}\"" in panel and "See the full proof" in panel                 # link to the full Proof view
     assert "Last updated 12 Sep 2026" in panel                                                 # last-known, dated
 
@@ -527,7 +529,7 @@ def test_proof_panel_labels_come_from_the_summary_and_fall_back_when_missing(tmp
 @pytest.mark.parametrize("tier,needle", [
     ("empty", "No citation data yet"),
     ("cold_start", "matched to your crawl"),
-    ("tier_b", "Whole-site change since your first audit"),
+    ("tier_b", "overall change since your first audit"),
     ("tier_a", "dated before-and-after result"),
     ("waiting", "waiting for enough data"),
 ])
@@ -589,3 +591,66 @@ def test_run_audit_threads_proof_into_the_report(tmp_path, monkeypatch):
     out2 = str(tmp_path / "rep2")
     A.run_audit("https://threading-test.example.com/", out=out2, max_pages=1, links=False)
     assert "proof-panel" not in open(out2 + ".html", encoding="utf-8").read()
+
+
+def _headline(proof, tmp_path, name="h.html"):
+    """The panel's headline div text (the line under the "Proof loop" label)."""
+    p = _panel(_render({**_minimal_report_dict(), "proof": proof}, tmp_path, name))
+    m = _re.search(r"font-size:15px;font-weight:700[^>]*>(.*?)</div>", p, _re.S)
+    assert m, "no headline in the panel"
+    return H_unescape(m.group(1))
+
+
+from html import unescape as H_unescape
+
+
+def _event(untouched):
+    cmp_ = {"shown": True, "fixed": {"before_per_day": 1.4, "after_per_day": 3.9}}
+    if untouched is not None:
+        cmp_["untouched"] = untouched
+    return {"pages": 8, "compare": cmp_}
+
+
+def test_tier_a_headline_drops_the_control_claim_when_the_untouched_control_is_insufficient(tmp_path):
+    weak = _tier_a_proof(events=[_event({"before_per_day": 0.1, "after_per_day": 0.1, "n_pages": 3, "insufficient": True})])
+    h = _headline(weak, tmp_path)
+    assert h == "Your fixes have a dated before-and-after result."
+    assert "pages you did not touch" not in h
+    assert "pages you did not touch" not in _panel(_render({**_minimal_report_dict(), "proof": weak}, tmp_path, "w.html"))
+    ok = _tier_a_proof(events=[_event({"before_per_day": 2.0, "after_per_day": 2.1, "n_pages": 41, "insufficient": False})])
+    assert "measured against pages you did not touch" in _headline(ok, tmp_path, "ok.html")
+
+
+def test_tier_a_headline_only_claims_a_control_it_can_see_and_survives_missing_keys(tmp_path):
+    for odd in (_tier_a_proof(events=[]), {"tier": "tier_a"}, {"tier": "tier_a", "events": "nope"},
+                {"tier": "tier_a", "events": [None, "x", {"compare": None}]},
+                _tier_a_proof(events=[_event(None)]),                                  # shown, but no control cohort at all
+                _tier_a_proof(events=[_event("not-a-dict")]),
+                _tier_a_proof(events=[{"pages": 8, "compare": {"shown": False, "reason": "x"}}])):
+        assert _headline(odd, tmp_path) == "Your fixes have a dated before-and-after result."
+    # every shown event needs a sufficient control: one weak control softens the line
+    mixed = _tier_a_proof(events=[_event({"insufficient": False}), _event({"insufficient": True})])
+    assert "pages you did not touch" not in _headline(mixed, tmp_path)
+
+
+def test_tier_b_headline_carries_the_summary_label_and_falls_back_to_the_spec_wording(tmp_path):
+    custom = {"tier": "tier_b", "tier_b": {"label": "overall change since your first audit (custom)"}}
+    assert "overall change since your first audit (custom)" in _headline(custom, tmp_path)
+    for bare in ({"tier": "tier_b"}, {"tier": "tier_b", "tier_b": {}}, {"tier": "tier_b", "tier_b": {"label": ""}}, {"tier": "tier_b", "tier_b": None}):
+        h = _headline(bare, tmp_path, "b.html")
+        assert "overall change since your first audit" in h and "not the effect of any single fix" in h
+    assert "Whole-site change" not in _headline({"tier": "tier_b"}, tmp_path)           # the old paraphrase is gone
+
+
+def test_no_proof_panel_on_white_labelled_debranded_or_anon_reports(tmp_path):
+    base = {**_minimal_report_dict(), "proof": _tier_a_proof(), "proof_url": _PROOF_URL}
+    shown = _render(base, tmp_path, "plain.html")
+    assert "proof-panel" in shown                                                       # control: the plain report has it
+    for name, extra, kw in (("wl.html", {"client": "Acme Ltd", "agency": "Studio", "intro": "Hi"}, {}),
+                            ("db.html", {"_debrand": True}, {}),
+                            ("both.html", {"client": "Acme Ltd", "_debrand": True}, {}),
+                            ("anon.html", {}, {"anon": True})):
+        html = _render({**base, **extra}, tmp_path, name, **kw)
+        assert "proof-panel" not in html and "Proof loop" not in html, name
+        assert _PROOF_URL not in html and "/proof/example.com" not in html, name        # no Rubric link leaks into the client's copy
+        assert "Your fixes have a dated" not in html, name                              # the summary is still not embedded either
