@@ -3,6 +3,7 @@ shared by the later proof-loop stages."""
 import csv
 import datetime
 import io
+import math
 import re
 
 from aiseo_audit import canon_key, correlate_data
@@ -47,6 +48,8 @@ def parse_bing_export(text: str) -> dict:
             c = float(str(r.get(cite_col) or 0).replace(",", "").strip() or 0)
         except ValueError:
             c = 0.0
+        if not math.isfinite(c):
+            c = 0.0     # "nan"/"inf" parse as floats but jsonb rejects them, which would fail the whole upload job
         key = canon_key(u)
         counts[key] = counts.get(key, 0.0) + c
         rows += 1

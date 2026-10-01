@@ -50,6 +50,7 @@ def test_calibrate_data_matches_pages_across_scheme_www_and_trailing_slash():
 
 
 # --- Task 4: Bing per-URL export parser -------------------------------------
+import math
 import pathlib
 
 import pytest
@@ -678,3 +679,22 @@ def test_scoring_version_is_exposed_and_run_audit_stamps_it(tmp_path, monkeypatc
     assert json.load(open(out + ".json", encoding="utf-8"))["scoring_version"] == A.SCORING_VERSION
     bare = A.run_audit("https://versioned.example.com/", out=None, max_pages=1, links=False)    # crawl + score only (benchmark path)
     assert bare["scoring_version"] == A.SCORING_VERSION
+
+
+def test_parse_bing_export_coerces_non_finite_citations_to_zero():
+    # float() accepts "nan"/"inf"/"-Infinity"; jsonb does not, so a non-finite cell must not poison the total.
+    csv_text = (
+        "Page,Citations\n"
+        "https://example.com/a,5\n"
+        "https://www.example.com/a/,nan\n"        # same key after canon: adds 0, total stays 5
+        "https://example.com/b,inf\n"
+        "https://example.com/c,-Infinity\n"
+        "https://example.com/d,2\n"
+    )
+    out = proof_loop.parse_bing_export(csv_text)
+    assert out["counts"][canon_key("https://example.com/a")] == 5.0
+    assert out["counts"][canon_key("https://example.com/b")] == 0.0
+    assert out["counts"][canon_key("https://example.com/c")] == 0.0
+    assert out["counts"][canon_key("https://example.com/d")] == 2.0
+    assert all(math.isfinite(v) for v in out["counts"].values())
+    assert out["rows"] == 5 and out["urls_seen"] == 5
