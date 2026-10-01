@@ -47,3 +47,51 @@ def test_calibrate_data_matches_pages_across_scheme_www_and_trailing_slash():
     out = calibrate_data(d, cites)
     # fewer than 8 matches returns the error dict, which still reports how many pages joined
     assert out["matched"] == 1
+
+
+# --- Task 4: Bing per-URL export parser -------------------------------------
+import pathlib
+
+import pytest
+
+import proof_loop
+
+FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+
+
+def test_parse_bing_export_header_aware_and_sums_duplicates():
+    csv_text = (
+        "﻿Page,Clicks,Citations,Citation Share\n"
+        "https://www.example.com/a/,10,5,2%\n"
+        "https://example.com/a,3,2,1%\n"   # same page after canon -> sums to 7
+        "https://example.com/b,0,4,1%\n"
+    )
+    out = proof_loop.parse_bing_export(csv_text)
+    assert out["counts"][canon_key("https://example.com/a")] == 7
+    assert out["counts"][canon_key("https://example.com/b")] == 4
+    assert out["rows"] == 3
+
+def test_parse_bing_export_tolerates_url_and_count_header_variants():
+    csv_text = "URL,citations\nhttps://example.com/x,9\n"
+    out = proof_loop.parse_bing_export(csv_text)
+    assert out["counts"][canon_key("https://example.com/x")] == 9
+
+def test_parse_bing_export_missing_citations_column_raises_clearly():
+    with pytest.raises(ValueError) as e:
+        proof_loop.parse_bing_export("Page,Clicks\nhttps://example.com/a,1\n")
+    assert "citation" in str(e.value).lower()
+
+def test_parse_bing_export_real_fixture_end_to_end():
+    # Real per-URL Bing AI Performance export: quoted "Page","Citations" header + utf-8 BOM.
+    text = (FIXTURES / "bing_ai_page_stats.csv").read_text(encoding="utf-8-sig")
+    out = proof_loop.parse_bing_export(text)
+    assert len(out["counts"]) >= 40
+    top = canon_key("https://www.gogochimp.com/blog/best-ab-testing-tools-2026")
+    assert out["counts"][top] == 13972.0
+
+def test_parse_period_reads_iso_range_from_filename_or_preamble_else_none():
+    import datetime
+    d = datetime.date
+    assert proof_loop.parse_period("Page,Citations\n", "ai_2026-08-01_2026-08-28.csv") == (d(2026, 8, 1), d(2026, 8, 28))
+    assert proof_loop.parse_period("Period: 2026-09-01 to 2026-09-28\nPage,Citations\n") == (d(2026, 9, 1), d(2026, 9, 28))
+    assert proof_loop.parse_period("Page,Citations\nhttps://example.com/a,1\n", "export.csv") == (None, None)
