@@ -73,16 +73,25 @@ def parse_period(text: str, filename: str = ""):
 def diff_crawls(prev: dict, cur: dict) -> dict:
     """Per-page fix (fail->pass) and regression (pass->fail) detection between two
     crawl_page_checks stamps, like-with-like: only checks evaluated in BOTH crawls
-    and only pages present in BOTH crawls count."""
+    and only pages present in BOTH crawls count.
+
+    A check on a page is in exactly one state per crawl: failing (in page_fails), not-applicable
+    (in page_na) or GOOD (evaluated, and neither). A fix is failing -> GOOD and a regression is
+    GOOD -> failing, so a check that merely goes bad -> na (a page that became noindexed or was
+    reclassified) is NOT a fix, and na -> bad is NOT a regression. page_na is read defensively:
+    a stamp written before it existed (or a null value) reads as {} and behaves as it always did."""
     common_checks = set(prev.get("checks_evaluated") or []) & set(cur.get("checks_evaluated") or [])
     pf_prev, pf_cur = prev.get("page_fails") or {}, cur.get("page_fails") or {}
+    na_prev, na_cur = prev.get("page_na") or {}, cur.get("page_na") or {}
     common_urls = set(pf_prev) & set(pf_cur)
     fixes, regressions = [], []
     for u in sorted(common_urls):
-        was = set(pf_prev[u]) & common_checks
-        now = set(pf_cur[u]) & common_checks
-        fixed = sorted(was - now)        # failing before, passing now
-        regressed = sorted(now - was)    # passing before, failing now
+        fail_prev = set(pf_prev[u]) & common_checks
+        fail_cur = set(pf_cur[u]) & common_checks
+        good_prev = common_checks - fail_prev - set(na_prev.get(u) or [])
+        good_cur = common_checks - fail_cur - set(na_cur.get(u) or [])
+        fixed = sorted(fail_prev & good_cur)        # failing before, GOOD now (not merely not-applicable)
+        regressed = sorted(good_prev & fail_cur)    # GOOD before, failing now (not merely newly applicable)
         base = {"url": u, "prev_crawl_at": prev.get("crawled_at"), "detected_at": cur.get("crawled_at")}
         if fixed:
             fixes.append({**base, "checks": fixed})

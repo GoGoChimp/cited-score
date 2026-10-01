@@ -127,6 +127,75 @@ def test_diff_ignores_pages_not_in_both_crawls():
     assert out["fixes"] == [] and out["regressions"] == []
 
 
+# --- Honesty fix: a check that goes fail -> not-applicable is NOT a fix ------
+def _stamp_na(ver, evaluated, fails, na, at):
+    return {"scoring_version": ver, "checks_evaluated": evaluated, "page_fails": fails, "page_na": na, "crawled_at": at}
+
+def test_diff_bad_to_na_is_not_a_fix():
+    # The page dropped out of the check (e.g. noindexed / reclassified): bad -> na must not count as a fix.
+    prev = _stamp_na("v1", ["a", "b"], {"example.com/p": ["a", "b"]}, {"example.com/p": []}, "2026-09-01T00:00:00Z")
+    cur  = _stamp_na("v1", ["a", "b"], {"example.com/p": ["b"]},      {"example.com/p": ["a"]}, "2026-09-08T00:00:00Z")
+    out = proof_loop.diff_crawls(prev, cur)
+    assert out["fixes"] == []                                  # a: bad -> na (not a fix); b: still bad
+    assert out["regressions"] == []
+
+def test_diff_bad_to_na_alongside_a_real_fix_keeps_only_the_real_fix():
+    prev = _stamp_na("v1", ["a", "b"], {"example.com/p": ["a", "b"]}, {}, "2026-09-01T00:00:00Z")
+    cur  = _stamp_na("v1", ["a", "b"], {"example.com/p": []},         {"example.com/p": ["a"]}, "2026-09-08T00:00:00Z")
+    out = proof_loop.diff_crawls(prev, cur)
+    assert [f["checks"] for f in out["fixes"]] == [["b"]]      # b: bad -> good is the only genuine fix
+    assert out["fixes"][0]["url"] == "example.com/p"
+
+def test_diff_bad_to_good_is_a_fix_when_page_na_present_but_check_not_na():
+    prev = _stamp_na("v1", ["a", "b"], {"example.com/p": ["a"]}, {"example.com/p": ["b"]}, "2026-09-01T00:00:00Z")
+    cur  = _stamp_na("v1", ["a", "b"], {"example.com/p": []},    {"example.com/p": ["b"]}, "2026-09-08T00:00:00Z")
+    out = proof_loop.diff_crawls(prev, cur)
+    assert out["fixes"][0]["checks"] == ["a"]                  # a: bad -> good; b: na -> na is neither
+
+def test_diff_good_to_bad_regression_still_works_with_page_na():
+    prev = _stamp_na("v1", ["a", "b"], {"example.com/q": []},      {"example.com/q": []},    "2026-09-01T00:00:00Z")
+    cur  = _stamp_na("v1", ["a", "b"], {"example.com/q": ["a"]},   {"example.com/q": []},    "2026-09-08T00:00:00Z")
+    out = proof_loop.diff_crawls(prev, cur)
+    assert [r["checks"] for r in out["regressions"]] == [["a"]]
+    assert out["fixes"] == []
+
+def test_diff_na_to_bad_is_not_a_regression():
+    # The check was not applicable before, so it was never GOOD: na -> bad is not a pass -> fail regression.
+    prev = _stamp_na("v1", ["a", "b"], {"example.com/q": []},      {"example.com/q": ["a"]}, "2026-09-01T00:00:00Z")
+    cur  = _stamp_na("v1", ["a", "b"], {"example.com/q": ["a"]},   {"example.com/q": []},    "2026-09-08T00:00:00Z")
+    out = proof_loop.diff_crawls(prev, cur)
+    assert out["regressions"] == [] and out["fixes"] == []
+
+def test_diff_na_to_good_is_not_a_fix():
+    prev = _stamp_na("v1", ["a"], {"example.com/p": []}, {"example.com/p": ["a"]}, "2026-09-01T00:00:00Z")
+    cur  = _stamp_na("v1", ["a"], {"example.com/p": []}, {"example.com/p": []},    "2026-09-08T00:00:00Z")
+    out = proof_loop.diff_crawls(prev, cur)
+    assert out["fixes"] == [] and out["regressions"] == []
+
+def test_diff_old_stamp_without_page_na_behaves_as_before():
+    # Stamps written before page_na existed: na is indistinguishable from good, so bad -> absent is still a fix.
+    prev = _stamp("v1", ["a", "b"], {"example.com/p": ["a", "b"], "example.com/q": []}, "2026-09-01T00:00:00Z")
+    cur  = _stamp("v1", ["a", "b"], {"example.com/p": ["b"],      "example.com/q": ["a"]}, "2026-09-08T00:00:00Z")
+    assert "page_na" not in prev and "page_na" not in cur
+    out = proof_loop.diff_crawls(prev, cur)
+    assert {f["url"]: f["checks"] for f in out["fixes"]} == {"example.com/p": ["a"]}
+    assert {r["url"]: r["checks"] for r in out["regressions"]} == {"example.com/q": ["a"]}
+
+def test_diff_page_na_none_or_missing_url_is_tolerated():
+    # A null column value (None) or a page with no page_na entry must read as "nothing na".
+    prev = _stamp_na("v1", ["a"], {"example.com/p": ["a"]}, None, "2026-09-01T00:00:00Z")
+    cur  = _stamp_na("v1", ["a"], {"example.com/p": []},    {"example.com/other": ["a"]}, "2026-09-08T00:00:00Z")
+    out = proof_loop.diff_crawls(prev, cur)
+    assert out["fixes"][0]["checks"] == ["a"]
+
+def test_diff_mixed_old_prev_new_cur_excludes_na_in_cur():
+    # prev is an old stamp (no page_na); cur is new. bad -> na on cur must still not be a fix.
+    prev = _stamp("v1", ["a"], {"example.com/p": ["a"]}, "2026-09-01T00:00:00Z")
+    cur  = _stamp_na("v1", ["a"], {"example.com/p": []}, {"example.com/p": ["a"]}, "2026-09-08T00:00:00Z")
+    out = proof_loop.diff_crawls(prev, cur)
+    assert out["fixes"] == []
+
+
 def test_confirm_transitions_confirms_held_fix_cancels_flipback():
     provisional = [
         {"id": "1", "url": "example.com/p", "kind": "fixed", "checks": ["a"]},
