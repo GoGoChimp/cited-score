@@ -43,3 +43,6 @@ fonts/
 # anonymous usage analytics (local batch)
 usage_events.jsonl
 usage_events.jsonl.send
+
+# sdd workspace (scratch)
+.superpowers/
