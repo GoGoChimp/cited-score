@@ -36,6 +36,12 @@ ASSET_RE = re.compile(r"\.(?:jpg|jpeg|png|gif|webp|svg|avif|css|js|mjs|json|xml|
 QSTART = re.compile(r"^\s*(what|how|why|when|which|who|where|does|do|can|is|are|should|will|has|have)\b", re.I)
 NUM_RE = re.compile(r"(?<![\w-])\d[\d,.]*\s?%?")
 WORKERS = 6
+# Identifies this revision of the scoring (the set of checks and their weights). run_audit stamps it on every result as
+# data["scoring_version"]; the worker records it on each crawl_page_checks row (so the proof loop only diffs like with
+# like) and on site_proof (so a change here makes the scheduler recompute every stored proof). BUMP IT whenever a check is
+# added, removed, renamed or re-weighted, or the scoring otherwise changes; leave it alone for copy, layout or other
+# changes that cannot move a score.
+SCORING_VERSION = "2026-10-01"
 
 # ------------------------------------------------------------------ SSRF guard (online worker only)
 # When CITED_SSRF_GUARD=1 (set by the public online worker), every fetch/render target must resolve to a
@@ -800,6 +806,15 @@ def finalize_blocks(pages):
     sets JSON-safe p['blocks'] and drops the transient p['_blocks']."""
     from collections import Counter
     allb=[(p,bb) for p in pages for bb in (p.get("_blocks") or [])]
+    # Drop passages a page repeats verbatim (same heading + snippet) so one passage never shows as two identical
+    # rows in the Most/Least quotable lists or the per-page detail, and so a duplicated passage does not deflate its
+    # own uniqueness score below (its shingles would otherwise count as site-wide duplicates of itself).
+    _seenb=set(); _db=[]
+    for _p,_bb in allb:
+        _k=(id(_p),_bb["heading"],_bb["snippet"])
+        if _k in _seenb: continue
+        _seenb.add(_k); _db.append((_p,_bb))
+    allb=_db
     shcount=Counter()
     for _,bb in allb:
         for x in bb["_sh"]: shcount[x]+=1
@@ -927,12 +942,15 @@ def schema_quality(jobjs, page_text=""):
     what an AI can weigh is whether the declared facts are MACHINE-VERIFIABLE vs prose-vague). Advisory. Flags a
     present-but-ambiguous fact so it reads as a fix, not a verdict: a price without priceCurrency or non-numeric,
     a date not in ISO-8601, or a vague-worded name/description/offer value ("affordable", "leading", "up to").
-    Also flags schema-to-page CONSISTENCY: a declared price or rating that appears NOWHERE on the visible page,
-    i.e. structured data that is stale or contradicts what the buyer (and the engine) actually reads."""
+    Also flags schema-to-page CONSISTENCY: a declared price, rating, phone or address that appears NOWHERE on the
+    visible page, i.e. structured data that is stale or contradicts what the buyer (and the engine) actually reads."""
     vague=[]
     _pc=re.sub(r"[,\s]","",(page_text or ""))                        # compacted page text, for digit-run matching
+    _pd=re.sub(r"\D","",(page_text or ""))                           # digits-only page text, for phone matching
     _has_price=bool(_PRICE_RE.search(page_text or ""))
     _has_reviewword=bool(re.search(r"\b(reviews?|ratings?|stars?|out of 5|/\s?5|trustpilot|rated)\b",(page_text or "").lower()))
+    _has_phone=bool(re.search(r"(?:\+\d{1,3}[\s.\-]?)?\(?0?\d{2,4}\)?[\s.\-]\d{3,4}[\s.\-]?\d{2,4}",(page_text or "")))   # a phone-shaped run on the page
+    _has_postcode=bool(re.search(r"\b[A-Za-z]{1,2}\d[A-Za-z\d]?\s*\d[A-Za-z]{2}\b",(page_text or ""))) or bool(re.search(r"\b\d{5}(?:-\d{4})?\b",(page_text or "")))   # UK postcode or US ZIP
     def _digits(x):
         m=re.search(r"\d[\d,]*(?:\.\d+)?",str(x)); return m.group(0).replace(",","") if m else None
     def walk(n):
@@ -956,6 +974,23 @@ def schema_quality(jobjs, page_text=""):
                 _rn=_digits(_ar.get("ratingValue"))
                 if _rn and _rn not in _pc:
                     vague.append({"field":"aggregateRating","value":str(_ar.get("ratingValue"))[:40],"issue":"rating in schema, not shown on the page"})
+            # CONSISTENCY: a telephone or postcode in schema that CONTRADICTS the one shown on the page (stale or
+            # wrong contact details an AI would cite verbatim). Only fires when the page actually shows a phone /
+            # postcode of its own that differs, so "declared in schema but simply not repeated on this page" is NOT
+            # flagged. Matched on normalised digits/characters so a formatting difference never trips a false flag.
+            _tel=n.get("telephone")
+            if isinstance(_tel,str) and _tel.strip() and _has_phone:
+                _td=re.sub(r"\D","",_tel)
+                if len(_td)>=7 and _td[-7:] not in _pd:
+                    vague.append({"field":"telephone","value":_tel.strip()[:40],"issue":"a different phone is shown on the page - stale or mismatched schema"})
+            _addr=n.get("address")
+            for _a in ([_addr] if isinstance(_addr,dict) else (_addr if isinstance(_addr,list) else [])):
+                if isinstance(_a,dict):
+                    _pcode=_a.get("postalCode")
+                    if isinstance(_pcode,str) and _pcode.strip() and _has_postcode:
+                        _pcn=re.sub(r"\s","",_pcode).lower()
+                        if len(_pcn)>=4 and _pcn not in re.sub(r"\s","",(page_text or "")).lower():
+                            vague.append({"field":"address","value":_pcode.strip()[:40],"issue":"a different postcode is shown on the page - stale or mismatched schema"})
             for df in ("datePublished","dateModified"):
                 dv=n.get(df)
                 if isinstance(dv,str) and dv and not _ISO_DATE_RE.match(dv):
@@ -1630,6 +1665,51 @@ def site_checks(origin, domain):
         out.append(chk("llms","info","not found"))
     return out
 
+def _representative_sample(urls, cap, origin):
+    """Pick a representative, DETERMINISTIC subset of `cap` page URLs for a CAPPED (preview) crawl, so the
+    preview's weakest-pillar and top-fix diagnosis agrees with the full crawl instead of reflecting whichever
+    pages happened to be reached first. Always keeps the homepage/seed and the main commercial pages, then
+    spreads the rest across sections (a proxy for page type) and depths. Same input -> same output (no
+    randomness), so two previews of the same site agree with each other."""
+    if not urls or cap <= 0 or len(urls) <= cap:
+        return list(urls)
+    home = (origin + "/").rstrip("/")
+    def _path(u): return urllib.parse.urlparse(u).path
+    def _depth(u): return len([x for x in _path(u).strip("/").split("/") if x])
+    def _section(u):
+        segs = [x for x in _path(u).strip("/").split("/") if x]
+        return segs[0] if segs else ""
+    KEY = ("pricing", "price", "plans", "service", "product", "solution", "feature", "about",
+           "contact", "shop", "store", "book", "demo", "quote", "case-stud", "portfolio")
+    def _is_key(u):
+        pl = _path(u).lower()
+        return any(t in pl for t in KEY)
+    seen = set(); picked = []
+    def take(u):
+        k = u.rstrip("/")
+        if k not in seen and len(picked) < cap:
+            seen.add(k); picked.append(u)
+    # 1) homepage / seed (already at the front of the pool) + the top-level commercial pages (depth <= 2)
+    for u in urls:
+        if u.rstrip("/") == home or _depth(u) == 0:
+            take(u)
+    for u in sorted((u for u in urls if _is_key(u) and _depth(u) <= 1), key=lambda u: (_depth(u), len(u), u)):
+        take(u)
+    # 2) spread the rest across sections (types) and depths: round-robin across sections, shallowest-first
+    #    inside each, so no single section (e.g. /blog) dominates and the selection is stable run to run.
+    rest = [u for u in urls if u.rstrip("/") not in seen]
+    buckets = {}
+    for u in sorted(rest, key=lambda u: (_depth(u), len(u), u)):
+        buckets.setdefault(_section(u), []).append(u)
+    bkeys = sorted(buckets); pos = {k: 0 for k in bkeys}
+    while len(picked) < cap and any(pos[k] < len(buckets[k]) for k in bkeys):
+        for k in bkeys:
+            if pos[k] < len(buckets[k]):
+                take(buckets[k][pos[k]]); pos[k] += 1
+                if len(picked) >= cap:
+                    break
+    return picked[:cap]
+
 def all_urls(origin, domain, cap, start=None):
     """Discover page URLs: sitemaps (following sitemap-INDEX files into their child sitemaps,
     located via robots.txt 'Sitemap:' lines + common names), plus links from the homepage and
@@ -1647,7 +1727,7 @@ def all_urls(origin, domain, cap, start=None):
     if rob: sm_seed += re.findall(r"(?im)^\s*sitemap:\s*(\S+)", rob)
     sm_seed += [origin+"/sitemap.xml", origin+"/sitemap_index.xml", origin+"/sitemap-index.xml", origin+"/wp-sitemap.xml"]
     # 2. fetch sitemaps, recursing one-or-more levels through index files, until we have enough page urls
-    want=(cap*3 if cap and cap>0 else 5000)
+    want=(min(max(cap*8, 200), 2000) if (cap and cap>0) else 5000)   # wider pool for representative sampling (sitemap XML only, cheap)
     sm_urls=[]; seen_sm=set(); queue=list(dict.fromkeys(sm_seed)); fetched=0
     while queue and len(sm_urls)<want and fetched<300:
         smu=queue.pop(0)
@@ -1703,7 +1783,7 @@ def all_urls(origin, domain, cap, start=None):
         pg=frontier[qi]; qi+=1
         before=len(ordered); _harvest(pg)
         for u in ordered[before:]: frontier.append(u)          # follow newly discovered links (pagination chains)
-    if cap and cap>0: ordered=ordered[:cap]
+    if cap and cap>0: ordered=_representative_sample(ordered, cap, origin)
     sitemap_paths={(urllib.parse.urlparse(u).path.rstrip("/") or "/") for u in sm_urls}
     return ordered, sitemap_paths
 
@@ -2228,6 +2308,34 @@ def click_resilience(page):
     return {"tool":"Rubric click_resilience","url":page.get("url"),"type":typ,"words":wc,
             "band":band,"signal_score":score,"reasons":reasons,"advice":advice}
 
+_TRACKING_PREFIXES = ("utm_",)
+_TRACKING_EXACT = {"fbclid", "gclid", "mc_eid", "mc_cid", "gclsrc", "_hsenc", "_hsmi", "igshid"}
+
+def canon_url(u: str):
+    """One canonical form for every URL join in the proof loop. Returns (key, display).
+    key: scheme-insensitive, www stripped, host lowercased, trailing slash removed,
+    tracking params stripped, path case and meaningful query preserved."""
+    display = (u or "").strip()
+    try:
+        p = urllib.parse.urlsplit(display if "//" in display else "https://" + display)
+        host = (p.hostname or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+        if p.port:
+            host = f"{host}:{p.port}"
+        path = p.path.rstrip("/") or ""
+        q = [(k, v) for k, v in urllib.parse.parse_qsl(p.query, keep_blank_values=True)
+             if not (k.lower() in _TRACKING_EXACT or k.lower().startswith(_TRACKING_PREFIXES))]
+        q.sort()
+        query = urllib.parse.urlencode(q)
+        key = host + path + (("?" + query) if query else "")
+    except Exception:
+        key = display.lower().rstrip("/")
+    return key, display
+
+def canon_key(u: str) -> str:
+    return canon_url(u)[0]
+
 def correlate_data(pages, cites=None, logrows=None):
     """Deterministic per-URL JOIN of a crawl with citation counts (cites: {url:count}) and server-log AI-bot
     activity (logrows from load_access_log). Reliable join so the analysis doesn't depend on the model
@@ -2240,14 +2348,14 @@ def correlate_data(pages, cites=None, logrows=None):
         for ua,u,status,day in logrows:
             for name,pat in matchers:
                 if pat.search(ua):
-                    h=log_hits.setdefault(u.rstrip("/"),{"ai":0,"cite":0}); h["ai"]+=1
+                    h=log_hits.setdefault(canon_key(u),{"ai":0,"cite":0}); h["ai"]+=1
                     if name in CITE_TIME: h["cite"]+=1
                     break
     rows=[]
     have_cites=bool(cites)
     for p in pages:
         if p.get("status")!=200: continue
-        k=p["url"].rstrip("/"); lh=log_hits.get(k) or {}
+        k=canon_key(p["url"]); lh=log_hits.get(k) or {}
         cval=cites.get(k)
         if cval is None and have_cites: cval=0   # a citation export lists every page that earned citations; absent => 0 reported (not "unknown")
         rows.append({"url":p["url"],"type":p.get("type"),"score":p.get("score"),
@@ -2516,7 +2624,7 @@ def value_bridge(url, perf_csv, value_per_click=0.0, max_pages=0, progress=None)
     out = {"tool": "Rubric value_bridge", "domain": d.get("domain"), "pages_matched": matched,
            "total_clicks_in_data": round(tot_clicks),
            "clicks_at_risk_low": round(lo), "clicks_at_risk_high": round(hi), "top_at_risk_pages": at_risk[:15],
-           "basis": "AI Overviews cut organic clicks ~40% where they appear (Agarwal & Sen field RCT 2026); risk scales with how weakly citable each page is (1 - Rubric/100). Cited pages earn ~35% higher CTR (Seer 2025) = the recovery upside.",
+           "basis": "AI Overviews cut organic clicks ~40% where they appear (Agarwal & Sen field RCT 2026); risk scales with how weakly citable each page is (1 - Rubric/100). Cited pages earn about +120% organic clicks per impression versus uncited ones, though searches with an AI Overview still see fewer clicks overall (Seer v3, April 2026) = the recovery upside.",
            "note": "A RANGED estimate, not attribution. Fix the low-scoring high-traffic pages first: that is where citability protects the most clicks."}
     if value_per_click and value_per_click > 0:
         out["value_at_risk_low"] = round(lo * value_per_click, 2)
@@ -3032,8 +3140,20 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
     # gate fix +50 and all the others +0, which reads as "fix robots and nothing else matters".
     gbase = _ov_unc if access_blocked else overall
     gbase_eng = _eng_unc if access_blocked else eng
+    # Per-page baseline scores (current state). Each fix's "points recovered" = the total lift it adds across the
+    # pages it touches (reach x per-page lift), at full precision -- the rounded site-AVERAGE delta collapses almost
+    # every fix onto 0 or 1 and produces ties, while total recovered spreads them into a real priority order.
+    base_page_o = [page_scores(dict(p["cs"]), prof)[0] for p in ok]
+    # A template change is one piece of work however many pages it touches; a per-page copy/meta edit is one piece of
+    # work PER page. So effort scales with pages for the per-page kind, otherwise a 47-page rewrite would outrank a
+    # single template fix just for touching more pages (the opposite of value-per-hour). Mirror of the JS TTYPE map.
+    _TEMPLATE_IDS = {"schema","parity","faq","canonical","robots","sitemap","reachability","freshness","internal",
+                     "http","entity","schemacomplete","noindex","speed","schemavalidity","orphans","brokenlinks","reviewschema"}
+    _EFFORT_HRS = {"Low": 1, "Med": 2, "High": 3}
+    _aff = {}
     for it in issues:
         cid=it["id"]; affected=set(it["bad"])|set(it["warn"])
+        _aff[cid]=affected
         site_fix = cid in SITE_IDS
         sim=[]
         for p in ok:
@@ -3041,15 +3161,20 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
             if site_fix: st[cid]="good"
             elif p["url"] in affected: st[cid]="good"
             o,_,en2=page_scores(st, prof); sim.append((o,en2))
+        _rec = sum(max(0, sim[i][0]-base_page_o[i]) for i in range(len(sim)))   # points recovered site-wide
         if access_blocked and cid in ("robots","reachability"):
             it["gain_overall"]=gbase-base                   # unlock jump: today -> unlocked baseline
             eg={e:gbase_eng[e]-base_eng[e] for e in ENGINE_WEIGHTS}
+            _rec = max(_rec, max(1, gbase-base)*len(ok))    # the gate fix unlocks the whole site; rank it first
         else:
             _so=round(sum(s[0] for s in sim)/len(sim)) if sim else gbase
             _se={e:(round(sum(s[1][e] for s in sim)/len(sim)) if sim else gbase_eng[e]) for e in ENGINE_WEIGHTS}
             it["gain_overall"]=_so-gbase                    # real per-fix increment vs the (unlocked) baseline
             eg={e:_se[e]-gbase_eng[e] for e in ENGINE_WEIGHTS}
         it["gain_engines"]=eg
+        it["recovered"]=round(_rec)
+        _base_hrs = _EFFORT_HRS.get(it.get("effort"),2)
+        it["_effort_scaled"] = _base_hrs if (cid in _TEMPLATE_IDS or site_fix) else _base_hrs*max(1,it["count"])
         te=max(eg.items(),key=lambda x:x[1]) if eg else ("",0)
         it["top_engine"]=te[0]; it["top_engine_gain"]=te[1]
     # realistic "if you clear the plan" projection. The all-checks-good re-score is ~100 for ANY site - a
@@ -3065,12 +3190,10 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
     # per-engine bars, the effort panel and the roadmap all sum to. (The all-checks-good re-score tops out at a
     # vanity ~100 no real site reaches, so it is never the headline - the note above always intended this.)
     proj_all = min(100, overall + sum(max(0, it.get("gain_overall", 0)) for it in issues))
-    # Rank by score movement PER HOUR OF WORK (which the report copy already promises) = gain / effort-hours,
-    # then severity, then raw gain, then pages. This surfaces a low-effort high-impact fix (e.g. the H1-snippet
-    # window) ahead of a bigger-but-slower one, and it is the SAME order the roadmap uses below, so the action
-    # plan and the roadmap can never disagree.
-    _EFFORT_HRS = {"Low": 1, "Med": 2, "High": 3}
-    issues.sort(key=lambda x:(-(max(0,x["gain_overall"])/_EFFORT_HRS.get(x.get("effort"),2)), x["severity"]!="bad", -x["gain_overall"], -x["count"]))
+    # Rank by POINTS RECOVERED PER HOUR OF WORK = recovered / effort-scaled (effort already grows with pages for
+    # per-page fixes, computed above). Continuous, so it spreads fixes into a real priority order; the old rounded
+    # site-average gain only took three values (0/1/2) and produced ties, not an order. Same order the roadmap uses.
+    issues.sort(key=lambda x:(-(x.get("recovered",0)/max(1,x.get("_effort_scaled",2))), x["severity"]!="bad", -x.get("recovered",0), -x["count"]))
     # Roadmap phases = that same priority ranking split into thirds (Days 0-30 / 30-60 / 60-90). Carries EVERY
     # actionable fix (gain>0 or an error), so clearing the whole plan reaches the projected score above, and the
     # timeline can never contradict the action-plan order because it IS the action-plan order.
@@ -3079,6 +3202,32 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
     _n = len(_act) or 1
     for _idx, it in enumerate(_act):
         plan_phases[1 if _idx < _n/3.0 else (2 if _idx < 2*_n/3.0 else 3)].append(it["id"])
+    # The "vital few": the top fixes (in the order above) whose COMBINED effect recovers ~80% of the score on the
+    # table. Combined (re-scored together), not summed, because fixes overlap on a page. Capped to a genuinely short
+    # list: at least 3, at most 10. The report states whatever is true ("these 7 recover 80%" / "these 10 recover 62%").
+    def _combined_avg(idset):
+        if not ok: return gbase
+        tot=0
+        for p in ok:
+            st=dict(p["cs"])
+            for _cid in idset:
+                if _cid in SITE_IDS or p["url"] in _aff.get(_cid,()): st[_cid]="good"
+            tot += page_scores(st, prof)[0]
+        return tot/len(ok)
+    plan_vital=None
+    if _act:
+        _all_ids=[it["id"] for it in _act]
+        _recoverable=_combined_avg(set(_all_ids))-gbase
+        if _recoverable >= 1:
+            _hi=min(10,len(_act)); _cut=_hi; _pct=0
+            for _k in range(3, _hi+1):
+                _ck=_combined_avg(set(_all_ids[:_k]))-gbase
+                if _ck >= 0.80*_recoverable:
+                    _cut=_k; _pct=round(100*_ck/_recoverable); break
+            else:
+                _pct=round(100*(_combined_avg(set(_all_ids[:_hi]))-gbase)/_recoverable)
+            plan_vital={"k":min(len(_act),max(3,_cut)),"pct":min(100,max(0,_pct))}
+    for _it in issues: _it.pop("_effort_scaled", None)
     # Fan-out readiness: for each of the 10 fan-out types, how many supporting checks the site wins vs fails.
     # Entity + Comparison lead (they drove ~97% of brand mentions). "won" = the check is not a failing issue.
     _failing = {it["id"] for it in issues}
@@ -3113,7 +3262,7 @@ def build(domain, origin, pages, sitecx, sitemap_paths=None, linkstatus=None, cl
             "profile":(prof or {}),"profile_up":sorted([c for c,m in (prof or {}).items() if m>1]),
             "profile_down":sorted([c for c,m in (prof or {}).items() if m<1]),
             "redirect_home":[{"url":p["url"],"to":p.get("redirect_home")} for p in content if p.get("redirect_home")],
-            "plan_phases":plan_phases,"pages":content}
+            "plan_phases":plan_phases,"plan_vital":plan_vital,"pages":content}
 
 # ------------------------------------------------------------------ re-crawl diff
 def apply_diff(data, outbase):
@@ -3177,20 +3326,23 @@ def spearman(xs, ys):
     return num/den if den else 0.0
 
 def parse_cites(text):
-    """Parse 'url,citations' rows (Bing WMT AI Performance export) -> {url_no_slash: float}."""
+    """Parse 'url,citations' rows (Bing WMT AI Performance export) -> {canon_key(url): float}.
+    Rows whose URLs collapse to the same canonical key (scheme, www, trailing slash, tracking params)
+    are summed, not overwritten."""
     cites={}
     for row in csv.reader(text.splitlines()):
         if len(row)<2: continue
-        try: cites[row[0].strip().rstrip("/")]=float(str(row[1]).replace(",","").strip())
+        try: val=float(str(row[1]).replace(",","").strip())
         except ValueError: continue
+        k=canon_key(row[0]); cites[k]=cites.get(k,0.0)+val
     return cites
 
 def calibrate_data(d, cites):
     """Spearman-correlate the report's scores vs real per-URL citations. Returns a dict for UI/CLI."""
-    rows=[p for p in d["pages"] if p["url"].rstrip("/") in cites]
+    rows=[p for p in d["pages"] if canon_key(p["url"]) in cites]
     if len(rows)<8:
         return {"error":f"Only {len(rows)} of {len(d['pages'])} crawled pages matched the citations file (need at least 8 for a stable correlation).","matched":len(rows)}
-    y=[cites[p["url"].rstrip("/")] for p in rows]
+    y=[cites[canon_key(p["url"])] for p in rows]
     out={"matched":len(rows),"total":len(d["pages"]),
          "overall":spearman([p["score"] for p in rows],y),
          "pillars":{pl:spearman([p["pillars"][pl] for p in rows],y) for pl in PILLARS},
@@ -3304,6 +3456,80 @@ def mcp_audit(d):
     }
 
 
+# Compact "Proof loop" panel for the audit report (secondary surface; the full render is the web Proof view).
+# `proof` is a site_proof.summary dict plus the row's own "tier" (the summary does not repeat it) and, optionally,
+# "computed_at". It is the LAST-KNOWN proof, computed before this crawl (the report is written during the crawl, the
+# proof is recomputed after it), so the panel says so and always points at the live Proof view. The honesty labels are
+# read FROM the summary; the fallback wording is the same text the engine stamps (proof_loop.LABELS) and only covers a
+# summary somehow missing them, so a label can never silently go missing. No per-site numbers are shown here: the
+# figures live in the (Pro-gated) Proof view, never in the report page.
+_PROOF_LABEL_FALLBACK = {"source": "Bing/Copilot data only", "causation": "correlation, not proof of cause"}
+_PROOF_HEADLINES = {
+    "empty": "No citation data yet. Upload your Bing AI Performance export to measure what your fixes change.",
+    "cold_start": "Your Bing citations are matched to your crawl. Fix a page that is cited, then re-crawl, to start your proof.",
+    "waiting": "Fixes detected, waiting for enough data to measure them.",
+}
+_PROOF_HEADLINE_DEFAULT = "See what your fixes changed in your Bing/Copilot citations."
+_PROOF_TIER_B_LABEL = "overall change since your first audit"   # spec section 9 wording; the summary's tier_b.label wins when present
+
+def _proof_headline(proof):
+    """The one plain line per tier. Two tiers need the summary, so they cannot overclaim:
+    tier_b carries the spec's exact label (summary tier_b.label, never a paraphrase) and is never a per-fix claim;
+    tier_a only says "measured against pages you did not touch" when an event positively shows a SUFFICIENT untouched
+    control (compare.untouched present and not flagged insufficient). A missing control or one the summary itself
+    calls insufficient gets the plain dated before-and-after line, so the report never asserts a fair control it lacks."""
+    tier = proof.get("tier")
+    if tier == "tier_b":
+        tb = proof.get("tier_b") if isinstance(proof.get("tier_b"), dict) else {}
+        label = str(tb.get("label") or _PROOF_TIER_B_LABEL).strip().rstrip(".")
+        return f"Whole site: {label}. This is not the effect of any single fix."
+    if tier == "tier_a":
+        events = proof.get("events") if isinstance(proof.get("events"), list) else []
+        def _cmp(ev): return (ev.get("compare") if isinstance(ev, dict) else None) or {}
+        def _ctl(ev): return _cmp(ev).get("untouched") if isinstance(_cmp(ev).get("untouched"), dict) else None
+        shown = [ev for ev in events if _cmp(ev).get("shown")]
+        controlled = bool(shown) and all(_ctl(ev) is not None and not _ctl(ev).get("insufficient") for ev in shown)
+        return ("Your fixes have a dated before-and-after result, measured against pages you did not touch." if controlled
+                else "Your fixes have a dated before-and-after result.")
+    return _PROOF_HEADLINES.get(tier, _PROOF_HEADLINE_DEFAULT)
+
+def _proof_panel_html(proof, proof_url=None):
+    """Server-rendered compact proof panel, or "" when there is no proof (the report is then byte-for-byte unchanged)."""
+    if not proof or not isinstance(proof, dict): return ""
+    e = H.escape
+    labels = proof.get("labels") if isinstance(proof.get("labels"), dict) else {}
+    chips = [labels.get("source") or _PROOF_LABEL_FALLBACK["source"],
+             labels.get("causation") or _PROOF_LABEL_FALLBACK["causation"]]
+    headline = _proof_headline(proof)
+    w = proof.get("waiting") if isinstance(proof.get("waiting"), dict) else {}
+    def _n(v):
+        try: return max(0, int(v or 0))
+        except (TypeError, ValueError): return 0
+    prov, awaiting = _n(w.get("provisional_count")), _n(w.get("awaiting_period"))
+    wait = []
+    if prov: wait.append(f"{prov} {'fix' if prov == 1 else 'fixes'} detected, awaiting the confirming crawl.")
+    if awaiting: wait.append(f"{awaiting} confirmed {'fix' if awaiting == 1 else 'fixes'} cannot be measured yet.")
+    when = ""
+    try: when = datetime.date.fromisoformat(str(proof.get("computed_at") or "")[:10]).strftime("%d %b %Y").lstrip("0")
+    except ValueError: pass
+    MM = "font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;font-weight:600;color:#8b8b81"
+    link = ""
+    if isinstance(proof_url, str) and proof_url.startswith(("https://", "http://", "/")):
+        link = (f"<a href=\"{e(proof_url, quote=True)}\" style='align-self:flex-start;font-size:13px;font-weight:800;"
+                f"color:#f2f0e4;border:1px solid #2a2a24;padding:7px 12px'>See the full proof &rarr;</a>")
+    return (
+        "<div class='wrap' style='padding-top:0'><section class='proof-panel' aria-label='Proof loop' "
+        "style='background:#191914;border:1px solid #2a2a24;padding:18px 22px;display:flex;flex-direction:column;gap:10px'>"
+        "<div style='display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap'>"
+        "<div style='font-size:12px;font-weight:800;letter-spacing:2.4px;text-transform:uppercase;color:#f2f0e4'>Proof loop</div>"
+        + (f"<div style=\"{MM}\">Last updated {e(when)}. Open the full proof for the current state.</div>" if when else "")
+        + "</div>"
+        f"<div style='font-size:15px;font-weight:700;line-height:1.45;color:#f2f0e4;max-width:880px'>{e(headline)}</div>"
+        + (f"<div style='font-size:13px;line-height:1.5;color:#a8a495'>{e(' '.join(wait))}</div>" if wait else "")
+        + "<div style='display:flex;flex-wrap:wrap;gap:8px;font-family:\"IBM Plex Mono\",ui-monospace,monospace;font-size:12.5px;font-weight:600'>"
+        + "".join(f"<span style='color:#a8a495;border:1px solid #2a2a24;padding:5px 10px'>{e(str(c))}</span>" for c in chips)
+        + "</div>" + link + "</section></div>")
+
 def write_html(d, path, anon=False):
     if anon:
         # The teaser is retired. Anonymous users land in the FULL 25-page report - the real product, every
@@ -3322,7 +3548,13 @@ def write_html(d, path, anon=False):
         d["_more_pages"] = max(0, _total - _crawled, _sm_uncrawled)
         d["_locked_pages"] = list(_sm.get("in_sitemap_not_crawled") or [])[:40]  # real page paths, greyed (not padlocks)
         d["diff"] = None    # anon users are first-time: clean "First crawl" state, not a "- since <date>" delta
-    payload=json.dumps(d,ensure_ascii=False).replace("</","<\\/")
+    # The proof summary is rendered server-side into the compact panel only; it is NOT embedded in the page payload
+    # (the full numbers live in the Pro-gated Proof view). Absent keys leave the payload byte-for-byte unchanged.
+    # No panel on an anonymous report (no proof exists for anon) or a white-labelled / de-branded one (the agency's
+    # client cannot open the owner-only Rubric /proof link, and it would break the de-brand): same fields the report's
+    # own white-label banner and de-brand logic key off (d["client"], d["_debrand"]).
+    _proof_panel="" if (anon or d.get("client") or d.get("_debrand")) else _proof_panel_html(d.get("proof"), d.get("proof_url"))
+    payload=json.dumps({k:v for k,v in d.items() if k not in ("proof","proof_url")},ensure_ascii=False).replace("</","<\\/")
     css=r"""
 :root{--bg:#14140f;--panel:#191914;--panel2:#1e1e18;--line:#2a2a24;--line2:#242420;--muted:#a8a495;--dim:#6b6b65;--txt:#f2f0e4;--white:#FFFFFF;
  --grn:#db0632;--grn2:#ef1a48;--deep:#db0632;--g1:#db0632;--g2:#db0632;--amber:#ff4d6d;--red:#db0632;--chip:#db0632;--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace}
@@ -3500,7 +3732,8 @@ input.search{background:var(--panel2);border:1px solid var(--line);color:var(--t
 .pgdist .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:5px}
 .pgdist .trk{height:44px;display:flex;align-items:flex-end}
 .pgdist .trk i{width:100%;border-radius:4px 4px 0 0;display:block}
-.pgscroll{overflow-x:auto}
+.pgscroll{overflow-x:auto;max-width:100%;min-width:0;-webkit-overflow-scrolling:touch}
+@media(max-width:720px){.pgstats{grid-template-columns:1fr!important}}
 .pgtbl{background:var(--panel2);border:1px solid var(--line);border-radius:0;overflow:hidden;min-width:1060px}
 .pgcols{display:grid;grid-template-columns:58px 1fr 40px 40px 40px 50px 50px 50px 50px 50px 50px 56px 220px;gap:9px;align-items:center}
 .pghead{padding:12px 20px;background:#191914;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:700;letter-spacing:.06em;color:var(--muted)}
@@ -3657,18 +3890,31 @@ const ENGTABS=['ChatGPT','Perplexity','AI Overviews','Gemini','Copilot','Claude'
 const TECHTABS=['Off-page','Info gain','Site structure','Response times','Broken links','AI crawlers','Common Crawl'];
 const TABS=[...PRIMARY,...ENGTABS,...TECHTABS];
 let cur='Overview',sortk='score',sortd=1,pageFilter='';
+// Tab <-> URL hash: each section gets its own address (shareable, and the back button walks between tabs).
+function tabSlug(t){return String(t).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');}
+function tabFromSlug(s){for(var i=0;i<TABS.length;i++){if(tabSlug(TABS[i])===s)return TABS[i];}return null;}
+// Keyboard support for the ARIA tablist: Enter/Space activates a tab, Left/Right move between the primary tabs.
+function tabKey(e,t){
+ if(e.key==='Enter'||e.key===' '){e.preventDefault();go(t);return;}
+ if(e.key==='ArrowRight'||e.key==='ArrowLeft'){var i=PRIMARY.indexOf(t);if(i<0)return;e.preventDefault();
+  var n=PRIMARY[(i+(e.key==='ArrowRight'?1:PRIMARY.length-1))%PRIMARY.length];go(n);
+  var el=document.getElementById('tab-'+tabSlug(n));if(el&&el.focus)el.focus();}
+}
 function tabcount(t){if(t=='Action Plan')return (typeof ACT=='function'?ACT().length:null);if(t=='Issues')return (D.issues||[]).filter(i=>i.pillar!='Info').length;return null;}
 function tabsbar(){
  const bd=(t)=>{const c=tabcount(t);return (c!=null)?`<span class="tabcount ${t=='Issues'?'err':''}">${c}</span>`:'';};
- const item=(t)=>`<div class="tab ${t==cur?'on':''}" onclick="go('${t}')">${t}${bd(t)}</div>`;
- const dd=(label,items)=>{const active=items.indexOf(cur)>=0;return `<div class="tabdd"><div class="tab ${active?'on':''}" onclick="tglDD(event,'${label}')">${label} <span style="color:#8b8b81;font-size:12.5px">&#9662;</span></div><div class="ddmenu" id="dd_${label}">${items.map(t=>`<div class="ddi ${t==cur?'on':''}" onclick="go('${t}')">${t}${t=='Grok'?'<span style="color:#8b8b81;margin-left:6px">adv</span>':''}</div>`).join('')}</div></div>`;};
- document.getElementById('tabs').innerHTML=PRIMARY.map(item).join('')+'<div class="tabsep"></div>'+dd('Engines',ENGTABS)+dd('Technical',TECHTABS);
+ const item=(t)=>`<div class="tab ${t==cur?'on':''}" role="tab" aria-controls="view" id="tab-${tabSlug(t)}" aria-selected="${t==cur?'true':'false'}" tabindex="0" onclick="go('${t}')" onkeydown="tabKey(event,'${t}')">${t}${bd(t)}</div>`;
+ const dd=(label,items)=>{const active=items.indexOf(cur)>=0;return `<div class="tabdd"><div class="tab ${active?'on':''}" role="button" id="ddbtn_${label}" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-controls="dd_${label}" onclick="tglDD(event,'${label}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();tglDD(event,'${label}');}">${label} <span style="color:#8b8b81;font-size:12.5px" aria-hidden="true">&#9662;</span></div><div class="ddmenu" id="dd_${label}" role="menu">${items.map(t=>`<div class="ddi ${t==cur?'on':''}" role="tab" aria-controls="view" id="tab-${tabSlug(t)}" aria-selected="${t==cur?'true':'false'}" tabindex="0" onclick="go('${t}')" onkeydown="tabKey(event,'${t}')">${t}${t=='Grok'?'<span style="color:#8b8b81;margin-left:6px">adv</span>':''}</div>`).join('')}</div></div>`;};
+ var _tb=document.getElementById('tabs');if(_tb){_tb.setAttribute('role','tablist');_tb.setAttribute('aria-label','Report sections');_tb.innerHTML=PRIMARY.map(item).join('')+'<div class="tabsep" aria-hidden="true"></div>'+dd('Engines',ENGTABS)+dd('Technical',TECHTABS);}
 }
-function tglDD(e,label){e.stopPropagation();const m=document.getElementById('dd_'+label);const open=m.style.display=='block';document.querySelectorAll('.ddmenu').forEach(x=>x.style.display='none');m.style.display=open?'none':'block';}
-function go(t){cur=t;pageFilter='';document.querySelectorAll('.ddmenu').forEach(x=>x.style.display='none');tabsbar();render();updExp()}
+function tglDD(e,label){e.stopPropagation();const m=document.getElementById('dd_'+label);const open=m.style.display=='block';document.querySelectorAll('.ddmenu').forEach(x=>x.style.display='none');document.querySelectorAll('[id^="ddbtn_"]').forEach(b=>b.setAttribute('aria-expanded','false'));m.style.display=open?'none':'block';var _b=document.getElementById('ddbtn_'+label);if(_b)_b.setAttribute('aria-expanded',open?'false':'true');}
+function go(t){cur=t;pageFilter='';document.querySelectorAll('.ddmenu').forEach(x=>x.style.display='none');tabsbar();render();updExp();
+ var s=tabSlug(t);if((location.hash||'').slice(1)!==s){location.hash=s;}
+ var v=document.getElementById('view');if(v){v.setAttribute('role','tabpanel');v.setAttribute('tabindex','-1');v.setAttribute('aria-labelledby','tab-'+s);}}
+window.addEventListener('hashchange',function(){var t=tabFromSlug((location.hash||'').slice(1));if(t&&t!==cur)go(t);});
 function csToggleMore(el){var m=document.getElementById('csMore');if(!m)return;var o=m.style.display=='none';m.style.display=o?'block':'none';el.innerHTML=o?'Hide extra analyses &#9652;':'Show '+m.children.length+' more analyses &#9662;';}
 function csCopyAllow(el){var p=document.getElementById('csAllowPre');if(!p)return;try{navigator.clipboard.writeText(p.textContent);el.textContent='Copied';setTimeout(function(){el.textContent='Copy';},1800);}catch(e){}}
-document.addEventListener('click',function(){document.querySelectorAll('.ddmenu').forEach(x=>x.style.display='none');});
+document.addEventListener('click',function(){document.querySelectorAll('.ddmenu').forEach(x=>x.style.display='none');document.querySelectorAll('[id^="ddbtn_"]').forEach(b=>b.setAttribute('aria-expanded','false'));});
 // ---- context-aware CSV export: the header button exports the CURRENT tab's data + labels itself for it ----
 var EXPORTS={'Pages':{label:'Export pages',fn:function(){exportPages()}},
  'Action Plan':{label:'Export action plan',fn:function(){exportPlan()}},
@@ -3756,7 +4002,7 @@ function ovwR(){
  const qrow=(l,v)=>`<div style="display:flex;align-items:center;gap:18px"><div style="font-size:14px;font-weight:800;width:72px;flex:none">${l}</div>${BAR(v,70)}<div style="font-size:19px;font-weight:800;letter-spacing:-.7px;width:32px;text-align:right;flex:none">${v}</div></div>`;
  const threeQ=`<div style="display:flex;flex-direction:column;gap:18px;padding:34px 0 36px 40px;border-left:1px solid #2a2a24"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px"><div style="${LBL}">The three questions</div><div style="${MM}">scale 0&#8211;100</div></div><div style="display:flex;flex-direction:column;gap:14px">${pill.map(p=>qrow(p,P[p]||0)).join('')}</div><div style="font-size:13px;font-weight:400;line-height:1.5;color:#a8a495">${weakP} is the drag. Every bar shares one scale and one tick, so the shortfall is read by length, not by hue.</div></div>`;
  const health=`<div style="display:flex;flex-direction:column;gap:18px;padding:30px 40px 34px 0"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px"><div style="${LBL}">Check health</div><div style="${MM}">${tc.toLocaleString()} checks &middot; ${pass}% passing</div></div><div style="display:flex;height:8px;background:#262620"><div style="width:${gp.toFixed(1)}%;background:#f2f0e4"></div><div style="width:${wp.toFixed(1)}%;background:#55534a"></div><div style="width:${bp.toFixed(1)}%;background:#db0632"></div></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px"><div style="display:flex;flex-direction:column;gap:5px"><div style="font-size:26px;font-weight:800;letter-spacing:-1.2px;line-height:.85">${b}</div><div style="${MM}">errors &middot; blocking citation</div></div><div style="display:flex;flex-direction:column;gap:5px"><div style="font-size:26px;font-weight:800;letter-spacing:-1.2px;line-height:.85">${w}</div><div style="${MM}">warnings &middot; weakening</div></div><div style="display:flex;flex-direction:column;gap:5px"><div style="font-size:26px;font-weight:800;letter-spacing:-1.2px;line-height:.85">${g}</div><div style="${MM}">passed</div></div></div></div>`;
- const why=`<div style="display:flex;flex-direction:column;gap:14px;padding:30px 0 34px 40px;border-left:1px solid #2a2a24"><div style="${LBL}">Why it matters</div><div style="font-size:14px;font-weight:400;line-height:1.55;color:#a8a495">AI Overviews cut organic clicks <span style="color:#f2f0e4;font-weight:800">~40%</span> where they appear (Agarwal &amp; Sen field RCT, 2026); pages cited in the AI Overview earn <span style="color:#f2f0e4;font-weight:800">~35% higher CTR</span> (Seer, 2025). This score is your odds of being the cited page.</div></div>`;
+ const why=`<div style="display:flex;flex-direction:column;gap:14px;padding:30px 0 34px 40px;border-left:1px solid #2a2a24"><div style="${LBL}">Why it matters</div><div style="font-size:14px;font-weight:400;line-height:1.55;color:#a8a495">AI Overviews cut organic clicks <span style="color:#f2f0e4;font-weight:800">~40%</span> where they appear (Agarwal &amp; Sen field RCT, 2026); pages cited in the AI Overview earn about <span style="color:#f2f0e4;font-weight:800">+120% more organic clicks per impression</span> than uncited pages, though searches with an AI Overview still see fewer clicks overall (Seer v3, April 2026). This score is your odds of being the cited page.</div></div>`;
  var LB=D.benchmark;var BM=(LB&&LB.overall!=null)?{overall:LB.overall,Known:LB.Known,Findable:LB.Findable,Trusted:LB.Trusted}:{overall:76,Known:82,Findable:74,Trusted:72};var live=(LB&&LB.overall!=null);
  var pc=D.proposed_competitor||{};if(!window._csCompProp){window._csCompProp=1;csTrack('competitor_proposed',{source:pc.source||'benchmark',outlinks_seen:pc.outlinks_seen,cmp_pages:pc.cmp_pages});}
  const gaprow=(l,you,med)=>`<div style="display:flex;align-items:center;gap:18px"><div style="font-size:14px;font-weight:800;width:84px;flex:none">${l}</div>${BARm(you,med)}<div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:13px;font-weight:600;width:76px;text-align:right;flex:none"><span style="color:#f2f0e4">${you}</span><span style="color:#8b8b81"> / ${med}</span></div></div>`;
@@ -3778,7 +4024,7 @@ function ovwR(){
  const tent=Object.entries(ts).sort((a,c)=>c[1].n-a[1].n),tmax=Math.max.apply(0,tent.map(t=>t[1].n).concat(1));
  const trow=(k,o)=>{const pct=o.n?Math.round(100*o.q/o.n):0,cl=pct>=50;return `<div style="display:flex;align-items:center;gap:16px"><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:13px;font-weight:600;color:#a8a495;width:62px;flex:none">${esc(k)}</div><div style="flex:1;height:8px;min-width:0;background:#262620"><div style="width:${Math.round(100*o.n/tmax)}%;height:8px;background:${cl?'#f2f0e4':'#db0632'}"></div></div><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:13px;font-weight:600;color:#8b8b81;width:30px;text-align:right;flex:none">${o.n}</div><div style="font-size:14px;font-weight:800;width:44px;text-align:right;flex:none">${pct}%</div></div>`;};
  const P2=(D.pages||[]).length,parityBad=(D.pages||[]).filter(p=>p.cs&&p.cs.parity=='bad').length,reach=((D.site_checks||[]).find(s=>s.id=='reachability')||{}).status||'good';
- const rrow2=(name,txt,red)=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid #2a2a24"><div style="font-size:14px;font-weight:800">${name}</div><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600;color:${red?'#ff4d6d':'#a8a495'}">${txt}</div></div>`;
+ const rrow2=(name,txt,red)=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:4px 16px;flex-wrap:wrap;padding:12px 0;border-top:1px solid #2a2a24"><div style="font-size:14px;font-weight:800">${name}</div><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600;color:${red?'#ff4d6d':'#a8a495'}">${txt}</div></div>`;
  const pagesSec=`<section style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-bottom:1px solid #2a2a24"><div style="display:flex;flex-direction:column;gap:20px;padding:34px 40px 38px 0"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px"><div style="${HLBL}">Pages by type</div><div style="${MM}">% quotable</div></div><div style="display:flex;flex-direction:column;gap:14px">${tent.map(([k,o])=>trow(k,o)).join('')}</div></div><div style="display:flex;flex-direction:column;gap:20px;padding:34px 0 38px 40px;border-left:1px solid #2a2a24"><div style="${HLBL}">Crawler reachability</div><div style="display:flex;flex-direction:column">${rrow2('GPTBot',reach=='good'?P2+'/'+P2+' allowed':reach=='warn'?'partial':'blocked',reach=='bad')}${rrow2('PerplexityBot',reach=='good'?P2+'/'+P2+' allowed':reach=='warn'?'partial':'blocked',reach=='bad')}${rrow2('Google-Extended',reach=='bad'?'blocked':'partial',true)}${rrow2('Server-rendered schema',parityBad?parityBad+' pages JS-only':'all '+P2+' server-rendered',!!parityBad)}</div></div></section>`;
  const foD=(D.fanout||[]);
  const forow=(f)=>{const pct=Math.round(100*f.won/(f.total||1)),has=f.won>0;return `<div style="display:flex;align-items:center;gap:18px"><div style="font-size:14px;font-weight:${f.key?800:500};color:${f.key?'#f2f0e4':'#a8a495'};width:94px;flex:none">${f.type}</div><div style="flex:1;height:7px;min-width:0;background:#262620">${has?`<div style="width:${pct}%;height:7px;background:#db0632"></div>`:''}</div><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600;color:${has?'#a8a495':'#8b8b81'};width:34px;text-align:right;flex:none">${f.won}/${f.total}</div></div>`;};
@@ -3798,7 +4044,7 @@ function ovwR(){
  const stL=esc(D.site_type_label||D.site_type||'general-purpose');
  const cm=(cid)=>esc((((D.check_meta||{})[cid])||{}).label||cid);
  const stSec=`<section style="display:flex;flex-direction:column;gap:22px;padding:38px 0 42px"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap"><div style="${HLBL}">Website-type profile</div><div style="${MM}">detected: ${stL}</div></div><div style="font-size:14px;font-weight:400;line-height:1.55;color:#a8a495;max-width:880px">This site was ${D.site_type_source=='override'?'set by you as':'detected as'} ${stL}, so the checks that decide AI citation for this page type are weighted higher and the less relevant ones lower. Same 0&#8211;100 scale; every page's applicable checks unchanged &mdash; only the emphasis shifts.</div>${stW?`<div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:40px"><div style="display:flex;flex-direction:column;gap:14px"><div style="${LBL}">Weighted up</div><div style="display:flex;flex-wrap:wrap;gap:8px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600">${(D.profile_up||[]).map(c=>`<div style="color:#f2f0e4;border:1px solid #55534a;padding:7px 11px">${cm(c)}</div>`).join('')||'<span style="color:#8b8b81">none</span>'}</div></div><div style="display:flex;flex-direction:column;gap:14px"><div style="${LBL}">Weighted down</div><div style="display:flex;flex-wrap:wrap;gap:8px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600">${(D.profile_down||[]).map(c=>`<div style="color:#8b8b81;border:1px solid #2a2a24;padding:7px 11px">${cm(c)}</div>`).join('')||'<span style="color:#8b8b81">none</span>'}</div></div></div>`:''}</section>`;
- const foot=`<footer style="font-size:12.5px;font-weight:400;line-height:1.6;color:#a8a495;padding:30px 0 0;border-top:1px solid #2a2a24;max-width:1100px"><span style="color:#a8a495;font-weight:800">Why citability matters:</span> AI Overviews cut organic clicks ~40% where they appear (Agrawal &amp; Sen field RCT, 2026), and pages cited in the AI Overview earn ~35% higher CTR (Seer, 2025) &mdash; so this score is your odds of being the cited page. Rubric <span style="color:#a8a495">estimates</span> citability from on-page, structural and technical signals. It does not measure citations. Every check carries a source; Grok is shown for reference only and is not scored. Scanned ${esc(D.generated||D.date||'')} &middot; crawl ran locally, no page data left this machine.</footer>`;
+ const foot=`<footer style="font-size:12.5px;font-weight:400;line-height:1.6;color:#a8a495;padding:30px 0 0;border-top:1px solid #2a2a24;max-width:1100px"><span style="color:#a8a495;font-weight:800">Why citability matters:</span> AI Overviews cut organic clicks ~40% where they appear (Agrawal &amp; Sen field RCT, 2026), and pages cited in the AI Overview earn about +120% more organic clicks per impression than uncited pages, though searches with an AI Overview still see fewer clicks overall (Seer v3, April 2026) &mdash; so this score is your odds of being the cited page. Rubric <span style="color:#a8a495">estimates</span> citability from on-page, structural and technical signals. It does not measure citations. Every check carries a source; Grok is shown for reference only and is not scored. Scanned ${esc(D.generated||D.date||'')} &middot; crawl ran locally, no page data left this machine.</footer>`;
  const dc=D.decay||{};const atRisk=(dc.at_risk||[]);const nRisk=(dc.stale||0)+(dc.undated||0);
  const decaySec=(!(dc.dated||0)&&!(dc.undated||0))?'':`<section style="${SECT}"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap"><div style="${HLBL}">Decay risk</div><div style="${MM}">freshness &middot; ${dc.dated||0} dated</div></div><div style="font-size:14px;font-weight:400;line-height:1.55;color:#a8a495;max-width:880px">In a logged 2026 experiment, <span style="color:#f2f0e4;font-weight:800">about half of AI citations stopped within 30 days</span>. Freshness is one of the strongest citation signals, so these are the pages most likely to age out of AI answers. ${nRisk?`<span style="color:#f2f0e4;font-weight:800">${nRisk}</span> of your pages ${nRisk===1?'is':'are'} at risk.`:'None of your pages look stale yet.'}</div><div style="display:flex;flex-wrap:wrap;gap:8px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600"><div style="color:#f2f0e4;border:1px solid #2a2a24;padding:7px 11px">${dc.fresh||0} fresh &lt; 90d</div><div style="color:#a8a495;border:1px solid #2a2a24;padding:7px 11px">${dc.aging||0} aging</div><div style="color:#ff4d6d;border:1px solid #2a2a24;padding:7px 11px">${dc.stale||0} stale &gt; 12mo</div><div style="color:#ff4d6d;border:1px solid #2a2a24;padding:7px 11px">${dc.undated||0} undated</div></div>${atRisk.length?`<div style="display:flex;flex-direction:column">${atRisk.slice(0,12).map(r=>`<div style="display:flex;align-items:baseline;gap:12px;padding:11px 0;border-top:1px solid #2a2a24"><span style="width:8px;height:8px;background:${r.decay=='undated'?'#ff4d6d':'#db0632'};flex:none;position:relative;top:3px"></span><a href="${esc(r.url)}" target="_blank" style="font-size:14px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(rel(r.url))}</a><span style="${MM};margin-left:auto;flex:none">${r.decay=='undated'?'no date':((r.age_days||0)+'d old')}</span></div>`).join('')}${atRisk.length>12?`<div style="${MM};padding:11px 0 0;color:#8b8b81">+ ${atRisk.length-12} more</div>`:''}</div>`:''}<div style="font-size:13px;font-weight:400;line-height:1.5;color:#8b8b81;max-width:880px">Fix: refresh the content and show a visible last-updated date, then re-crawl to confirm it moved. This flags decay <span style="color:#a8a495">risk</span> from staleness, not measured citation loss &mdash; a missing citation can also be a source conflict, so treat these as worth refreshing, not proof they were dropped.</div></section>`;
  const cq=D.content_quality||{};
@@ -3821,9 +4067,9 @@ function ovwR(){
  const moreSec=_more.length?`<div onclick="csToggleMore(this)" style="padding:24px 0;text-align:center;border-bottom:1px solid #2a2a24;cursor:pointer;font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#a8a495">Show ${_more.length} more analyses &#9662;</div><div id="csMore" style="display:none">${_more.join('')}</div>`:'';
  return `${banners}<div style="display:flex;flex-direction:column">
    <section style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-bottom:1px solid #2a2a24">${yourRubric}${threeQ}</section>
+   ${gap}
    <section style="display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,0.9fr);border-bottom:1px solid #2a2a24">${radar}${doFirst}</section>
    <section style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-bottom:1px solid #2a2a24">${health}${why}</section>
-   ${gap}
    ${blind}
    ${engSec}
    ${pagesSec}
@@ -3955,7 +4201,7 @@ function plan(){
    <div style="width:1px;align-self:stretch;background:#2a2a24"></div>
    <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:8px">
      <div style="${MN};font-size:12px;letter-spacing:0.16em;color:#8b8b81">THE PLAN</div>
-     <div style="font-size:14px;line-height:1.6;color:#8b8b81"><span style="color:#f2f0e4">${act.length} fixes</span> clear <span style="color:#f2f0e4">${instN} failing checks</span> across ${affp} of ${P} pages · ${edits} page-edits. Ranked by standalone impact below.</div>
+     <div style="font-size:14px;line-height:1.6;color:#8b8b81"><span style="color:#f2f0e4">${act.length} fix${act.length==1?'':'es'}</span> clear <span style="color:#f2f0e4">${instN} failing checks</span> across ${affp} of ${P} pages · ${edits} page-edits. Ranked by standalone impact below.</div>
    </div>
  </div>`;
  const infonote=`<div style="display:flex;align-items:flex-start;gap:11px;padding:14px 18px;background:#191914;border:1px solid #2a2a24;border-radius:0"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#f2f0e4" stroke-width="2" style="flex:0 0 15px;margin-top:1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v.01M12 11v5"></path></svg><div style="font-size:13.5px;line-height:1.6;color:#8b8b81">Each gain below is <span style="color:#f2f0e4">standalone</span> — what that one fix is worth on its own if applied to every affected page. Fixes overlap on a page, so they do <span style="color:#f2f0e4">not simply add up</span>: applying the whole plan lifts the score to <span style="color:#f2f0e4">${proj}/100</span>, which is why that is less than the individual gains summed.</div></div>`;
@@ -3967,8 +4213,8 @@ function plan(){
  const wRow=(i,x)=>`<div style="border-top:1px solid #242420;cursor:pointer" onclick="tgl('pd_${i.id}')"><div style="display:flex;align-items:center;gap:14px;padding:12px 22px"><div style="width:22px;${MN};font-size:13px;color:#8b8b81">${x}</div><div style="flex:1;min-width:0;font-size:14px;color:#FFFFFF">${esc(i.label)}</div>${owChip(i)}<div style="width:78px;${MN};font-size:12.5px;color:#8b8b81">${(i.pillar||"").toUpperCase()}</div><div style="width:74px;${MN};font-size:12.5px;color:#8b8b81">${(i.effort||"").toLowerCase()}</div><div style="width:62px;text-align:right;${MN};font-size:13px;color:#f2f0e4">${i.count}</div><div style="width:48px;text-align:right;font-size:17px;font-variation-settings:'wght' 700;color:${i.gain_overall>0?'#f2f0e4':'#6b6b65'}">${i.gain_overall>0?'+'+i.gain_overall:'&lt;+1'}</div></div>${(i.fix_deep||i.fix)?`<div style="padding:0 22px 8px;font-size:13px;line-height:1.5;color:#8b8b81"><span style="${MN};font-size:11px;letter-spacing:0.1em;color:#f2f0e4">FIX</span> ${esc(i.fix_deep||i.fix)}</div>`:""}<div style="padding:0 22px 4px">${pdet(i.id)}</div></div>`;
  const wStart=biggest.length+1;
  const nsStart=biggest.length+worth.length+1;
- const wTable=worth.length?`<div style="background:#191914;border:1px solid #2a2a24;border-radius:0;overflow:hidden"><div style="display:flex;align-items:center;gap:12px;padding:18px 22px 14px"><div style="width:9px;height:9px;border-radius:2px;background:#f2f0e4;opacity:0.45"></div><div style="font-size:15px;font-variation-settings:'wght' 700;color:#FFFFFF">Worth doing</div><div style="${MN};font-size:13px;color:#8b8b81">${worth.length} fixes · about +1 each</div><div style="flex:1"></div><div style="font-size:13.5px;color:#8b8b81">Structure for retrieval</div></div>${worth.map((i,x)=>wRow(i,wStart+x)).join("")}</div>`:"";
- const nsTable=nostand.length?`<div style="background:#191914;border:1px solid #2a2a24;border-radius:0;overflow:hidden"><div style="display:flex;align-items:center;gap:12px;padding:18px 22px 14px"><div style="width:9px;height:9px;border-radius:2px;background:#2a2a24;border:1px solid #3A3A3A"></div><div style="font-size:15px;font-variation-settings:'wght' 700;color:#FFFFFF">Under +1 on their own</div><div style="${MN};font-size:13px;color:#8b8b81">${nostand.length} fixes · &lt;+1 each</div><div style="flex:1"></div><div style="font-size:13.5px;color:#8b8b81">Worth doing after the above, they compound</div></div>${nostand.map((i,x)=>wRow(i,nsStart+x)).join("")}</div>`:"";
+ const wTable=worth.length?`<div style="background:#191914;border:1px solid #2a2a24;border-radius:0;overflow:hidden"><div style="display:flex;align-items:center;gap:12px;padding:18px 22px 14px"><div style="width:9px;height:9px;border-radius:2px;background:#f2f0e4;opacity:0.45"></div><div style="font-size:15px;font-variation-settings:'wght' 700;color:#FFFFFF">Worth doing</div><div style="${MN};font-size:13px;color:#8b8b81">${worth.length} fix${worth.length==1?'':'es'} · about +1 each</div><div style="flex:1"></div><div style="font-size:13.5px;color:#8b8b81">Structure for retrieval</div></div>${worth.map((i,x)=>wRow(i,wStart+x)).join("")}</div>`:"";
+ const nsTable=nostand.length?`<div style="background:#191914;border:1px solid #2a2a24;border-radius:0;overflow:hidden"><div style="display:flex;align-items:center;gap:12px;padding:18px 22px 14px"><div style="width:9px;height:9px;border-radius:2px;background:#2a2a24;border:1px solid #3A3A3A"></div><div style="font-size:15px;font-variation-settings:'wght' 700;color:#FFFFFF">Under +1 on their own</div><div style="${MN};font-size:13px;color:#8b8b81">${nostand.length} fix${nostand.length==1?'':'es'} · &lt;+1 each</div><div style="flex:1"></div><div style="font-size:13.5px;color:#8b8b81">Worth doing after the above, they compound</div></div>${nostand.map((i,x)=>wRow(i,nsStart+x)).join("")}</div>`:"";
  return `<div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start"><div style="flex:1;min-width:600px;display:flex;flex-direction:column;gap:22px">${header}${infonote}${bigTable}${wTable}${nsTable}</div><div style="flex:0 0 372px;min-width:0;display:flex;flex-direction:column;gap:14px">${roadmapCard()}${effortCard(act,edits)}<div onclick="exportDevPlan()" style="background:#f2f0e4;color:#14140f;font-size:14px;font-variation-settings:'wght' 600;padding:13px;border-radius:0;text-align:center;cursor:pointer">Export dev checklist (Markdown)</div><div onclick="exportPlan()" style="background:transparent;color:#f2f0e4;border:1px solid #2a2a24;font-size:13.5px;padding:11px;border-radius:0;text-align:center;cursor:pointer">Export data (CSV)</div><div style="display:flex;align-items:center;gap:9px;padding:12px 18px;border:1px solid #2a2a24;border-radius:0"><div style="width:7px;height:7px;border-radius:50%;background:#f2f0e4"></div><div style="font-size:13px;color:#8b8b81">Crawl ran locally. No page data left this machine.</div></div></div></div>`;
 }
 function roadmapCard(){
@@ -3988,7 +4234,7 @@ function effortCard(act,edits){
  const bk={template:["Template-level fixes",0,0],copy:["Per-page copy work",0,0],meta:["One-off metadata edits",0,0]};
  act.forEach(i=>{const t=TTYPE[i.id]||"copy";bk[t][1]++;bk[t][2]+=gpos(i)});
  const tplN=bk.template[1], tplEdits=act.filter(i=>TTYPE[i.id]=="template").reduce((a,i)=>a+i.count,0);
- const rows=Object.keys(bk).filter(k=>bk[k][1]).map(k=>`<div style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0;font-size:13.5px;color:#f2f0e4">${bk[k][0]}</div><div style="${MN};font-size:13px;color:#8b8b81">${bk[k][1]} fixes</div><div style="width:34px;text-align:right;${MN};font-size:13.5px;color:#f2f0e4">+${bk[k][2]}</div></div>`).join("");
+ const rows=Object.keys(bk).filter(k=>bk[k][1]).map(k=>`<div style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0;font-size:13.5px;color:#f2f0e4">${bk[k][0]}</div><div style="${MN};font-size:13px;color:#8b8b81">${bk[k][1]} fix${bk[k][1]==1?'':'es'}</div><div style="width:34px;text-align:right;${MN};font-size:13.5px;color:#f2f0e4">+${bk[k][2]}</div></div>`).join("");
  const note=tplN?`<div style="display:flex;align-items:flex-start;gap:9px;padding:11px 13px;background:#1e1e18;border-radius:0"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#f2f0e4" stroke-width="2.2" style="flex:0 0 14px;margin-top:1px"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"></path></svg><div style="font-size:13px;line-height:1.5;color:#a8a495">Start with the ${tplN} template fixes — they touch <span style="color:#FFFFFF">${tplEdits} of ${edits}</span> page edits in one change.</div></div>`:"";
  return `<div style="background:#191914;border:1px solid #2a2a24;border-radius:0;padding:20px 22px;display:flex;flex-direction:column;gap:14px"><div style="font-size:14px;font-variation-settings:'wght' 700;color:#FFFFFF;letter-spacing:-0.01em">Effort at a glance</div>${rows}${note}</div>`;
 }
@@ -4000,21 +4246,23 @@ function planR(){
  const affS=new Set();act.forEach(i=>{i.bad.forEach(u=>affS.add(u));i.warn.forEach(u=>affS.add(u))});
  const edits=act.reduce((a,i)=>a+i.count,0), affp=Math.min(D.pages_crawled||affS.size,affS.size);
  const instN=((D.totals||{}).warn||0)+((D.totals||{}).bad||0), P=D.pages_crawled;
- const biggest=act.filter(i=>gpos(i)>=2), worth=act.filter(i=>gpos(i)==1), nostand=act.filter(i=>gpos(i)==0);
- const ordered=[...biggest,...worth,...nostand]; window._ordered=ordered; window._rk={}; ordered.forEach((i,x)=>window._rk[i.id]=x+1);
+ const _vk=Math.min(act.length,Math.max(3,(D.plan_vital&&D.plan_vital.k)||Math.min(10,act.length)));
+ const _vpct=D.plan_vital&&D.plan_vital.pct;
+ const vital=act.slice(0,_vk), rest=act.slice(_vk);
+ const ordered=[...vital,...rest]; window._ordered=ordered; window._rk={}; ordered.forEach((i,x)=>window._rk[i.id]=x+1);
  const MM="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;font-weight:600;color:#8b8b81";
  const HL="font-size:12px;font-weight:800;letter-spacing:2.4px;text-transform:uppercase;color:#f2f0e4";
  const sq='<div style="width:7px;height:7px;background:#db0632;flex:none"></div>';
- const header=`<section style="display:flex;flex-direction:column;gap:20px;padding:34px 0 32px;border-bottom:1px solid #2a2a24"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap"><div style="display:flex;align-items:center;gap:9px">${sq}<div style="${HL}">Action plan</div></div><div style="${MM}">${act.length} fixes &middot; ${affp} pages</div></div><div style="display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap"><div style="display:flex;flex-direction:column;gap:6px"><div style="${MM}">today</div><div style="font-size:56px;font-weight:800;letter-spacing:-3px;line-height:.78;color:#f2f0e4">${overall}</div></div><div style="width:26px;height:3px;background:#55534a;margin-bottom:14px"></div><div style="display:flex;flex-direction:column;gap:6px"><div style="${MM}">all ${act.length} applied</div><div style="font-size:56px;font-weight:800;letter-spacing:-3px;line-height:.78;color:#f2f0e4">${proj}</div></div><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:14px;font-weight:800;color:#ff4d6d;margin-bottom:8px">+${totalG}</div><div style="flex:1;min-width:240px;font-size:14px;font-weight:400;line-height:1.55;color:#a8a495;margin-bottom:4px">${act.length} fixes clear <span style="color:#f2f0e4;font-weight:800">${instN} failing checks</span> across ${affp} of ${P} pages &middot; ${edits} page edits. Ranked by standalone impact below.</div></div><div style="position:relative;height:8px;background:#262620"><div style="position:absolute;left:0;top:0;width:${overall}%;height:8px;background:#db0632"></div><div style="position:absolute;left:${overall}%;top:0;width:${Math.max(0,proj-overall)}%;height:8px;background:#55534a"></div><div style="position:absolute;left:70%;top:-5px;width:2px;height:18px;background:#f2f0e4"></div></div><div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;${MM}"><div>0</div><div>standard 70</div><div>100</div></div></section>`;
+ const header=`<section style="display:flex;flex-direction:column;gap:20px;padding:34px 0 32px;border-bottom:1px solid #2a2a24"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap"><div style="display:flex;align-items:center;gap:9px">${sq}<div style="${HL}">Action plan</div></div><div style="${MM}">${act.length} fixes &middot; ${affp} pages</div></div><div style="display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap"><div style="display:flex;flex-direction:column;gap:6px"><div style="${MM}">today</div><div style="font-size:56px;font-weight:800;letter-spacing:-3px;line-height:.78;color:#f2f0e4">${overall}</div></div><div style="width:26px;height:3px;background:#55534a;margin-bottom:14px"></div><div style="display:flex;flex-direction:column;gap:6px"><div style="${MM}">all ${act.length} applied</div><div style="font-size:56px;font-weight:800;letter-spacing:-3px;line-height:.78;color:#f2f0e4">${proj}</div></div><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:14px;font-weight:800;color:#ff4d6d;margin-bottom:8px">+${totalG}</div><div style="flex:1;min-width:240px;font-size:14px;font-weight:400;line-height:1.55;color:#a8a495;margin-bottom:4px">${act.length} fixes clear <span style="color:#f2f0e4;font-weight:800">${instN} failing checks</span> across ${affp} of ${P} pages &middot; ${edits} page edits. Ranked by points recovered per hour of work.</div></div><div style="position:relative;height:8px;background:#262620"><div style="position:absolute;left:0;top:0;width:${overall}%;height:8px;background:#db0632"></div><div style="position:absolute;left:${overall}%;top:0;width:${Math.max(0,proj-overall)}%;height:8px;background:#55534a"></div><div style="position:absolute;left:70%;top:-5px;width:2px;height:18px;background:#f2f0e4"></div></div><div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;${MM}"><div>0</div><div>standard 70</div><div>100</div></div></section>`;
  const readit=`<section style="display:flex;align-items:baseline;gap:22px;padding:18px 0;border-bottom:1px solid #2a2a24"><div style="font-size:12px;font-weight:800;letter-spacing:2.4px;text-transform:uppercase;color:#ff4d6d;flex:none">Read it as</div><div style="font-size:13px;font-weight:400;line-height:1.55;color:#a8a495">Each gain below is standalone &mdash; what that one fix is worth on its own if applied to every affected page. Fixes overlap on a page, so they <span style="color:#f2f0e4;font-weight:800">do not simply add up</span>: applying the whole plan lifts the score to ${proj}/100, which is why that is less than the individual gains summed.</div></section>`;
  const row=(i,x)=>{const eg=Object.entries(i.gain_engines||{}).filter(a=>a[1]>0).sort((a,c)=>c[1]-a[1]);
    const chips=eg.length?`<div style="display:flex;flex-wrap:wrap;gap:6px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12px;font-weight:600">${eg.map(a=>`<div style="color:#a8a495;border:1px solid #2a2a24;padding:5px 8px">${a[0]} +${a[1]}</div>`).join('')}</div>`:'';
    const howto=(i.fix_deep||i.fix)?`<div style="display:flex;flex-direction:column;gap:6px;padding:11px 14px;border-left:2px solid #db0632"><div style="${MM};flex:none">how to fix</div><div style="font-size:13px;font-weight:400;line-height:1.5;color:#f2f0e4">${esc(i.fix_deep||i.fix)}</div></div>`:'';
    const gv=i.gain_overall>0?('+'+i.gain_overall):'&lt;+1';
-   return `<div onclick="tgl('pd_${i.id}')" style="display:grid;grid-template-columns:22px minmax(0,1fr) 48px;gap:14px;padding:20px 0;border-bottom:1px solid #2a2a24;align-items:start;cursor:pointer"><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600;color:#ff4d6d">${x<10?'0'+x:x}</div><div style="display:flex;flex-direction:column;gap:11px;min-width:0"><div style="${MM}">${(i.pillar||'').toLowerCase()} &middot; ${(i.effort||'').toLowerCase()} &middot; ${i.count}</div><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><div style="font-size:14px;font-weight:800;letter-spacing:-.3px">${esc(i.label)}</div><div style="${MM}">${esc(i.ch||'')}${i.owner?' &middot; '+esc(i.owner)+(i.owner2?' + '+esc(i.owner2):''):''}</div></div><div style="font-size:13px;font-weight:400;line-height:1.5;color:#a8a495">${esc(i.ev||'')}</div>${howto}${chips}<div>${pdet(i.id)}</div></div><div style="font-size:20px;font-weight:800;letter-spacing:-.8px;text-align:right;color:#ff4d6d">${gv}</div></div>`;};
+   return `<div onclick="tgl('pd_${i.id}')" style="display:grid;grid-template-columns:22px minmax(0,1fr) 48px;gap:14px;padding:20px 0;border-bottom:1px solid #2a2a24;align-items:start;cursor:pointer"><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600;color:#ff4d6d">${x<10?'0'+x:x}</div><div style="display:flex;flex-direction:column;gap:11px;min-width:0"><div style="${MM}">${(i.pillar||'').toLowerCase()} &middot; ${(i.effort||'').toLowerCase()} &middot; ${i.count} page${i.count==1?'':'s'}</div><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><div style="font-size:14px;font-weight:800;letter-spacing:-.3px">${esc(i.label)}</div><div style="${MM}">${esc(i.ch||'')}${i.owner?' &middot; '+esc(i.owner)+(i.owner2?' + '+esc(i.owner2):''):''}</div></div><div style="font-size:13px;font-weight:400;line-height:1.5;color:#a8a495">${esc(i.ev||'')}</div>${howto}${chips}<div>${pdet(i.id)}</div></div><div style="font-size:20px;font-weight:800;letter-spacing:-.8px;text-align:right;color:#ff4d6d">${gv}</div></div>`;};
  const sect=(title,note,rightnote,items,start)=>items.length?`<section style="display:flex;flex-direction:column;padding:30px 0 0"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:18px"><div style="display:flex;align-items:baseline;gap:16px"><div style="display:flex;align-items:center;gap:9px">${sq}<div style="${HL}">${title}</div></div><div style="${MM}">${note}</div></div><div style="font-size:12px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;color:#ff4d6d">${rightnote}</div></div><div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:0 0 10px;${MM};border-bottom:1px solid #2a2a24"><div>fix &middot; question &middot; effort &middot; pages</div><div>gain</div></div>${items.map((i,k)=>row(i,start+k)).join('')}</section>`:'';
- const wStart=biggest.length+1,nStart=biggest.length+worth.length+1;
- const left=`${header}${readit}${sect('Biggest movers',biggest.length+' fixes &middot; biggest impact','Do these this month',biggest,1)}${sect('Structure for retrieval',worth.length+' fixes &middot; about +1 each','Worth doing',worth,wStart)}${sect('They compose',nostand.length+' fixes &middot; under +1 each','After the above',nostand,nStart)}`;
+ const _vitalNote=(_vpct!=null)?`${_vk} fixes &middot; recover about ${_vpct}% of the score on the table`:`${_vk} fixes &middot; start here`;
+ const left=`${header}${readit}${sect('Fix these first',_vitalNote,'Start here',vital,1)}${rest.length?sect('Then these',rest.length+' fix'+(rest.length==1?'':'es')+' &middot; the rest of the ranked plan','After the above',rest,_vk+1):''}`;
  const exportBox=`<div style="display:flex;flex-direction:column;gap:10px;padding:22px 0 0 24px;border-top:1px solid #2a2a24"><div onclick="exportDevPlan()" style="font-size:12.5px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;color:#f2f0e4;background:#db0632;padding:14px 16px;text-align:center;cursor:pointer">Export dev checklist</div><div onclick="exportPlan()" style="font-size:12.5px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;color:#a8a495;border:1px solid #2a2a24;padding:13px 16px;text-align:center;cursor:pointer">Export data (CSV)</div><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12px;font-weight:600;line-height:1.55;color:#8b8b81;padding-top:8px">Crawl ran locally. No page data left this machine.</div></div>`;
  return `<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(232px,320px);gap:0"><div style="display:flex;flex-direction:column;min-width:0;padding-right:32px">${left}</div><aside style="display:flex;flex-direction:column;min-width:0;align-self:start;padding:34px 0 24px 0;border-left:1px solid #2a2a24">${roadmapR()}${effortR(act,edits)}${exportBox}</aside></div>`;
 }
@@ -4034,7 +4282,7 @@ function effortR(act,edits){
  const bk={template:["Template-level fixes",0,0],copy:["Per-page copy work",0,0],meta:["One-off metadata edits",0,0]};
  act.forEach(i=>{const t=TTYPE[i.id]||"copy";bk[t][1]++;bk[t][2]+=gpos(i)});
  const tplN=bk.template[1], tplEdits=act.filter(i=>TTYPE[i.id]=="template").reduce((a,i)=>a+i.count,0);
- const rows=Object.keys(bk).filter(k=>bk[k][1]).map(k=>`<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px"><div style="font-size:13px;font-weight:800">${bk[k][0]}</div><div style="display:flex;align-items:baseline;gap:12px;flex:none"><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;font-weight:600;color:#8b8b81">${bk[k][1]} fixes</div><div style="font-size:14px;font-weight:800;color:#ff4d6d">+${bk[k][2]}</div></div></div>`).join("");
+ const rows=Object.keys(bk).filter(k=>bk[k][1]).map(k=>`<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px"><div style="font-size:13px;font-weight:800">${bk[k][0]}</div><div style="display:flex;align-items:baseline;gap:12px;flex:none"><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;font-weight:600;color:#8b8b81">${bk[k][1]} fix${bk[k][1]==1?'':'es'}</div><div style="font-size:14px;font-weight:800;color:#ff4d6d">+${bk[k][2]}</div></div></div>`).join("");
  const note=tplN?`<div style="font-size:13px;font-weight:400;line-height:1.5;color:#a8a495;padding-top:4px;border-top:1px solid #2a2a24">Start with the ${tplN} template fixes &mdash; they touch <span style="color:#ff4d6d;font-weight:800">${tplEdits} of ${edits}</span> page edits in one change.</div>`:"";
  return `<div style="display:flex;flex-direction:column;gap:14px;padding:22px 0 22px 24px;border-top:1px solid #2a2a24"><div style="display:flex;align-items:center;gap:9px"><div style="width:7px;height:7px;background:#db0632;flex:none"></div><div style="font-size:12px;font-weight:800;letter-spacing:2.4px;text-transform:uppercase;color:#f2f0e4">Effort at a glance</div></div><div style="display:flex;flex-direction:column;gap:10px">${rows}</div>${note}</div>`;
 }
@@ -4059,7 +4307,7 @@ function issuesView(){
  const proj=Math.min(100,D.overall+tg);
  const istat=(label,num,sub)=>`<div class="istat"><div class="apk">${label}</div><div class="inumwrap">${num}</div><div class="isub">${sub}</div></div>`;
  h+=`<div class="issum">
-   ${istat('CHECKS FAILING',`<span class="inum">${iss.length}</span>`,`of ${totalChecks} checks &middot; ${instN} instances`)}
+   ${istat('CHECKS FAILING',`<span class="inum">${iss.length}</span>`,`of ${totalChecks} distinct checks &middot; ${instN} results across ${D.pages_crawled} pages`)}
    <div class="vr"></div>
    ${istat('ERRORS',`<span class="dotb" style="margin:0;background:var(--err2)"></span><span class="inum" style="color:var(--err2)">${errs.length}</span>`,'blocking citation')}
    ${istat('WARNINGS',`<span class="dotb" style="margin:0;background:var(--warn2)"></span><span class="inum" style="color:var(--warn2)">${warns.length}</span>`,'weakening it')}
@@ -4173,14 +4421,14 @@ function pagesView(){
  const bars=dist.map((d,i)=>{const cl=i>=2;return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600;color:${d===0?'#8b8b81':cl?'#a8a495':'#ff4d6d'}">${d}</div><div style="width:100%;height:${Math.max(2,Math.round(80*d/maxd))}px;background:${d===0?'#2a2a24':cl?'#f2f0e4':'#db0632'}"></div><div style="${MM}">${dlab[i]}</div></div>`;}).join('');
  const wrow=(x,i)=>`<div style="display:flex;align-items:center;gap:12px"><div style="font-size:13px;font-weight:800;width:86px;flex:none">${x[0]}</div><div style="flex:1;height:7px;min-width:0;background:#262620"><div style="width:${Math.round(100*x[1]/wmax)}%;height:7px;background:${i===0?'#db0632':'#55534a'}"></div></div><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600;color:${i===0?'#ff4d6d':'#a8a495'};width:20px;text-align:right;flex:none">${x[1]}</div></div>`;
  let h=`<div style="display:flex;flex-direction:column">
-   <section style="display:grid;grid-template-columns:minmax(0,0.6fr) minmax(300px,1.6fr) minmax(220px,0.9fr);border-bottom:1px solid #2a2a24">
+   <section class="pgstats" style="display:grid;grid-template-columns:minmax(0,0.6fr) minmax(300px,1.6fr) minmax(220px,0.9fr);border-bottom:1px solid #2a2a24">
      <div style="display:flex;flex-direction:column;gap:12px;padding:30px 32px 34px 0"><div style="display:flex;align-items:center;gap:9px"><div style="width:7px;height:7px;background:#db0632;flex:none"></div><div style="${HL}">Median page</div></div><div style="display:flex;align-items:baseline;gap:12px"><div style="font-size:52px;font-weight:800;letter-spacing:-2.8px;line-height:.8;color:#f2f0e4">${median}</div><div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600;color:#8b8b81">quotable at 70</div></div><div style="font-size:13px;font-weight:400;line-height:1.5;color:#a8a495">${shortSent}</div></div>
      <div style="display:flex;flex-direction:column;gap:18px;padding:30px 32px 34px;border-left:1px solid #2a2a24"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px"><div style="${HLm}">Score distribution</div><div style="${MM}"><span style="color:#f2f0e4">${clear} of ${D.pages.length}</span> pages clear 70</div></div><div style="display:flex;align-items:flex-end;gap:10px;height:96px">${bars}</div></div>
      <div style="display:flex;flex-direction:column;gap:16px;padding:30px 0 34px 32px;border-left:1px solid #2a2a24"><div style="${HLm}">Weakest engine per page</div><div style="display:flex;flex-direction:column;gap:11px">${ws.map(wrow).join('')}</div></div>
    </section>
    <section style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:20px 0;border-bottom:1px solid #2a2a24"><input type="text" name="rubric-url-filter" autocomplete="off" spellcheck="false" data-1p-ignore="true" data-lpignore="true" readonly onfocus="this.removeAttribute('readonly')" placeholder="filter by URL" oninput="window._pq=this.value;pgRefresh()" value="${esc(window._pq||'')}" style="flex:1;min-width:200px;background:transparent;border:0;border-bottom:1px solid #55534a;outline:none;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:14px;font-weight:600;color:#f2f0e4;padding:9px 0"><div id="pgpills" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${pgPillsHTML()}</div></section>`;
  const HCELL=(k,lab,al)=>`<div data-s="${k}" data-lab="${lab}" onclick="pgsort('${k}')" style="text-align:${al||'left'};cursor:pointer">${lab}${sortk==k?(sortd>0?' &#8593;':' &#8595;'):''}</div>`;
- h+=`<section style="display:flex;flex-direction:column;overflow-x:auto"><div style="min-width:1080px;display:flex;flex-direction:column">
+ h+=`<section style="display:flex;flex-direction:column;overflow-x:auto;min-width:0;max-width:100%;-webkit-overflow-scrolling:touch"><div style="min-width:1080px;display:flex;flex-direction:column">
    <div id="pghead" style="${PGCOLS};padding:16px 0 10px;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;font-weight:600;color:#8b8b81;border-bottom:1px solid #2a2a24">${HCELL('score','score')}${HCELL('url','url')}${HCELL('Known','kn','right')}${HCELL('Findable','fi','right')}${HCELL('Trusted','tr','right')}${ECOLS.map(e=>HCELL(e,(EABBR[e]||e).toLowerCase(),'right')).join('')}${HCELL('fetch_ms','load','right')}<div style="text-align:right">fail</div><div>failing checks</div></div>
    <div id="pgrows">${pgFiltered().map(pageRow).join('')}</div>
    ${D._anon&&(D._locked_pages||[]).length?`<div id="pglocked">${(D._locked_pages).map(function(u){return `<div style="${PGCOLS};padding:13px 0;border-bottom:1px solid #2a2a24;opacity:.4"><div style="text-align:center;color:#6b6b65;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:13px">&#8226;</div><div style="font-size:14px;color:#a8a495;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(u)}</div></div>`;}).join('')}</div><div onclick="stickyCTA()" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 0;border-bottom:1px solid #2a2a24;cursor:pointer"><div style="font-size:14px;color:#a8a495"><b style="color:#f2f0e4">${(D._more_pages||(D._locked_pages).length).toLocaleString()} more page${(D._more_pages||(D._locked_pages).length)==1?'':'s'}</b> discovered on your site, not yet crawled.</div><div style="font-size:13px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#f2f0e4">Create a free account to crawl them &rarr;</div></div>`:''}
@@ -4368,7 +4616,7 @@ function dl(name,rows){const csv=rows.map(r=>r.map(c=>`"${String(c==null?'':c).r
 function dlText(name,text,mime){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:(mime||'text/plain')+';charset=utf-8'}));a.download=name;a.click();}
 // every export filename carries the CRAWL date (D.date), so a re-audit downloads a DISTINCT file and an
 // old snapshot can never be mistaken for the current one (they used to collide as "...(1).csv").
-function _fn(suffix){return 'cited-score-'+(D.domain||'site')+'-'+(D.date||'undated')+'-'+suffix;}
+function _fn(suffix){var _pfx=(WL||DB)?'':'rubric-';return _pfx+(D.domain||'site')+'-'+(D.date||'undated')+'-'+suffix;}
 // Developer handoff: the ranked plan as a Markdown checklist - the FIX instruction plus the exact pages to
 // change, so a developer (or a coding agent) can act on it without opening the report. Differs from the CSV,
 // which is score data; this is the do-this list.
@@ -4683,7 +4931,7 @@ function brokenView(){
        <tbody>${body}</tbody>
      </table>
    </div>
-   <div class="qd" style="margin-top:10px">Internal broken links are top priority. 403/429 (bot-blocked) links and timeouts are deliberately excluded to avoid false positives. The full list is also in the CSV / JSON export.</div>
+   <div class="qd" style="margin-top:10px">Internal broken links are top priority. 403/429 (bot-blocked) links and timeouts are deliberately excluded to avoid false positives. The full list is also in the CSV export.</div>
  </div>`;
 }
 function _band(s){return s>=85?['Strong','g']:s>=70?['Quotable','g']:s>=55?['At risk','a']:['Weak','r'];}
@@ -4787,11 +5035,11 @@ function printReport(){
  H+='<table><thead><tr><th>Score</th><th>Page</th><th>Known</th><th>Findable</th><th>Trusted</th><th>Type</th></tr></thead><tbody>';
  pgs.forEach(function(p){H+='<tr><td class="sc" style="color:'+_crb(p.score)+'">'+p.score+'</td><td>'+rel2(p.url)+'</td><td class="sc">'+p.pillars.Known+'</td><td class="sc">'+p.pillars.Findable+'</td><td class="sc">'+p.pillars.Trusted+'</td><td style="color:var(--muted)">'+esc2(p.type||'')+'</td></tr>';});
  H+='</tbody></table></div>';
- H+='<div class="cr-foot">Prepared with '+esc2(brand)+(wl?'':' &middot; the AI-search auditor')+'. Scores estimate citability from on-page signals; they do not measure citations directly. Projections assume the listed fixes are applied cleanly. Full per-page data is in the CSV/JSON export.</div>';
+ H+='<div class="cr-foot">Prepared with '+esc2(brand)+(wl?'':' &middot; the AI-search auditor')+'. Scores estimate citability from on-page signals; they do not measure citations directly. Projections assume the listed fixes are applied cleanly. Full per-page data is in the CSV export.</div>';
 
  H+='</div>';document.getElementById('printroot').innerHTML=H;window.print();
 };
-tabsbar();render();updExp();
+var _t0=tabFromSlug((location.hash||'').slice(1));if(_t0){go(_t0);}else{tabsbar();render();updExp();var _v0=document.getElementById('view');if(_v0&&typeof cur!=='undefined')_v0.setAttribute('aria-labelledby','tab-'+tabSlug(cur));}
 """
     if anon:
         # Anon behaviour, appended after the report's own script: gate every tab and export to the CTA,
@@ -4857,11 +5105,11 @@ tabsbar();render();updExp();
         # clicking pops the register CTA via printReport/exportCurrent rather than downloading.
         _btns_html = ("<span class='btns'>"
                       "<a class='navbtn' href='/login' style='color:#f2f0e4'>Log in</a>"
-                      "<button onclick='printReport()' title='Create a free account to export'>Full report (PDF)</button>"
+                      "<button onclick='printReport()' title='Create a free account to export'>Print or save as PDF</button>"
                       "<button id='expbtn' onclick='exportCurrent()' title='Create a free account to export'>Export all (CSV)</button>"
                       "</span>")
     else:
-        _btns_html = (f"<span class='btns'>{_navbtns}<button onclick='printReport()'>Full report (PDF)</button>"
+        _btns_html = (f"<span class='btns'>{_navbtns}<button onclick='printReport()'>Print or save as PDF</button>"
                       f"<button id='expbtn' onclick='exportCurrent()'>Export all (CSV)</button></span>")
     _sticky = ""
     if anon:
@@ -4898,9 +5146,9 @@ tabsbar();render();updExp();
          f"<span class='m'><a href='{H.escape(d['origin'])}' target='_blank' style='color:var(--txt);font-weight:600'>{H.escape(d['domain'])}</a> &middot; {_pagecount} &middot; {d['generated']}</span>"
          f"{_btns_html}</header>"
          + ((f"<div style='padding:14px 24px;background:rgba(242,240,228,.06);border-bottom:1px solid var(--line);font-size:14px'><span style='color:#8b8b81'>AI Search Audit prepared for</span> <b style='font-size:16px'>{H.escape(d.get('client') or '')}</b> <span style='color:#8b8b81'>by {H.escape(d.get('agency') or 'GoGoChimp')}</span>" + (f"<div style='color:#a8a495;line-height:1.6;margin-top:8px;max-width:820px'>{H.escape(d.get('intro') or '')}</div>" if d.get('intro') else "") + "</div>") if d.get('client') else "")
-       + "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view'></div>"
-       + ("<div class='foot'><b>Why citability matters:</b> AI Overviews cut organic clicks ~40% where they appear (Agarwal &amp; Sen field RCT, 2026), and pages cited in the AI Overview earn ~35% higher CTR (Seer, 2025). This report <b>estimates citability</b> for AI search from on-page, structural and technical signals. It does <b>not</b> measure citations. llms.txt and Grok are shown for reference only and are not scored.</div></div>" if _wl
-          else "<div class='foot'><b>Why citability matters:</b> AI Overviews cut organic clicks ~40% where they appear (Agarwal &amp; Sen field RCT, 2026), and pages cited in the AI Overview earn ~35% higher CTR (Seer, 2025) - so this score is your odds of being the cited page. Rubric <b>estimates citability</b> from on-page, structural and technical signals. It does <b>not</b> measure citations. For measured citations, calibrate the model against your Bing Webmaster Tools AI Performance export (<code>--calibrate citations.csv</code>). Every check carries a source (engine documentation, first-party citation data, or a CITED chapter). llms.txt and Grok are shown for reference only and are not scored (Ch5): llms.txt shows no citation correlation, and Grok has no citation export to calibrate against.</div></div>")
+       + "<div class='tabs' id='tabs'></div><div id='app'><div class='wrap' id='view' role='tabpanel' tabindex='-1'></div>" + _proof_panel
+       + ("<div class='foot'><b>Why citability matters:</b> AI Overviews cut organic clicks ~40% where they appear (Agarwal &amp; Sen field RCT, 2026), and pages cited in an AI Overview earn about +120% more organic clicks per impression than uncited pages, though searches with an AI Overview still see fewer clicks overall (Seer v3, April 2026). This report <b>estimates citability</b> for AI search from on-page, structural and technical signals. It does <b>not</b> measure citations. llms.txt and Grok are shown for reference only and are not scored.</div></div>" if _wl
+          else "<div class='foot'><b>Why citability matters:</b> AI Overviews cut organic clicks ~40% where they appear (Agarwal &amp; Sen field RCT, 2026), and pages cited in an AI Overview earn about +120% more organic clicks per impression than uncited pages, though searches with an AI Overview still see fewer clicks overall (Seer v3, April 2026) - so this score is your odds of being the cited page. Rubric <b>estimates citability</b> from on-page, structural and technical signals. It does <b>not</b> measure citations. For measured citations, calibrate the model against your Bing Webmaster Tools AI Performance export (<code>--calibrate citations.csv</code>). Every check carries a source (engine documentation, first-party citation data, or a CITED chapter). llms.txt and Grok are shown for reference only and are not scored (Ch5): llms.txt shows no citation correlation, and Grok has no citation export to calibrate against.</div></div>")
        + "<div id='printroot'></div>" + _anon_modal + _sticky
        + f"<script>window.__DATA__={payload};window.__LOGO_DARK__={json.dumps(CITED_LOGO_DARK)};</script><script>{js}</script></body></html>")
     with open(path,"w",encoding="utf-8") as f: f.write(doc)
@@ -5186,17 +5434,20 @@ def write_compare_html(data, path, nav=None):
     you = data.get("you") or {}; comp = data.get("competitor") or {}
     def _card(g, show_win=False):
         eng = ", ".join((g.get("engines") or [])[:3])
-        win = " <span class=wintag>you already win</span>" if (show_win and g.get("you_win")) else ""
+        is_win = bool(show_win and g.get("you_win"))
+        win = " <span class=wintag>you already win</span>" if is_win else ""
         st = "" if not g.get("your_status") else "<span class=yst>you: %s</span>" % esc(g.get("your_status"))
+        # On a win, their page is weak here and yours already passes - show the edge, not a fix-it instruction.
+        body = "Your page already passes this and theirs does not, so it is an edge over them. Keep it." if is_win else esc(g.get("fix"))
         return ("<div class=g><div class=gh><span class=gw>+%s wt</span><span class=gl>%s</span>%s%s</div>"
                 "<div class=gf>%s</div>%s</div>"
-                % (esc(g.get("weight")), esc(g.get("label")), win, st, esc(g.get("fix")),
+                % (esc(g.get("weight")), esc(g.get("label")), win, st, body,
                    ("<div class=ge>" + esc(eng) + "</div>" if eng else "")))
     gaps = "".join(_card(g) for g in (data.get("your_gaps") or [])[:15]) or "<div class=allclear>You match or beat their page on every signal we measure.</div>"
     weak = data.get("their_weak") or []
     wins = [w for w in weak if w.get("you_win")]; open_both = [w for w in weak if not w.get("you_win")]
     weakhtml = ""
-    if wins: weakhtml += "<div class=sub>You already beat them here - press it:</div>" + "".join(_card(w, True) for w in wins[:10])
+    if wins: weakhtml += "<div class=sub>You already beat them here &mdash; an edge over their page:</div>" + "".join(_card(w, True) for w in wins[:10])
     if open_both: weakhtml += "<div class=sub>Open for both - fix on your page to leapfrog:</div>" + "".join(_card(w) for w in open_both[:10])
     if not weak: weakhtml = "<div class=allclear>Their page is strong across the board.</div>"
     nav = nav or {}; navbtns = ""
@@ -5218,12 +5469,16 @@ def write_compare_html(data, path, nav=None):
            ".yst{font-family:var(--mono);font-size:12px;color:var(--amber)}.wintag{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:#fff;background:var(--grn);border-radius:100px;padding:2px 7px}"
            ".allclear{border:1px solid var(--line);border-left:2px solid var(--grn);border-radius:0 8px 8px 0;padding:14px;color:var(--grn);background:var(--panel)}"
            ".note{color:var(--muted);font-size:13px;margin-top:24px;max-width:72ch}")
+    _ys, _cs = you.get("score"), comp.get("score")
+    try: _diff = int(_ys) - int(_cs)
+    except Exception: _diff = None
+    _lead = ("level with their page" if _diff == 0 else ("you lead by %d" % _diff if (_diff or 0) > 0 else "they lead by %d" % (-(_diff or 0)))) if _diff is not None else "scores shown above"
     doc = ("<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">"
            "<title>Page vs competitor - Rubric</title><style>" + css + "</style></head><body>"
            "<header>" + logo + "<span class=nav>" + navbtns + "</span></header>"
            "<div class=wrap><div class=kick>Page vs competitor</div>"
            "<h1>" + esc(you.get("domain") or "your page") + " vs " + esc(comp.get("domain") or "competitor") + "</h1>"
-           "<div class=stat>You <b>" + esc(you.get("score")) + "</b> &nbsp;vs&nbsp; them <b>" + esc(comp.get("score")) + "</b> &nbsp;&middot;&nbsp; gap <b>" + esc(data.get("score_gap")) + "</b></div>"
+           "<div class=stat>You <b>" + esc(you.get("score")) + "</b> &nbsp;vs&nbsp; them <b>" + esc(comp.get("score")) + "</b> &nbsp;&middot;&nbsp; <b>" + esc(_lead) + "</b></div>"
            "<h3>What they have that you don't</h3>" + gaps +
            "<h3>Where they're weak</h3>" + weakhtml +
            "<div class=note>Single-page crawl of each URL. On-page citability signals only; off-page authority (domain strength, third-party mentions) is not measured here. Weighting is the sum of engine weights for each signal.</div>"
@@ -5347,18 +5602,41 @@ def _qtype(q):
     if ql.startswith(("what is", "what are", "who is", "who are", "is ")) or "review" in ql or "pricing" in ql or "cost" in ql: return "Entity"
     return "Informational"
 
+def _usable_q_heading(h):
+    """A site heading only works as a standalone AI query if it names a concrete subject. Drop deictic/CTA
+    headings whose 'subject' is only a pronoun ("what it is", "what we do") or a generic call-to-action
+    ("how to book", "get started"), so the proposed queries are things a real user would type."""
+    low = (h or "").strip().lower().rstrip("?!. ")
+    if len(low) < 6: return False
+    _GENERIC = {"how it works","what we do","who we are","about us","contact us","get started","get in touch",
+                "how to book","learn more","our story","our work","our services","what it is","why choose us",
+                "read more","find out more","book now","our team","meet the team","our clients","our mission"}
+    if low in _GENERIC: return False
+    toks = re.findall(r"[a-z0-9]+", low)
+    stop = {"what","how","why","when","where","who","which","is","are","do","does","to","a","an","the","of","in","on","for","and","or","i","my"}
+    deictic = {"it","we","us","our","this","that","these","those","you","your","they","them"}
+    content = [t for t in toks if t not in stop]
+    if not content or all(t in deictic for t in content): return False
+    return True
+
 def _brand_of(domain, pages):
-    # Prefer the homepage <title>'s lead segment ("MyOwnConference: Webinars" -> "MyOwnConference"); fall back to the
-    # registrable root. The user can edit it, so a slightly-off brand token is corrected, never a blank.
+    # The brand of the site being AUDITED. Prefer the homepage <title>'s lead segment ("MyOwnConference: Webinars"
+    # -> "MyOwnConference"), but ONLY when it matches the domain - a homepage that leads with a product or campaign
+    # name (e.g. "Rubric" on gogochimp.com) must not hijack the brand of the site being audited. Otherwise fall
+    # back to the registrable root. The user can edit it, so a slightly-off token is corrected, never a blank.
+    root = (domain or "").replace("www.", "").split(".")[0]
+    _norm = lambda x: re.sub(r"[^a-z0-9]", "", (x or "").lower())
     for p in (pages or []):
         path = (p.get("path") or "")
         if (p.get("type") == "home") or (path.strip("/") == ""):
             t = (p.get("title") or "").strip()
             if t:
                 brand = re.split(r"[|\-–—:·]", t)[0].strip()
-                if 2 <= len(brand) <= 40: return brand
-    root = (domain or "").replace("www.", "").split(".")[0]
-    return root or "your brand"
+                nb, nr = _norm(brand), _norm(root)
+                if 2 <= len(brand) <= 40 and nb and nr and (nb in nr or nr in nb):
+                    return brand
+            break   # the homepage decides; if its title does not match the domain, use the root below
+    return (root[:1].upper() + root[1:]) if root else "your brand"
 
 def propose_queries(pages, domain, site_type=None, site_type_label=None):
     """Deterministic five-query proposal from the crawl. Returns [{"q","source","type"}], always with >=1 Entity
@@ -5374,8 +5652,9 @@ def propose_queries(pages, domain, site_type=None, site_type_label=None):
     heads = []
     for p in (pages or []):
         heads += (p.get("q_headings") or [])
+    heads = [h for h in heads if _usable_q_heading(h)]
     for h in sorted(set(heads), key=lambda s: (len(s), s))[:3]:
-        add(h, "heading", _qtype(h))
+        add(h[:1].lower() + h[1:], "heading", _qtype(h))
     # 2) brand + category templates. The Entity + Comparison anchors are added FIRST so they always make the 5
     #    (headings are capped at 3), guaranteeing coverage of the two fan-out types that matter.
     add("what is " + brand, "template", "Entity")
@@ -5400,7 +5679,7 @@ def run_audit(*args, **kwargs):
     finally:
         _CRAWL_AUTH = None
 
-def _run_audit_impl(url, out="report", max_pages=0, workers=WORKERS, progress=None, client=None, intro=None, links=True, site_type=None, queries=None, logs=None, agency=None, logo=None, nav=None, max_seconds=0, benchmark_fn=None, debrand=False, auth=None):
+def _run_audit_impl(url, out="report", max_pages=0, workers=WORKERS, progress=None, client=None, intro=None, links=True, site_type=None, queries=None, logs=None, agency=None, logo=None, nav=None, max_seconds=0, benchmark_fn=None, debrand=False, auth=None, proof=None, proof_url=None):
     """Crawl + score a whole site and write out.html/.json/.csv. progress(phase, done,
     total, msg) is called through the run so a UI can show live status. Returns the data.
     max_seconds>0 caps wall-clock crawl time: at the deadline it stops gracefully and scores
@@ -5464,6 +5743,7 @@ def _run_audit_impl(url, out="report", max_pages=0, workers=WORKERS, progress=No
     aicrawler=ai_crawler_matrix(origin) if (out and not unreachable) else {}  # AI-bot access matrix (advisory monitor)
     data=build(domain,origin,pages,sitecx,sitemap_paths,linkstatus,client,intro,protocols,aicrawler,site_type_override=site_type,agency=agency,logo=_logo_uri)
     data["_debrand"]=bool(debrand)   # Pro de-brand: suppress Rubric marks in the report + exports (set from the job by the worker)
+    data["scoring_version"]=SCORING_VERSION   # proof loop: which scoring revision produced this result (worker stamps it on crawl_page_checks)
     data["partial"]=bool(partial)
     data["total_discovered"]=total    # URLs discovered at crawl start; anon uses (total - crawled) for the "N more pages" bar
     data["pages_fetched"]=len(urls)   # pages the crawler actually fetched; pages_crawled is the SCORED subset (some are non-HTML / machine files)
@@ -5517,7 +5797,10 @@ def _run_audit_impl(url, out="report", max_pages=0, workers=WORKERS, progress=No
             try: data["benchmark"]=benchmark_fn(data)          # in the corpus + returns the median for its site_type
             except Exception: pass                             # (None -> the report falls back to the static 491 median)
         for _p in pages: _p.pop("_text",None)                 # drop the transient page text (only needed for the ollama decision-facts call) before writing
-        apply_diff(data,out); write_outputs(data,out)         # out=None -> crawl + score only, no files (used by benchmark)
+        apply_diff(data,out)
+        if proof: data["proof"]=proof                        # proof loop: the LAST-KNOWN site_proof (summary + tier) the caller loaded, computed before this
+        if proof and proof_url: data["proof_url"]=proof_url  # crawl. write_html renders the compact panel only when present and links to the live Proof view.
+        write_outputs(data,out)                               # out=None -> crawl + score only, no files (used by benchmark)
     emit("done",total,total,f"{domain}: {data['overall']}/100, {data['pages_crawled']} pages")
     return data
 

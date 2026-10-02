@@ -840,7 +840,9 @@ class Handler(BaseHTTPRequestHandler):
             import watch_store; return self._json(200, {"ok": watch_store.remove((body.get("url") or "").strip())})
         if self.path == "/telemetry-consent": return self._json(200, {"ok": set_telemetry_consent(body.get("consent"))})
         if self.path == "/self-update": return self._json(200, self_update())   # BETA/gated; banner still uses /open-update
-        if not (is_activated() or _pro_ok()): return self._json(403, {"error": "Activate Rubric, or unlock with a Pro licence (rubric activate), to run audits."})
+        # Desktop crawling (private/staging/localhost, no page cap) is a Pro benefit: require a Pro licence, not a
+        # free email activation. The email code can still open and sign in to the app; it just cannot run crawls.
+        if not _pro_ok(): return self._json(403, {"error": "Desktop crawling needs Rubric Pro. Unlock with your Pro licence key (cs_live_...) from cited.gogochimp.com/mcp, or upgrade at cited.gogochimp.com/pricing."})
         if self.path == "/run": return self._run(body)
         if self.path == "/calibrate": record_usage("feature", f="calibrate"); return self._calibrate(body)
         if self.path == "/benchmark": record_usage("feature", f="benchmark"); return self._benchmark(body)
