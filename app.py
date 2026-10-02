@@ -11,7 +11,7 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.1.1"                 # semver; MUST track the GitHub release tag (vX.Y.Z) or the update check never fires. Bump + tag the release to match on every ship.
+APP_VERSION = "0.1.2"                 # semver; MUST track the GitHub release tag (vX.Y.Z) or the update check never fires. Bump + tag the release to match on every ship.
 GITHUB_REPO = "GoGoChimp/rubric-desktop" # PUBLIC releases-only repo that hosts Rubric.exe (update check reads /releases/latest); the engine repo GoGoChimp/cited-score is private and has no public release asset
 VERSION = f"v{APP_VERSION}"
 
