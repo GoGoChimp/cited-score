@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rubric-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "Rubric desktop: local AI-search citability auditor (CITED Score engine)."
 requires-python = ">=3.10"
 dependencies = ["beautifulsoup4>=4.12", "lxml>=5.0", "mcp>=1.0"]

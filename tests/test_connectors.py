@@ -82,6 +82,8 @@ def test_cli_tool_shells_claude(monkeypatch):
     assert res["ok"] is True
     assert calls and calls[0][:3] == ["/usr/bin/claude", "mcp", "add"]
     assert connectors.SERVER_KEY in calls[0]
+    # Must register at USER scope, not the cwd-tied default "local" (invisible to a GUI-launched exe).
+    i = calls[0].index("-s"); assert calls[0][i + 1] == "user"
 
 
 def test_cli_tool_missing_claude_is_graceful(monkeypatch):

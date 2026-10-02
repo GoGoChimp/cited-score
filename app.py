@@ -11,9 +11,9 @@ import os, re, sys, json, threading, time, webbrowser, urllib.parse, urllib.requ
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
-APP_VERSION = "0.15.7"                # semver; bump on every release + tag the GitHub release to match
+APP_VERSION = "0.1.1"                 # semver; MUST track the GitHub release tag (vX.Y.Z) or the update check never fires. Bump + tag the release to match on every ship.
 GITHUB_REPO = "GoGoChimp/rubric-desktop" # PUBLIC releases-only repo that hosts Rubric.exe (update check reads /releases/latest); the engine repo GoGoChimp/cited-score is private and has no public release asset
-VERSION = f"v{APP_VERSION} - August 2026"
+VERSION = f"v{APP_VERSION}"
 
 _update = {"checked": False, "update": False, "latest": None, "url": None, "dl": None}
 def _ver_tuple(s):
@@ -1222,15 +1222,39 @@ _WHEAD = r"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewpo
 .ghost{background:#fff;border:1px solid var(--line);color:var(--txt)}
 .field{margin-top:12px}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
 .field input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:11px 12px;font-size:14px}
+#updbar{display:none;align-items:center;gap:12px;padding:10px 24px;background:#fff5f6;border-bottom:1px solid #f3c9d2;color:#8a0b22;font-size:13.5px}
+#updbar .updbtn{margin-left:auto;background:var(--red);color:#fff;border:0;border-radius:8px;padding:7px 14px;font-family:var(--display);font-weight:800;font-size:12px;cursor:pointer}
+#updbar .updbtn:hover{background:var(--red2)}#updbar .updbtn:disabled{opacity:.6;cursor:default}
 </style></head><body>
 <div class="top">__LOGO__<div class="nav"><a href="/connect" __A_connect__>Connect</a><a href="/reports-view" __A_reports__>Reports</a><a href="/settings" __A_settings__>Settings</a></div></div>
+<div id="updbar"><span id="updmsg"></span><button class="updbtn" onclick="rubricUpdate()">Update</button></div>
 <div class="wrap">"""
+
+# Update banner script, injected into every tray window by _wshell. Client-side + non-blocking: it asks the
+# local server (/update-check -> check_update() against the public releases repo) and only reveals the banner
+# when a newer version exists. "Update" opens the download in the browser (/open-update); the user runs the
+# downloaded exe to upgrade. No network work happens on the render path.
+_UPDATE_JS = r"""<script>
+(function(){
+  fetch('/update-check').then(function(r){return r.json();}).then(function(u){
+    if(!u||!u.update) return;
+    var bar=document.getElementById('updbar'); if(!bar) return;
+    document.getElementById('updmsg').textContent='Rubric '+(u.latest||'')+' is available (you have v'+(u.current||'')+').';
+    bar.style.display='flex';
+  }).catch(function(){});
+})();
+function rubricUpdate(){
+  fetch('/open-update').catch(function(){});
+  var m=document.getElementById('updmsg'); if(m) m.textContent='Downloading in your browser - run the file when it finishes, then reopen Rubric.';
+  var b=document.querySelector('#updbar .updbtn'); if(b){ b.disabled=true; b.textContent='Downloading...'; }
+}
+</script>"""
 
 def _wshell(title, body, active=""):
     head = _WHEAD.replace("__T__", title).replace("__LOGO__", _LOGO).replace("__RFAV__", _RFAV)
     for k in ("connect", "reports", "settings"):
         head = head.replace("__A_" + k + "__", "class='on'" if k == active else "")
-    return head + body + "</div></body></html>"
+    return head + body + "</div>" + _UPDATE_JS + "</body></html>"
 
 _WCONNECT = r"""
 <h1 class="h1">Connect Rubric to your AI tool</h1>
@@ -1282,11 +1306,15 @@ async function connect(id,btn){
   btn.disabled=true; btn.textContent='...'; showMsg('');
   let d={};
   try{ const r=await fetch('/connect-tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tool:id})}); d=await r.json(); }
-  catch(e){ showMsg('Could not reach the local Rubric server.',true); btn.disabled=false; return; }
-  if(d.snippet){ const g=document.getElementById('grid'); const s=document.createElement('div'); s.className='snip'; s.textContent=(d.message||'')+"\n\n"+d.snippet; g.appendChild(s); }
-  else if(d.error){ showMsg(d.error,true); }
-  else if(d.message){ showMsg(d.message, d.ok===false || !!d.replaced); }
-  setTimeout(load,300);
+  catch(e){ showMsg('Could not reach the local Rubric server.',true); btn.disabled=false; btn.textContent='Connect'; return; }
+  var m=document.getElementById('msg');
+  if(d.snippet){ const g=document.getElementById('grid'); const s=document.createElement('div'); s.className='snip'; s.textContent=(d.message||'')+"\n\n"+d.snippet; g.appendChild(s); m.className='ok'; m.textContent=d.message||'Add the config shown, then restart the tool.'; return; }
+  if(d.error || d.ok===false){ showMsg(d.error||d.message||'Could not connect.',true); load(); return; }
+  // Success. A CLI/manual tool's status stays "unknown" (we never shell out on every load), so marking this
+  // tile client-side is the only visible confirmation - otherwise a real success reads as "nothing happened".
+  var tile=btn.closest('.gt'); if(tile){ tile.classList.add('connected'); }
+  btn.textContent='Connected ✓'; btn.disabled=true;
+  m.className='ok'; m.textContent=d.message||'Connected. Restart the tool to load Rubric.'; try{m.scrollIntoView({block:'nearest'});}catch(e){}
 }
 async function skillsStatus(){
   try{ const r=await fetch('/skills-status'); const d=await r.json(); const have=d.installed||[];

@@ -128,22 +128,26 @@ def _install_cli(tool_id):
     if not shutil.which("claude"):
         joined = " ".join([cmd, *args])
         return {"ok": False, "message": "Claude Code CLI not found on PATH. Install it, then run: "
-                f"claude mcp add {SERVER_KEY} -- {joined}"}
+                f"claude mcp add -s user {SERVER_KEY} -- {joined}"}
     claude = shutil.which("claude") or "claude"
     try:
-        subprocess.run([claude, "mcp", "add", SERVER_KEY, "--", cmd, *args],
+        # -s user registers at USER scope so it works in every project. The CLI default is "local" scope,
+        # which is tied to the caller's working directory; a GUI-launched exe has an arbitrary CWD, so a
+        # default add lands in a scope the user never opens and `claude mcp list` shows nothing ("Connect
+        # did nothing"). User scope is the correct meaning of "connect my tool to Rubric".
+        subprocess.run([claude, "mcp", "add", "-s", "user", SERVER_KEY, "--", cmd, *args],
                        check=True, capture_output=True, timeout=20)
-        return {"ok": True, "message": "Connected to Claude Code. Restart it to load Rubric."}
+        return {"ok": True, "message": "Connected to Claude Code (user scope). Restart it to load Rubric."}
     except Exception as e:
         return {"ok": False, "message": f"Could not add to Claude Code: {str(e)[:160]}"}
 
 
 def _uninstall_cli(tool_id):
     if not shutil.which("claude"):
-        return {"ok": True, "message": f"Run: claude mcp remove {SERVER_KEY}"}
+        return {"ok": True, "message": f"Run: claude mcp remove -s user {SERVER_KEY}"}
     claude = shutil.which("claude") or "claude"
     try:
-        subprocess.run([claude, "mcp", "remove", SERVER_KEY], check=True, capture_output=True, timeout=20)
+        subprocess.run([claude, "mcp", "remove", "-s", "user", SERVER_KEY], check=True, capture_output=True, timeout=20)
         return {"ok": True, "message": "Disconnected from Claude Code."}
     except Exception as e:
         return {"ok": False, "message": f"Could not remove from Claude Code: {str(e)[:160]}"}
