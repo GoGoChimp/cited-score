@@ -102,3 +102,22 @@ def test_list_tools_shape(monkeypatch):
 def test_unknown_tool_is_rejected():
     assert connectors.install("chatgpt")["ok"] is False
     assert connectors.status("chatgpt") == "unknown"
+
+
+def test_frozen_points_at_the_exe_not_the_pipx_script(tmp_path, monkeypatch):
+    # In an exe-only install there is no rubric-mcp console script; the written config must launch the exe
+    # itself with --mcp, or the host silently fails to connect.
+    monkeypatch.setattr(connectors.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(connectors.sys, "executable", r"C:\Program Files\Rubric\Rubric.exe", raising=False)
+    cfg = tmp_path / "mcp.json"
+    _patch_path(monkeypatch, cfg)
+    connectors.install("cursor")
+    block = json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"][connectors.SERVER_KEY]
+    assert block["command"].endswith("Rubric.exe")
+    assert block["args"] == ["--mcp"]
+
+
+def test_not_frozen_uses_the_mcp_console_script(monkeypatch):
+    monkeypatch.setattr(connectors.sys, "frozen", False, raising=False)
+    cmd, args = connectors._server_invocation()
+    assert "rubric-mcp" in cmd and args == []

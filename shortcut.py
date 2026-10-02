@@ -25,7 +25,10 @@ def icon_path():
 
 
 def _tray_exe():
-    """The windowless tray launcher, from this interpreter's Scripts dir, then PATH."""
+    """The windowless tray launcher. Frozen exe -> the packaged exe itself (no args = tray); otherwise
+    from this interpreter's Scripts dir, then PATH."""
+    if getattr(sys, "frozen", False):
+        return sys.executable
     sdir = os.path.dirname(sys.executable)
     for n in ("rubric-trayw.exe", "rubric-tray.exe"):
         c = os.path.join(sdir, n)

@@ -62,13 +62,24 @@ def test_activate_non_pro_refuses(tmp_path, monkeypatch):
     assert ok is False and (tmp_path / "licence.json").exists() is False
 
 def test_refresh_transient_error_keeps_grace(tmp_path, monkeypatch):
-    # A server that is UP but erroring (5xx / 429) must be treated as offline, not as "you are not Pro".
-    # Otherwise a transient blip locks a paying user out on every `rubric audit`.
+    # A server that is UP but erroring (5xx / 429), rate-limiting, timing out (408) or 403-ing an automated
+    # request (hosting bot-protection / WAF) must be treated as offline, not as "you are not Pro". Otherwise a
+    # transient blip - or a Cloudflare challenge - locks a paying user out on every `rubric audit`.
     _write(tmp_path, monkeypatch, (NOW - datetime.timedelta(days=2)).isoformat(), is_pro=True)
-    for status in (500, 502, 503, 429):
+    for status in (500, 502, 503, 429, 408, 403):
         monkeypatch.setattr(licence, "_post_entitlement", lambda base, key, s=status: (s, {"error": "server"}))
         assert licence.refresh(now=NOW) == "offline"
         assert licence.is_pro(now=NOW) is True
+
+def test_verify_403_is_not_a_trustworthy_negative(tmp_path, monkeypatch):
+    # A 403 from a WAF in front of the licence endpoint is "couldn't check", not "not Pro".
+    monkeypatch.setattr(licence, "_post_entitlement", lambda base, key: (403, {"error": "forbidden"}))
+    reachable, _ = licence.verify("cs_live_abc123def456")
+    assert reachable is False
+    # A genuine 401 (invalid/revoked key) IS trustworthy and is acted on.
+    monkeypatch.setattr(licence, "_post_entitlement", lambda base, key: (401, {"error": "invalid"}))
+    reachable, _ = licence.verify("cs_live_abc123def456")
+    assert reachable is True
 
 def test_activate_save_failure_refuses(tmp_path, monkeypatch):
     # If the licence file cannot be written, activate must NOT claim success.

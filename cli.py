@@ -174,18 +174,24 @@ def _notify(title, message):
         pass
 
 def _watch_install(every):
-    """Register a Windows scheduled task that runs `rubric watch run` on the cadence. Best-effort; prints guidance."""
+    """Register a Windows scheduled task that runs the watch sweep on the cadence. Best-effort; prints guidance.
+    Frozen exe -> the exe itself with --watch-run (there is no `rubric` console script in an exe-only install);
+    a pipx / Python run -> the `rubric watch run` console command."""
     import subprocess
-    rubric = shutil.which("rubric") or "rubric"
+    if getattr(sys, "frozen", False):
+        tr = f'"{sys.executable}" --watch-run'
+    else:
+        rubric = shutil.which("rubric") or "rubric"
+        tr = f'"{rubric}" watch run'
     sc = "WEEKLY" if every == "weekly" else "DAILY"
     try:
         subprocess.run(["schtasks", "/Create", "/F", "/SC", sc, "/TN", "RubricWatch",
-                        "/TR", f'"{rubric}" watch run', "/ST", "09:00"], check=True, capture_output=True, timeout=15)
-        print(f"Scheduled 'rubric watch run' {every} at 09:00 (task RubricWatch). Change it in Task Scheduler.")
+                        "/TR", tr, "/ST", "09:00"], check=True, capture_output=True, timeout=15)
+        print(f"Scheduled the watch sweep {every} at 09:00 (task RubricWatch). Change it in Task Scheduler.")
         return 0
     except Exception as e:
         print(f"Could not create the scheduled task automatically ({str(e)[:100]}). "
-              f"Create one that runs: {rubric} watch run")
+              f"Create one that runs: {tr}")
         return 1
 
 def _cmd_watch(rest):

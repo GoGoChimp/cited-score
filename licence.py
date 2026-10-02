@@ -40,11 +40,14 @@ def _post_entitlement(base, key):
         return 0, {"error": "Could not reach the licence server."}
 
 def verify(key, base=None):
-    """(reachable, payload). reachable=False means we could NOT get a trustworthy answer: a connection
-    failure (status 0) OR an infrastructure error (5xx / 429). Those ride the offline grace window rather
-    than downgrade a paying user on a transient blip. A 4xx such as 401 (invalid/revoked key) IS trustworthy."""
+    """(reachable, payload). reachable=False means we could NOT get a trustworthy answer, so the client
+    rides the offline grace window rather than downgrade a paying user. That covers: a connection failure
+    (status 0), an infrastructure error (5xx), rate limiting (429), a request timeout (408), and 403 - the
+    last because hosting bot-protection (a WAF / Cloudflare challenge) in front of the licence endpoint can
+    403 an automated request, and a customer must never be downgraded by that. A 4xx such as 401
+    (invalid/revoked key) IS a trustworthy answer and is acted on."""
     status, data = _post_entitlement(base or api_base(), key)
-    if status == 0 or status >= 500 or status == 429:
+    if status == 0 or status == 403 or status == 408 or status == 429 or status >= 500:
         return False, data
     return True, data
 

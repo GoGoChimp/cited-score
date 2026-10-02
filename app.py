@@ -33,7 +33,7 @@ def check_update():
             d = json.load(r)
         _update["latest"] = d.get("tag_name") or ""
         _update["url"] = d.get("html_url") or f"https://github.com/{GITHUB_REPO}/releases/latest"
-        _update["dl"] = f"https://github.com/{GITHUB_REPO}/releases/latest/download/CITED-Score.exe"
+        _update["dl"] = f"https://github.com/{GITHUB_REPO}/releases/latest/download/Rubric.exe"
         _update["update"] = _ver_tuple(_update["latest"]) > _ver_tuple(APP_VERSION)
     except Exception:
         pass  # no network / repo or release not published yet / rate-limited -> no banner
@@ -265,7 +265,7 @@ def self_update():
     try:
         exe = sys.executable
         tmp = exe + ".new"
-        urllib.request.urlretrieve(f"https://github.com/{GITHUB_REPO}/releases/latest/download/CITED-Score.exe", tmp)
+        urllib.request.urlretrieve(f"https://github.com/{GITHUB_REPO}/releases/latest/download/Rubric.exe", tmp)
         if os.path.getsize(tmp) < 1_000_000:                     # a real exe is many MB; guard vs an HTML error page
             os.remove(tmp); return {"ok": False, "error": "Downloaded file too small - aborted (not swapped)."}
         pid = os.getpid()
@@ -284,7 +284,7 @@ def self_update():
 
 def schedule_crawl(url, cadence="WEEKLY"):
     """Register a Windows scheduled task to re-crawl a URL on a cadence, so the Score-over-time trend +
-    AI-bot log activity fill in automatically. Frozen exe only (the task runs `CITED-Score.exe --crawl`).
+    AI-bot log activity fill in automatically. Frozen exe only (the task runs `Rubric.exe --crawl`).
     Returns {ok}. A Python run is a no-op with guidance (use the CLI + your own scheduler)."""
     if not getattr(sys, "frozen", False):
         return {"ok": False, "note": "Scheduling needs the packaged exe. From Python, point your own scheduler at: python aiseo_audit.py --url <url> --out reports/<name>"}
@@ -756,7 +756,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True})
         if u.path == "/telemetry-status": return self._json(200, {"consent": telemetry_consent()})
         if u.path == "/open-update":
-            try: webbrowser.open(f"https://github.com/{GITHUB_REPO}/releases/latest/download/CITED-Score.exe")
+            try: webbrowser.open(f"https://github.com/{GITHUB_REPO}/releases/latest/download/Rubric.exe")
             except Exception: pass
             return self._json(200, {"ok": True})
         if u.path == "/reports":

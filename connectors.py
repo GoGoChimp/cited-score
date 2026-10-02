@@ -13,13 +13,19 @@ Tool kinds:
   snippet - the tool needs a manual paste (Codex TOML, Cline VS Code settings); we return the exact
             block to add. These are the 'verify then ship' tools; snippet keeps us honest until then.
 """
-import os, json, shutil, subprocess, time
+import os, sys, json, shutil, subprocess, time
 
 SERVER_KEY = "rubric"
 
 
-def _server_command():
-    return shutil.which("rubric-mcp") or "rubric-mcp"
+def _server_invocation():
+    """(command, args) that launch THIS build's local MCP over stdio, for whichever runtime we are in.
+    Frozen exe -> the exe itself with --mcp (the pipx `rubric-mcp` console script does NOT exist in an
+    exe-only install, so pointing a host at it would silently fail to connect); a pipx / Python run ->
+    the rubric-mcp console script with no args."""
+    if getattr(sys, "frozen", False):
+        return sys.executable, ["--mcp"]
+    return (shutil.which("rubric-mcp") or "rubric-mcp"), []
 
 
 def _appdata():
@@ -70,7 +76,8 @@ def _read_json(path):
 
 
 def _block():
-    return {"command": _server_command(), "args": []}
+    cmd, args = _server_invocation()
+    return {"command": cmd, "args": args}
 
 
 def _install_json(path):
@@ -117,12 +124,14 @@ def _uninstall_json(path):
 
 
 def _install_cli(tool_id):
+    cmd, args = _server_invocation()
     if not shutil.which("claude"):
+        joined = " ".join([cmd, *args])
         return {"ok": False, "message": "Claude Code CLI not found on PATH. Install it, then run: "
-                f"claude mcp add {SERVER_KEY} -- {_server_command()}"}
+                f"claude mcp add {SERVER_KEY} -- {joined}"}
     claude = shutil.which("claude") or "claude"
     try:
-        subprocess.run([claude, "mcp", "add", SERVER_KEY, "--", _server_command()],
+        subprocess.run([claude, "mcp", "add", SERVER_KEY, "--", cmd, *args],
                        check=True, capture_output=True, timeout=20)
         return {"ok": True, "message": "Connected to Claude Code. Restart it to load Rubric."}
     except Exception as e:
@@ -142,12 +151,13 @@ def _uninstall_cli(tool_id):
 
 def snippet(tool_id):
     """The exact config block to paste for a manual (snippet) tool."""
+    cmd, args = _server_invocation()
     if tool_id == "codex":
         return ("[mcp_servers.rubric]\n"
-                f'command = "{_server_command()}"\n'
-                "args = []\n")
+                f'command = "{cmd}"\n'
+                f"args = {json.dumps(args)}\n")
     if tool_id == "cline":
-        return json.dumps({SERVER_KEY: {"command": _server_command(), "args": [],
+        return json.dumps({SERVER_KEY: {"command": cmd, "args": args,
                                         "disabled": False, "autoApprove": []}}, indent=2)
     return ""
 

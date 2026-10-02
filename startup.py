@@ -2,7 +2,7 @@
 folder that launches `rubric-tray`. This needs no admin rights and no registry write, and the
 user can see and delete it themselves. The Startup dir is resolved via _startup_dir() so tests
 (and non-Windows machines) can redirect it."""
-import os, shutil
+import os, sys, shutil
 
 SHIM_NAME = "Rubric.cmd"
 
@@ -17,7 +17,11 @@ def _shim_path():
 
 
 def _tray_command():
-    # Prefer the windowless gui-script (pythonw, no console popup at login); fall back to the console one.
+    # Frozen exe -> the exe itself (no args = tray); there is no rubric-trayw console script in an exe-only
+    # install, so the old fallback would write a shim that fails at login. A pipx / Python run prefers the
+    # windowless gui-script (pythonw, no console popup at login), then the console one.
+    if getattr(sys, "frozen", False):
+        return sys.executable
     return shutil.which("rubric-trayw") or shutil.which("rubric-tray") or "rubric-trayw"
 
 

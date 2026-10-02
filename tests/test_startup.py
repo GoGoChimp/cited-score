@@ -34,3 +34,13 @@ def test_disable_removes_shim(tmp_path, monkeypatch):
 def test_disable_is_idempotent(tmp_path, monkeypatch):
     _patch_dir(monkeypatch, tmp_path)
     assert startup.disable() is True   # nothing to remove, still fine
+
+
+def test_enable_frozen_shim_launches_the_exe(tmp_path, monkeypatch):
+    # In an exe-only install there is no rubric-trayw; the Startup shim must launch the packaged exe itself.
+    _patch_dir(monkeypatch, tmp_path)
+    monkeypatch.setattr(startup.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(startup.sys, "executable", r"C:\Program Files\Rubric\Rubric.exe", raising=False)
+    assert startup.enable() is True
+    shim = list(tmp_path.glob("*.cmd"))[0].read_text(encoding="utf-8")
+    assert "Rubric.exe" in shim
