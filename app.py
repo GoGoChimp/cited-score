@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import aiseo_audit as A
 
 APP_VERSION = "0.15.7"                # semver; bump on every release + tag the GitHub release to match
-GITHUB_REPO = "GoGoChimp/cited-score" # public repo that hosts the releases (update check reads /releases/latest)
+GITHUB_REPO = "GoGoChimp/rubric-desktop" # PUBLIC releases-only repo that hosts Rubric.exe (update check reads /releases/latest); the engine repo GoGoChimp/cited-score is private and has no public release asset
 VERSION = f"v{APP_VERSION} - August 2026"
 
 _update = {"checked": False, "update": False, "latest": None, "url": None, "dl": None}
